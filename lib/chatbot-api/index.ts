@@ -1,17 +1,12 @@
 
 import * as cdk from "aws-cdk-lib";
 import * as s3 from 'aws-cdk-lib/aws-s3';
-
-
 import { AuthorizationStack } from '../authorization'
-
 import { WebsocketBackendAPI } from "./gateway/websocket-api"
 import { RestBackendAPI } from "./gateway/rest-api"
 import { LambdaFunctionStack } from "./functions/functions"
 import { TableStack } from "./tables/tables"
 import { S3BucketStack } from "./buckets/buckets"
-
-
 import { WebSocketLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { WebSocketLambdaAuthorizer, HttpUserPoolAuthorizer, HttpJwtAuthorizer  } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
@@ -58,7 +53,9 @@ export class ChatBotApi extends Construct {
         knowledgeBucket: buckets.knowledgeBucket,
         knowledgeBase: knowledgeBase.knowledgeBase,
         knowledgeBaseSource : knowledgeBase.dataSource,
-
+        evalSummariesTable : tables.evalSummaryTable,
+        evalResutlsTable : tables.evalResultsTable,
+        evalTestCasesBucket : buckets.evalTestCasesBucket,
       })
 
     const wsAuthorizer = new WebSocketLambdaAuthorizer('WebSocketAuthorizer', props.authentication.lambdaAuthorizer, {identitySource: ['route.request.querystring.Authorization']});
@@ -248,5 +245,35 @@ export class ChatBotApi extends Construct {
     //       "Access to all log groups required for CloudWatch log group creation.",
     //   },
     // ]);
+  
+    const evalResultsHandlerIntegration = new HttpLambdaIntegration(
+      'EvalResultsHandlerIntegration',
+      lambdaFunctions.handleEvalResultsFunction
+    );
+    restBackend.restAPI.addRoutes({
+      path: "/eval-results-handler",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: evalResultsHandlerIntegration,
+      authorizer: httpAuthorizer,
+    });
+
+    const evalRunHandlerIntegration = new HttpLambdaIntegration(
+      'EvalRunHandlerIntegration',
+      lambdaFunctions.stepFunctionsStack.startLlmEvalStateMachineFunction
+    );
+    restBackend.restAPI.addRoutes({
+      path: "/eval-run-handler",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: evalRunHandlerIntegration,
+      authorizer: httpAuthorizer,
+    }); 
+
+    const s3UploadTestCasesAPIIntegration = new HttpLambdaIntegration('S3UploadTestCasesAPIIntegration', lambdaFunctions.uploadS3TestCasesFunction);
+    restBackend.restAPI.addRoutes({
+      path: "/signed-url-test-cases",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: s3UploadTestCasesAPIIntegration,
+      authorizer: httpAuthorizer,
+    })
   }
 }
