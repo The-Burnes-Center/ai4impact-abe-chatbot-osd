@@ -165,49 +165,60 @@ def get_evaluation_results(evaluation_id, continuation_token=None, limit=10):
         }
 
 def lambda_handler(event, context):
-    data = json.loads(event['body']) if 'body' in event else event
-    operation = data.get('operation')
-    evaluation_id = data.get('evaluation_id')
-    # evaluation_name = data.get('evaluation_name', f"Evaluation on {str(datetime.now())}")
-    # average_similarity = data.get('average_similarity')
-    # average_relevance = data.get('average_relevance')
-    # average_correctness = data.get('average_correctness')
-    # detailed_results = data.get('detailed_results', [])
-    # total_questions = data.get('total_questions', len(detailed_results))
-    # test_cases_key = data.get('test_cases_key')
-    continuation_token = data.get('continuation_token')
-    limit = data.get('limit', 10)
+    # Add CORS headers for all responses
+    headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+        'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+    }
+    
+    # Handle OPTIONS request (preflight)
+    if event.get('httpMethod') == 'OPTIONS':
+        return {
+            'statusCode': 200,
+            'headers': headers,
+            'body': json.dumps({'message': 'CORS preflight request successful'})
+        }
+    
+    try:
+        data = json.loads(event['body']) if 'body' in event else event
+        operation = data.get('operation')
+        evaluation_id = data.get('evaluation_id')
+        continuation_token = data.get('continuation_token')
+        limit = data.get('limit', 10)
 
-    # if operation == 'add_evaluation':
-    #     if not all([average_similarity, average_relevance, average_correctness, total_questions, detailed_results, test_cases_key]):
-    #         return {
-    #             'statusCode': 400,
-    #             'headers': {'Access-Control-Allow-Origin': '*'},
-    #             'body': json.dumps('Missing required parameters for adding evaluation.')
-    #         }
-    #     return add_evaluation(
-    #         evaluation_id,
-    #         evaluation_name,
-    #         average_similarity,
-    #         average_relevance,
-    #         average_correctness,
-    #         total_questions,
-    #         detailed_results, 
-    #         test_cases_key
-    #     )
-    if operation == 'get_evaluation_summaries':
-        return get_evaluation_summaries(continuation_token, limit)
-    elif operation == 'get_evaluation_results':
-        if not evaluation_id:
+        if operation == 'get_evaluation_summaries':
+            result = get_evaluation_summaries(continuation_token, limit)
+            # Add CORS headers to the result
+            if 'headers' in result:
+                result['headers'].update(headers)
+            else:
+                result['headers'] = headers
+            return result
+        elif operation == 'get_evaluation_results':
+            if not evaluation_id:
+                return {
+                    'statusCode': 400,
+                    'headers': headers,
+                    'body': json.dumps('evaluation_id is required for retrieving evaluation results.')
+                }
+            result = get_evaluation_results(evaluation_id, continuation_token, limit)
+            # Add CORS headers to the result
+            if 'headers' in result:
+                result['headers'].update(headers)
+            else:
+                result['headers'] = headers
+            return result
+        else:
             return {
                 'statusCode': 400,
-                'headers': {'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps('evaluation_id is required for retrieving evaluation results.')
+                'headers': headers,
+                'body': json.dumps(f'Operation not found/allowed! Operation Sent: {operation}')
             }
-        return get_evaluation_results(evaluation_id, continuation_token, limit)
-    else:
+    except Exception as e:
+        print(f"Error in lambda_handler: {str(e)}")
         return {
-            'statusCode': 400,
-            'headers': {'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps(f'Operation not found/allowed! Operation Sent: {operation}')
+            'statusCode': 500,
+            'headers': headers,
+            'body': json.dumps(f'Internal server error: {str(e)}')
         }

@@ -1,4 +1,3 @@
-
 import * as cdk from "aws-cdk-lib";
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { AuthorizationStack } from '../authorization'
@@ -252,6 +251,12 @@ export class ChatBotApi extends Construct {
     );
     restBackend.restAPI.addRoutes({
       path: "/eval-results-handler",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: evalResultsHandlerIntegration,
+    });
+
+    restBackend.restAPI.addRoutes({
+      path: "/eval-results-handler",
       methods: [apigwv2.HttpMethod.POST],
       integration: evalResultsHandlerIntegration,
       authorizer: httpAuthorizer,
@@ -261,6 +266,12 @@ export class ChatBotApi extends Construct {
       'EvalRunHandlerIntegration',
       lambdaFunctions.stepFunctionsStack.startLlmEvalStateMachineFunction
     );
+    restBackend.restAPI.addRoutes({
+      path: "/eval-run-handler",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: evalRunHandlerIntegration,
+    });
+
     restBackend.restAPI.addRoutes({
       path: "/eval-run-handler",
       methods: [apigwv2.HttpMethod.POST],

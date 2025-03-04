@@ -14,6 +14,8 @@ import LandingPage from "./pages/landing-page";
 import LandingPageInfo from "./pages/landing-page-info";
 import LandingPageStart from "./pages/landing-page-start";
 import TipsAndQuestions from "./pages/tips-and-questions";
+import LlmEvaluationPage from "./pages/admin/llm-evaluation-page"; 
+import DetailedEvaluationPage from "./pages/admin/detailed-evaluation-page";
 import { v4 as uuidv4 } from "uuid";
 import "./styles/app.scss";
 
@@ -51,6 +53,17 @@ function App() {
               <Route path="data" element={<DataPage />} />
               <Route path="user-feedback" element={<UserFeedbackPage />} />
               <Route path="user-feedback/:feedbackId" element={<UserFeedbackDetailPage />} />
+              <Route path="llm-evaluation" element={<Outlet />}>
+                <Route index element={<LlmEvaluationPage />} />
+                <Route
+                  path=":evaluationId"
+                  element={
+                    <DetailedEvaluationPage
+                      documentType="detailedEvaluation" 
+                    />
+                  }
+                />
+              </Route>
             </Route>
 
             {/* FAQ and Guide Routes */}
