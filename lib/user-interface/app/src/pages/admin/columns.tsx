@@ -47,36 +47,51 @@ const EVAL_SUMMARY_COLUMN_DEFINITIONS = [
   {
     id: "averageSimilarity",
     header: "Average Similarity",
-    cell: (item) =>
-      (
-        parseFloat(item.average_similarity) 
-      ).toFixed(2),
+    cell: (item) => {
+      const value = item.average_similarity;
+      if (value === undefined || value === null) return "N/A";
+      return parseFloat(value).toFixed(2);
+    },
     sortingField: "average_similarity",
-    sortingComparator: (a, b) => parseFloat(a.average_similarity) - parseFloat(b.average_similarity),
+    sortingComparator: (a, b) => {
+      const aVal = a.average_similarity === undefined || a.average_similarity === null ? 0 : parseFloat(a.average_similarity);
+      const bVal = b.average_similarity === undefined || b.average_similarity === null ? 0 : parseFloat(b.average_similarity);
+      return aVal - bVal;
+    },
     width: "10%",
     wrapText: true
   },
   {
     id: "averageRelevance",
     header: "Average Relevance",
-    cell: (item) =>
-    (
-      parseFloat(item.average_relevance) 
-    ).toFixed(2),
+    cell: (item) => {
+      const value = item.average_relevance;
+      if (value === undefined || value === null) return "N/A";
+      return parseFloat(value).toFixed(2);
+    },
     sortingField: "average_relevance",
-    sortingComparator: (a, b) => parseFloat(a.average_relevance) - parseFloat(b.average_relevance),
+    sortingComparator: (a, b) => {
+      const aVal = a.average_relevance === undefined || a.average_relevance === null ? 0 : parseFloat(a.average_relevance);
+      const bVal = b.average_relevance === undefined || b.average_relevance === null ? 0 : parseFloat(b.average_relevance);
+      return aVal - bVal;
+    },
     width: "10%",
     wrapText: true
   },
   {
     id: "averageCorrectness",
     header: "Average Correctness",
-    cell: (item) =>
-    (
-      parseFloat(item.average_correctness) 
-    ).toFixed(2),
+    cell: (item) => {
+      const value = item.average_correctness;
+      if (value === undefined || value === null) return "N/A";
+      return parseFloat(value).toFixed(2);
+    },
     sortingField: "average_correctness",
-    sortingComparator: (a, b) => parseFloat(a.average_correctness) - parseFloat(b.average_correctness),
+    sortingComparator: (a, b) => {
+      const aVal = a.average_correctness === undefined || a.average_correctness === null ? 0 : parseFloat(a.average_correctness);
+      const bVal = b.average_correctness === undefined || b.average_correctness === null ? 0 : parseFloat(b.average_correctness);
+      return aVal - bVal;
+    },
     width: "10%",
     wrapText: true 
   },
@@ -93,43 +108,46 @@ const DETAILED_EVAL_COLUMN_DEFINITIONS = [
   {
     id: "question",
     header: "Question",
-    cell: (item) => <TruncatedTextCell text={item.question} maxLength={50}/>
+    cell: (item) => <TruncatedTextCell text={item.question || "No question available"} maxLength={50}/>
   },
   {
     id: "expectedResponse",
     header: "Expected Response",
-    cell: (item) => <TruncatedTextCell text={item.expected_response} maxLength={50}/>
+    cell: (item) => <TruncatedTextCell text={item.expected_response || "No expected response available"} maxLength={50}/>
   },
   {
     id: "actualResponse",
     header: "Actual Response",
-    cell: (item) => <TruncatedTextCell text={item.actual_response} maxLength={50}/>
+    cell: (item) => <TruncatedTextCell text={item.actual_response || "No actual response available"} maxLength={50}/>
   },
   {
     id: "similarity",
     header: "Similarity",
-    cell: (item) =>
-      (
-        parseFloat(item.similarity) 
-      ).toFixed(2),
+    cell: (item) => {
+      const value = item.similarity;
+      if (value === undefined || value === null) return "N/A";
+      return parseFloat(value).toFixed(2);
+    },
     sortingField: "similarity"
   },
   {
     id: "relevance",
     header: "Relevance",
-    cell: (item) =>
-    (
-      parseFloat(item.relevance) 
-    ).toFixed(2),
+    cell: (item) => {
+      const value = item.relevance;
+      if (value === undefined || value === null) return "N/A";
+      return parseFloat(value).toFixed(2);
+    },
     sortingField: "relevance"
   },
   {
     id: "correctness",
     header: "Correctness",
-    cell: (item) =>
-    (
-      parseFloat(item.correctness) 
-    ).toFixed(2),
+    cell: (item) => {
+      const value = item.correctness;
+      if (value === undefined || value === null) return "N/A";
+      return parseFloat(value).toFixed(2);
+    },
     sortingField: "correctness"
   },
 ];

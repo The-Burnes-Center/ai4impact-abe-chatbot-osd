@@ -42,6 +42,7 @@ export default function PastEvalsTab(props: PastEvalsTabProps) {
   const [currentPageIndex, setCurrentPageIndex] = useState(1);
   const [pages, setPages] = useState([]);
   const needsRefresh = useRef(false);
+  const [error, setError] = useState<string | null>(null);
 
   const columnDefinitions = getColumnDefinition(props.documentType, onProblemClick);
   const defaultSortingColumn = findFirstSortableColumn(columnDefinitions);
@@ -123,6 +124,28 @@ export default function PastEvalsTab(props: PastEvalsTabProps) {
       setLoading(true);
       try {
         const result = await apiClient.evaluations.getEvaluationSummaries(params.nextPageToken);
+        
+        // Check if there's an error in the result
+        if (result.error) {
+          console.error("Error from API:", result.error);
+          setError(result.error);
+          setPages([]);
+          setLoading(false);
+          return;
+        }
+        
+        // Check if result exists and has Items property
+        if (!result || !result.Items) {
+          console.log("No evaluations found or unexpected response structure");
+          setError("No evaluation data available. This could be due to an empty database or a configuration issue.");
+          setPages([]);
+          setLoading(false);
+          return;
+        }
+        
+        // Clear any previous errors
+        setError(null);
+        
         setPages((current) => {
           if (needsRefresh.current) {
             needsRefresh.current = false;
@@ -136,13 +159,16 @@ export default function PastEvalsTab(props: PastEvalsTabProps) {
           }
         });
       } catch (error) {
-        console.error(Utils.getErrorMessage(error));
-        addNotification("error", "Error fetching evaluations");
+        console.error("Error fetching evaluations:", error);
+        const errorMessage = Utils.getErrorMessage(error);
+        console.error("Error details:", errorMessage);
+        setError(`Failed to load evaluations: ${errorMessage}`);
+        setPages([]);
       } finally {
         setLoading(false);
       }
     },
-    [apiClient, addNotification, needsRefresh]
+    [apiClient]
   );
 
   useEffect(() => {
@@ -196,7 +222,11 @@ export default function PastEvalsTab(props: PastEvalsTabProps) {
       }
       empty={
         <Box textAlign="center">
-          <StatusIndicator type="warning">No evaluations found</StatusIndicator>
+          {error ? (
+            <StatusIndicator type="error">{error}</StatusIndicator>
+          ) : (
+            <StatusIndicator type="warning">No evaluations found</StatusIndicator>
+          )}
         </Box>
       }
       pagination={

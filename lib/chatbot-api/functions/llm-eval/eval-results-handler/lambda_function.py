@@ -84,31 +84,49 @@ def convert_from_decimal(item):
 # function to retrieve all summaries from DynamoDB
 def get_evaluation_summaries(continuation_token=None, limit=10):
     try: 
-        query_params = {
-            "KeyConditionExpression": Key("PartitionKey").eq("Evaluation"),  # Match all evaluations
-            "ProjectionExpression": "#eid, #ts, #as, #ar, #ac, #tq, #en, #tk",
-            "ExpressionAttributeNames": {
-                "#eid": "EvaluationId",
-                "#ts": "Timestamp",  # Reserved keyword
-                "#as": "average_similarity",
-                "#ar": "average_relevance",
-                "#ac": "average_correctness",
-                "#tq": "total_questions",
-                "#en": "evaluation_name",
-                "#tk": "test_cases_key"
-            },
-            "Limit": limit,
-            "ScanIndexForward": False  # Get the most recent evaluations first
-        }
-        # Add continuation token if provided
-        if continuation_token:
-            query_params["ExclusiveStartKey"] = continuation_token
-        response = summaries_table.query(**query_params)
-        items = response.get('Items', [])
-        last_evaluated_key = response.get('LastEvaluatedKey')
+        try:
+            # First try with PartitionKey
+            query_params = {
+                "KeyConditionExpression": Key("PartitionKey").eq("Evaluation"),  # Match all evaluations
+                "ProjectionExpression": "#eid, #ts, #as, #ar, #ac, #tq, #en, #tk",
+                "ExpressionAttributeNames": {
+                    "#eid": "EvaluationId",
+                    "#ts": "Timestamp",  # Reserved keyword
+                    "#as": "average_similarity",
+                    "#ar": "average_relevance",
+                    "#ac": "average_correctness",
+                    "#tq": "total_questions",
+                    "#en": "evaluation_name",
+                    "#tk": "test_cases_key"
+                },
+                "Limit": limit,
+                "ScanIndexForward": False  # Get the most recent evaluations first
+            }
+            # Add continuation token if provided
+            if continuation_token:
+                query_params["ExclusiveStartKey"] = continuation_token
+            response = summaries_table.query(**query_params)
+            items = response.get('Items', [])
+            last_evaluated_key = response.get('LastEvaluatedKey')
+        except ClientError as partition_error:
+            print(f"Error querying with PartitionKey: {str(partition_error)}")
+            print("Falling back to scan operation")
+            
+            # Fallback to scan if PartitionKey doesn't exist
+            scan_params = {
+                "Limit": limit
+            }
+            if continuation_token:
+                scan_params["ExclusiveStartKey"] = continuation_token
+            
+            response = summaries_table.scan(**scan_params)
+            items = response.get('Items', [])
+            last_evaluated_key = response.get('LastEvaluatedKey')
 
-        # Sort items to return most recent evaluations first
-        #sorted_items = sorted(items, key=lambda x: x['Timestamp'], reverse=False)
+        # Sort items to return most recent evaluations first if Timestamp exists
+        if items and 'Timestamp' in items[0]:
+            items = sorted(items, key=lambda x: x.get('Timestamp', ''), reverse=True)
+            
         response_body = {
             'Items': convert_from_decimal(items),
             'NextPageToken': last_evaluated_key
@@ -146,6 +164,11 @@ def get_evaluation_results(evaluation_id, continuation_token=None, limit=10):
 
         # Sort items by QuestionId and build response body
         sorted_items = sorted(items, key=lambda x: int(x['QuestionId']))
+        
+        # Add question_id field for frontend compatibility
+        for item in sorted_items:
+            item['question_id'] = item['QuestionId']
+            
         response_body = {
             'Items': convert_from_decimal(sorted_items),
             'NextPageToken': last_evaluated_key

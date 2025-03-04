@@ -46,6 +46,7 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
   const [currentPageIndex, setCurrentPageIndex] = useState(1);
   const [pages, setPages] = useState([]);
   const needsRefresh = useRef(false);
+  const [error, setError] = useState<string | null>(null);
 
 
   useEffect(() => {
@@ -62,6 +63,19 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
     setLoading(true);
     try {
       const result = await apiClient.evaluations.getEvaluationResults(evaluationId, params.nextPageToken);
+      
+      // Check if there's an error in the result
+      if (result.error) {
+        console.error("Error from API:", result.error);
+        setError(result.error);
+        addNotification("error", result.error);
+        setLoading(false);
+        return;
+      }
+      
+      // Clear any previous errors
+      setError(null);
+      
       setPages((current) => {
         if (needsRefresh.current) {
           needsRefresh.current = false;
@@ -75,11 +89,22 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
         }
       });
       if (result.Items && result.Items.length > 0) {
-        setEvaluationName(result.Items[0].evaluation_name);
+        // Try to get evaluation_name from the first item
+        const name = result.Items[0].evaluation_name || "Unnamed Evaluation";
+        setEvaluationName(name);
+      } else {
+        // Handle case where no items were returned
+        console.warn("No evaluation details found");
+        setError("No details found for this evaluation.");
+        addNotification("warning", "No details found for this evaluation.");
       }
     } catch (error) {
-      console.error(Utils.getErrorMessage(error));
-      addNotification("error", "Error fetching evaluation details");
+      console.error("Error fetching evaluation details:", error);
+      const errorMessage = Utils.getErrorMessage(error);
+      console.error("Error details:", errorMessage);
+      const errorMsg = `Error fetching evaluation details: ${errorMessage}`;
+      setError(errorMsg);
+      addNotification("error", errorMsg);
     } finally {
       setLoading(false);
     }
@@ -101,9 +126,7 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
 
   const breadcrumbItems = [
     { text: "LLM Evaluation", href: "/admin/llm-evaluation" },
-    // text should be Evaluation {evaluation name}
-    // { text: `Evaluation ${evaluationName}`, href: "#" },
-    { text: `Evaluation ${evaluationDetails}`, href: "#" },
+    { text: `Evaluation ${evaluationName || evaluationId}`, href: "#" },
   ];
 
   const columnDefinitions = getColumnDefinition(props.documentType, onProblemClick);
@@ -194,8 +217,8 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
             }}
             empty={
               <Box textAlign="center">
-                <StatusIndicator type="warning">
-                  No details found for this evaluation.
+                <StatusIndicator type={error ? "error" : "warning"}>
+                  {error || "No details found for this evaluation."}
                 </StatusIndicator>
               </Box>
             }

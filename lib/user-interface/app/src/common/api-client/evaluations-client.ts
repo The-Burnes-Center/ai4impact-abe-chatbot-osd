@@ -41,6 +41,15 @@ export class EvaluationsClient {
         
         if (!response.ok) {
           const errorText = await response.text();
+          // Check for specific DynamoDB errors
+          if (errorText.includes("ResourceNotFoundException") || errorText.includes("ValidationException")) {
+            console.error("DynamoDB error:", errorText);
+            return { 
+              Items: [], 
+              NextPageToken: null,
+              error: "Database error: The evaluation summaries could not be retrieved. This may be due to missing tables or incorrect configuration."
+            };
+          }
           throw new Error(`Failed to get evaluation summaries: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
@@ -51,6 +60,13 @@ export class EvaluationsClient {
         try {
           // Then parse it as JSON
           const result = JSON.parse(responseText);
+          
+          // Check if result has Items property, if not create an empty structure
+          if (!result.Items) {
+            console.warn("Response missing Items property, creating empty structure");
+            return { Items: [], NextPageToken: null };
+          }
+          
           return result;
         } catch (parseError) {
           console.error("Error parsing JSON response:", parseError);
@@ -109,6 +125,15 @@ export class EvaluationsClient {
         
         if (!response.ok) {
           const errorText = await response.text();
+          // Check for specific DynamoDB errors
+          if (errorText.includes("ResourceNotFoundException") || errorText.includes("ValidationException")) {
+            console.error("DynamoDB error:", errorText);
+            return { 
+              Items: [], 
+              NextPageToken: null,
+              error: "Database error: The evaluation data could not be retrieved. This may be due to missing tables or incorrect configuration."
+            };
+          }
           throw new Error(`Failed to get evaluation results: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
@@ -119,6 +144,13 @@ export class EvaluationsClient {
         try {
           // Then parse it as JSON
           const result = JSON.parse(responseText);
+          
+          // Check if result has Items property, if not create an empty structure
+          if (!result.Items) {
+            console.warn("Response missing Items property, creating empty structure");
+            return { Items: [], NextPageToken: null };
+          }
+          
           return result;
         } catch (parseError) {
           console.error("Error parsing JSON response:", parseError);

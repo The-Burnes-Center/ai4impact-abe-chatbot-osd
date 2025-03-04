@@ -53,6 +53,7 @@ import {
     const { addNotification } = useNotifications();
     const needsRefresh = useRef(false);
     const [pages, setPages] = useState([]);
+    const [error, setError] = useState<string | null>(null);
   
     const { items, collectionProps, paginationProps } = useCollection(evaluations, {
       pagination: { pageSize: 10 },
@@ -73,54 +74,40 @@ import {
         const result = await apiClient.evaluations.getEvaluationSummaries();
         console.log("result: ", result);
   
+        // Check if there's an error in the result
+        if (result.error) {
+          console.error("Error from API:", result.error);
+          setError(result.error);
+          setEvaluations([]);
+          setLoading(false);
+          return;
+        }
+        
         // Check if result exists and has Items property
         if (result && result.Items) {
           // Take only the first 10 evaluations
           const firstTenEvaluations = result.Items.slice(0, 10);
           // Update state with just these evaluations
           setEvaluations(firstTenEvaluations);
+          
+          // Clear any previous errors
+          setError(null);
         } else {
           // Handle case where result doesn't have expected structure
           console.log("No evaluations found or unexpected response structure");
           setEvaluations([]);
+          setError("No evaluation data available. This could be due to an empty database or a configuration issue.");
         }
       } catch (error) {
         console.error("Error fetching evaluations:", error);
         const errorMessage = Utils.getErrorMessage(error);
         console.error("Error details:", errorMessage);
-        
-        // Show a more specific notification based on the error
-        if (errorMessage.includes("NetworkError") || errorMessage.includes("Failed to fetch")) {
-          addNotification("error", "Network error: Unable to connect to the evaluation service");
-        } else if (errorMessage.includes("Unauthorized") || errorMessage.includes("403")) {
-          addNotification("error", "Authorization error: You don't have permission to access evaluations");
-        } else if (errorMessage.includes("404") || errorMessage.includes("not found") || errorMessage.includes("not available")) {
-          console.log("API endpoint not found - this is expected if the backend is not fully deployed");
-          addNotification("info", "The evaluation service is not available yet. This is expected for new deployments.");
-          // Don't show an error notification for this expected case
-          setEvaluations([]);
-        } else if (errorMessage.includes("CORS") || errorMessage.includes("Cross-Origin")) {
-          console.error("CORS error detected");
-          addNotification("error", "Cross-Origin Request Blocked: The API doesn't allow requests from this origin. Please check CORS configuration on the API Gateway.");
-          setEvaluations([]);
-        } else if (errorMessage.includes("ResourceNotFoundException") || errorMessage.includes("Table") && errorMessage.includes("not found")) {
-          console.log("DynamoDB table does not exist yet - this is expected for new deployments");
-          // Don't show an error notification for this expected case
-          setEvaluations([]);
-        } else if (errorMessage.includes("Invalid JSON") || errorMessage.includes("Unexpected token")) {
-          console.error("Invalid JSON response from server");
-          addNotification("error", "The evaluation service returned an invalid response. This may indicate a backend configuration issue.");
-          setEvaluations([]);
-        } else {
-          addNotification("error", `Error fetching evaluations: ${errorMessage}`);
-        }
-        
-        // Set empty evaluations to ensure UI handles it gracefully
+        setError(`Failed to load evaluations: ${errorMessage}`);
         setEvaluations([]);
       } finally {
         setLoading(false);
       }
-    }, [apiClient, addNotification]);
+    }, [apiClient.evaluations]);
   
   // add text to dropdown
   useEffect(() => {
@@ -242,15 +229,21 @@ import {
               type="info"
               header="No evaluation data available"
             >
-              <p>There are no LLM evaluations in the database yet. This is expected for new deployments. Follow these steps to get started:</p>
-              <ol style={{ marginLeft: "20px", lineHeight: "1.5" }}>
-                <li><strong>Ensure backend deployment</strong> - Make sure the backend API and Lambda functions are properly deployed</li>
-                <li><strong>Check CORS configuration</strong> - Ensure the API Gateway has CORS enabled with appropriate origins</li>
-                <li><strong>Upload test cases</strong> - Go to the "Add Test Cases" tab to upload JSON files containing test questions and expected answers</li>
-                <li><strong>Run an evaluation</strong> - Navigate to the "New Evaluation" tab to start a new evaluation run using your test cases</li>
-                <li><strong>View results</strong> - Once complete, return to this tab to view performance metrics and trends</li>
-              </ol>
-              <p style={{ marginTop: "10px" }}>If you're seeing a "Cross-Origin Request Blocked" message, you need to update the CORS configuration in your API Gateway. Add your frontend origin to the allowed origins list.</p>
+              {error ? (
+                <p>{error}</p>
+              ) : (
+                <>
+                  <p>There are no LLM evaluations in the database yet. This is expected for new deployments. Follow these steps to get started:</p>
+                  <ol style={{ marginLeft: "20px", lineHeight: "1.5" }}>
+                    <li><strong>Ensure backend deployment</strong> - Make sure the backend API and Lambda functions are properly deployed</li>
+                    <li><strong>Check CORS configuration</strong> - Ensure the API Gateway has CORS enabled with appropriate origins</li>
+                    <li><strong>Upload test cases</strong> - Go to the "Add Test Cases" tab to upload JSON files containing test questions and expected answers</li>
+                    <li><strong>Run an evaluation</strong> - Navigate to the "New Evaluation" tab to start a new evaluation run using your test cases</li>
+                    <li><strong>View results</strong> - Once complete, return to this tab to view performance metrics and trends</li>
+                  </ol>
+                  <p style={{ marginTop: "10px" }}>If you're seeing a "Cross-Origin Request Blocked" message, you need to update the CORS configuration in your API Gateway. Add your frontend origin to the allowed origins list.</p>
+                </>
+              )}
             </Alert>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <button 
