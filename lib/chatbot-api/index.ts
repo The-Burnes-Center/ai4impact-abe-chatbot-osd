@@ -286,5 +286,19 @@ export class ChatBotApi extends Construct {
       integration: s3UploadTestCasesAPIIntegration,
       authorizer: httpAuthorizer,
     })
+
+    const s3GetTestCasesAPIIntegration = new HttpLambdaIntegration('S3GetTestCasesAPIIntegration', lambdaFunctions.getS3TestCasesFunction);
+    restBackend.restAPI.addRoutes({
+      path: "/get-test-cases",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: s3GetTestCasesAPIIntegration,
+    });
+
+    restBackend.restAPI.addRoutes({
+      path: "/get-test-cases",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: s3GetTestCasesAPIIntegration,
+      authorizer: httpAuthorizer,
+    })
   }
 }

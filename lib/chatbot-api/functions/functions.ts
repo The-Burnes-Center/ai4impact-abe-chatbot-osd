@@ -288,6 +288,26 @@ websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
   ],
 }));
 
+const getS3TestCasesFunction = new lambda.Function(scope, 'GetS3TestCasesFilesHandlerFunction', {
+  runtime: lambda.Runtime.NODEJS_20_X,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/S3-get-test-cases')),
+  handler: 'index.handler',
+  environment: {
+    "BUCKET": props.evalTestCasesBucket.bucketName,
+  },
+  timeout: cdk.Duration.seconds(30)
+});
+
+getS3TestCasesFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: [
+    's3:ListBucket',
+    's3:GetObject'
+  ],
+  resources: [props.evalTestCasesBucket.bucketArn, props.evalTestCasesBucket.bucketArn + "/*"]
+}));
+this.getS3TestCasesFunction = getS3TestCasesFunction;
+
 const uploadS3TestCasesFunction = new lambda.Function(scope, 'UploadS3TestCasesFilesHandlerFunction', {
   runtime: lambda.Runtime.NODEJS_20_X, // Choose any supported Node.js runtime
   code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/S3-upload')), // Points to the lambda directory
