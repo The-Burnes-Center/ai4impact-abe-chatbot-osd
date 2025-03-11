@@ -40,14 +40,47 @@ def lambda_handler(event, context):
 def read_test_cases_from_s3(s3_client, bucket_name, key):
     response = s3_client.get_object(Bucket=bucket_name, Key=key)
     content = response['Body'].read().decode('utf-8-sig')
-    test_cases = []
-    reader = csv.DictReader(io.StringIO(content))
-    for row in reader:
-        test_cases.append({
-            'question': row['question'],
-            'expectedResponse': row['expectedResponse'],
-        })
-    return test_cases
+    
+    # Determine file type by extension
+    file_extension = key.split('.')[-1].lower()
+    
+    if file_extension == 'json':
+        # Process JSON file
+        try:
+            data = json.loads(content)
+            # If it's an array, use it directly; otherwise look for a test_cases field
+            if isinstance(data, list):
+                test_cases = data
+            elif isinstance(data, dict) and 'test_cases' in data:
+                test_cases = data['test_cases']
+            else:
+                raise ValueError("JSON file must contain an array of test cases or a test_cases field")
+                
+            # Ensure each test case has the required fields
+            for test_case in test_cases:
+                if 'question' not in test_case or 'expectedResponse' not in test_case:
+                    raise ValueError("Each test case must have 'question' and 'expectedResponse' fields")
+                    
+            return test_cases
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON file: {str(e)}")
+    
+    elif file_extension == 'csv':
+        # Process CSV file
+        test_cases = []
+        reader = csv.DictReader(io.StringIO(content))
+        for row in reader:
+            if 'question' not in row or 'expectedResponse' not in row:
+                raise ValueError("CSV file must have 'question' and 'expectedResponse' columns")
+            
+            test_cases.append({
+                'question': row['question'],
+                'expectedResponse': row['expectedResponse'],
+            })
+        return test_cases
+    
+    else:
+        raise ValueError(f"Unsupported file type: {file_extension}. Only JSON and CSV files are supported.")
 
 def save_chunks_to_s3(s3_client, evaluation_id, chunks):
     chunk_infos = []

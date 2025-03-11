@@ -37,13 +37,17 @@ export class ChatBotApi extends Construct {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'index.handler',
       code: lambda.Code.fromInline(`
-        exports.handler = async () => {
+        exports.handler = async (event) => {
+          // Get the origin from the request
+          const origin = event.headers?.origin || event.headers?.Origin || 'https://dcf43zj2k8alr.cloudfront.net';
+          
           return {
             statusCode: 200,
             headers: {
               "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
               "Access-Control-Allow-Methods": "OPTIONS,POST,GET",
-              "Access-Control-Allow-Origin": "*"
+              "Access-Control-Allow-Origin": origin,
+              "Access-Control-Allow-Credentials": "true"
             },
             body: JSON.stringify({}),
           };
