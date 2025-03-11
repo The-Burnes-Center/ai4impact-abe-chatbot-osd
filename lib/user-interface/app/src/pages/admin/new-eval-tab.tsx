@@ -237,9 +237,14 @@ import {
         return;
       }
       
-      // Validate file extension (should be .json)
-      if (!selectedFile.Key.toLowerCase().endsWith('.json')) {
-        setGlobalError("Please select a valid JSON test case file");
+      // Improved debugging for file validation
+      console.log("Selected file:", selectedFile);
+      const fileExtension = selectedFile.Key.toLowerCase().split('.').pop();
+      console.log("Detected file extension:", fileExtension);
+      
+      if (fileExtension !== 'json' && fileExtension !== 'csv') {
+        console.log("Invalid file extension:", fileExtension);
+        setGlobalError(`Please select a valid test case file (.json or .csv). Got: ${fileExtension}`);
         return;
       }
       
@@ -248,7 +253,9 @@ import {
         setLoading(true);
         
         // Start the evaluation
+        console.log("Starting evaluation with file:", selectedFile.Key);
         const result = await apiClient.evaluations.startNewEvaluation(evalName, selectedFile.Key);
+        console.log("Evaluation result:", result);
         
         // Show success notification
         addNotification("success", "Evaluation started successfully. It may take a few minutes to complete.");

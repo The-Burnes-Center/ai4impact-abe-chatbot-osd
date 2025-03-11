@@ -296,7 +296,7 @@ export class ChatBotApi extends Construct {
     restBackend.restAPI.addRoutes({
       path: "/eval-results-handler",
       methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: evalResultsHandlerIntegration,
+      integration: corsHandlerIntegration,
     });
 
     restBackend.restAPI.addRoutes({
@@ -313,7 +313,7 @@ export class ChatBotApi extends Construct {
     restBackend.restAPI.addRoutes({
       path: "/eval-run-handler",
       methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: evalRunHandlerIntegration,
+      integration: corsHandlerIntegration,
     });
 
     restBackend.restAPI.addRoutes({

@@ -194,7 +194,7 @@ export class EvaluationsClient {
           },
           body: JSON.stringify(body),
           mode: "cors", // Explicitly set CORS mode
-          credentials: "include" // Include credentials if needed
+          credentials: "same-origin" // Changed from 'include' to 'same-origin' to avoid CORS preflight issues
         });
         
         if (response.status === 404) {
