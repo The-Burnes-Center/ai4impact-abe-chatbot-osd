@@ -37,6 +37,8 @@ import {
   
   export interface CurrentEvalTabProps {
     tabChangeFunction: () => void;
+    addTestCasesHandler?: () => void;
+    newEvalHandler?: () => void;
   }
   
   
@@ -70,9 +72,12 @@ import {
   
     const getEvaluations = useCallback(async () => {
       setLoading(true);
+      setError(null); // Clear any previous errors when starting a new fetch
+      
       try {
+        console.log("Fetching evaluation summaries...");
         const result = await apiClient.evaluations.getEvaluationSummaries();
-        console.log("result: ", result);
+        console.log("Evaluation result:", result);
   
         // Check if there's an error in the result
         if (result.error) {
@@ -84,7 +89,8 @@ import {
         }
         
         // Check if result exists and has Items property
-        if (result && result.Items) {
+        if (result && result.Items && result.Items.length > 0) {
+          console.log("Found evaluation items:", result.Items.length);
           // Take only the first 10 evaluations
           const firstTenEvaluations = result.Items.slice(0, 10);
           // Update state with just these evaluations
@@ -93,14 +99,14 @@ import {
           // Clear any previous errors
           setError(null);
         } else {
-          // Handle case where result doesn't have expected structure
-          console.log("No evaluations found or unexpected response structure");
+          // No evaluations found, but API call succeeded
+          console.log("No evaluations found or empty response");
           setEvaluations([]);
-          setError("No evaluation data available. This could be due to an empty database or a configuration issue.");
+          setError("No evaluations found. You can create a new evaluation by uploading test cases and running an evaluation.");
         }
       } catch (error) {
         console.error("Error fetching evaluations:", error);
-        const errorMessage = Utils.getErrorMessage(error);
+        const errorMessage = error?.message || "Unknown error";
         console.error("Error details:", errorMessage);
         setError(`Failed to load evaluations: ${errorMessage}`);
         setEvaluations([]);
@@ -108,6 +114,12 @@ import {
         setLoading(false);
       }
     }, [apiClient.evaluations]);
+  
+  // Helper for manual refresh with visual feedback
+  const refreshEvaluations = async () => {
+    setLoading(true);
+    await getEvaluations();
+  };
   
   // add text to dropdown
   useEffect(() => {
@@ -226,11 +238,38 @@ import {
         <Container header={<Header variant="h2">No Evaluations Found</Header>}>
           <SpaceBetween size="l">
             <Alert
-              type="info"
-              header="No evaluation data available"
+              type={error ? "error" : "info"}
+              header={error ? "Error loading evaluation data" : "No evaluation data available"}
+              action={
+                <button
+                  onClick={refreshEvaluations}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: error ? '#d13212' : '#0972d3',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                  }}
+                >
+                  Retry
+                </button>
+              }
             >
               {error ? (
-                <p>{error}</p>
+                <div>
+                  <p>{error}</p>
+                  <p style={{ marginTop: "10px" }}>Possible solutions:</p>
+                  <ul style={{ marginLeft: "20px", lineHeight: "1.5" }}>
+                    <li><strong>Check backend deployment</strong> - Verify that your Lambda functions and DynamoDB tables are correctly deployed</li>
+                    <li><strong>Verify API Gateway configuration</strong> - Ensure the API Gateway endpoint is configured correctly</li>
+                    <li><strong>Check IAM permissions</strong> - Make sure the Lambda functions have permission to access DynamoDB tables</li>
+                    <li><strong>Inspect DynamoDB tables</strong> - Verify that EvaluationSummariesTable and EvaluationResultsTable exist</li>
+                    <li><strong>Check network connectivity</strong> - Ensure your frontend can reach the backend API</li>
+                  </ul>
+                </div>
               ) : (
                 <>
                   <p>There are no LLM evaluations in the database yet. This is expected for new deployments. Follow these steps to get started:</p>
@@ -247,7 +286,7 @@ import {
             </Alert>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <button 
-                onClick={() => window.location.href = '#/admin/llm-evaluation?activeTabId=add-test-cases'} 
+                onClick={props.addTestCasesHandler || props.tabChangeFunction} 
                 style={{
                   padding: '10px 20px',
                   backgroundColor: '#0972d3',
@@ -263,7 +302,7 @@ import {
                 Upload Test Cases
               </button>
               <button 
-                onClick={() => window.location.href = '#/admin/llm-evaluation?activeTabId=new-eval'} 
+                onClick={props.newEvalHandler || props.tabChangeFunction} 
                 style={{
                   padding: '10px 20px',
                   backgroundColor: '#0972d3',

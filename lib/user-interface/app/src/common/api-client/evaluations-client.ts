@@ -29,18 +29,23 @@ export class EvaluationsClient {
             "Accept": "application/json"
           },
           body: JSON.stringify(body),
-          mode: "cors", // Explicitly set CORS mode
-          credentials: "include" // Include credentials if needed
+          mode: "cors", 
+          credentials: "include"
         });
         
         if (response.status === 404) {
           console.error("API endpoint not found: /eval-results-handler");
-          // Return an empty result structure instead of throwing an error
-          return { Items: [], NextPageToken: null };
+          return { 
+            Items: [], 
+            NextPageToken: null,
+            error: "API endpoint not found. Please check that backend services are deployed correctly."
+          };
         }
         
         if (!response.ok) {
           const errorText = await response.text();
+          console.error("Error response:", response.status, errorText);
+          
           // Check for specific DynamoDB errors
           if (errorText.includes("ResourceNotFoundException") || errorText.includes("ValidationException")) {
             console.error("DynamoDB error:", errorText);
@@ -50,7 +55,13 @@ export class EvaluationsClient {
               error: "Database error: The evaluation summaries could not be retrieved. This may be due to missing tables or incorrect configuration."
             };
           }
-          throw new Error(`Failed to get evaluation summaries: ${response.status} ${response.statusText} - ${errorText}`);
+          
+          // Return a structured error object
+          return {
+            Items: [],
+            NextPageToken: null,
+            error: `API Error (${response.status}): ${errorText || response.statusText}`
+          };
         }
 
         // Get the response text first to log it in case of parsing errors
@@ -60,6 +71,16 @@ export class EvaluationsClient {
         try {
           // Then parse it as JSON
           const result = JSON.parse(responseText);
+          
+          // Check if the response indicates an error even with status 200
+          if (result.errorMessage || result.error) {
+            console.error("Error in response body:", result.errorMessage || result.error);
+            return {
+              Items: [],
+              NextPageToken: null,
+              error: `Backend error: ${result.errorMessage || result.error}`
+            };
+          }
           
           // Check if result has Items property, if not create an empty structure
           if (!result.Items) {
@@ -71,7 +92,11 @@ export class EvaluationsClient {
         } catch (parseError) {
           console.error("Error parsing JSON response:", parseError);
           console.error("Raw response was:", responseText);
-          throw new Error(`Invalid JSON response from server: ${parseError.message}`);
+          return {
+            Items: [],
+            NextPageToken: null,
+            error: `Invalid response format: ${parseError.message}`
+          };
         }
       } catch (fetchError) {
         // Handle CORS errors specifically
@@ -79,14 +104,26 @@ export class EvaluationsClient {
             fetchError.message.includes("cross-origin") || 
             fetchError.message.includes("Cross-Origin")) {
           console.error("CORS error:", fetchError);
-          throw new Error("Cross-Origin Request Blocked: The API doesn't allow requests from this origin. Please check CORS configuration on the API Gateway.");
+          return {
+            Items: [],
+            NextPageToken: null,
+            error: "Cross-Origin Request Blocked: The API doesn't allow requests from this origin. Please check CORS configuration."
+          };
         }
-        throw fetchError;
+        
+        return {
+          Items: [],
+          NextPageToken: null,
+          error: `Network error: ${fetchError.message}`
+        };
       }
     } catch (error) {
       console.error("Error in getEvaluationSummaries:", error);
-      // Rethrow the error for the component to handle
-      throw error;
+      return {
+        Items: [],
+        NextPageToken: null,
+        error: `Unexpected error: ${error.message || "Unknown error"}`
+      };
     }
   }
 

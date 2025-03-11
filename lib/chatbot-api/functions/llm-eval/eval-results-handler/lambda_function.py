@@ -84,6 +84,24 @@ def convert_from_decimal(item):
 # function to retrieve all summaries from DynamoDB
 def get_evaluation_summaries(continuation_token=None, limit=10):
     try: 
+        # First check if the table exists
+        try:
+            # Check if we can describe the table - this will fail if it doesn't exist
+            dynamodb_client = boto3.client('dynamodb', region_name='us-east-1')
+            dynamodb_client.describe_table(TableName=EVALUATION_SUMMARIES_TABLE)
+        except ClientError as table_error:
+            if table_error.response['Error']['Code'] == 'ResourceNotFoundException':
+                print(f"Table {EVALUATION_SUMMARIES_TABLE} does not exist")
+                return {
+                    'statusCode': 404,
+                    'headers': {'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({
+                        'error': f"DynamoDB table {EVALUATION_SUMMARIES_TABLE} does not exist. Please check your deployment."
+                    })
+                }
+            else:
+                print(f"Error checking table existence: {str(table_error)}")
+                
         try:
             # First try with PartitionKey
             query_params = {
@@ -110,18 +128,24 @@ def get_evaluation_summaries(continuation_token=None, limit=10):
             last_evaluated_key = response.get('LastEvaluatedKey')
         except ClientError as partition_error:
             print(f"Error querying with PartitionKey: {str(partition_error)}")
-            print("Falling back to scan operation")
             
-            # Fallback to scan if PartitionKey doesn't exist
-            scan_params = {
-                "Limit": limit
-            }
-            if continuation_token:
-                scan_params["ExclusiveStartKey"] = continuation_token
-            
-            response = summaries_table.scan(**scan_params)
-            items = response.get('Items', [])
-            last_evaluated_key = response.get('LastEvaluatedKey')
+            # Check if the error is due to the PartitionKey not existing in the table schema
+            if 'ValidationException' in str(partition_error) and 'PartitionKey' in str(partition_error):
+                print("PartitionKey not found in table schema, falling back to scan operation")
+                
+                # Fallback to scan if PartitionKey doesn't exist
+                scan_params = {
+                    "Limit": limit
+                }
+                if continuation_token:
+                    scan_params["ExclusiveStartKey"] = continuation_token
+                
+                response = summaries_table.scan(**scan_params)
+                items = response.get('Items', [])
+                last_evaluated_key = response.get('LastEvaluatedKey')
+            else:
+                # This is a different kind of error, re-raise it to be caught by the outer try-except
+                raise partition_error
 
         # Sort items to return most recent evaluations first if Timestamp exists
         if items and 'Timestamp' in items[0]:
@@ -140,10 +164,24 @@ def get_evaluation_summaries(continuation_token=None, limit=10):
     except ClientError as error:
         print("Caught error: DynamoDB error - could not retrieve evaluation summaries")
         print("error: ", error)
+        error_code = error.response['Error']['Code'] if hasattr(error, 'response') and 'Error' in error.response else 'Unknown'
+        error_message = error.response['Error']['Message'] if hasattr(error, 'response') and 'Error' in error.response else str(error)
+        
         return {
             'statusCode': 500,
             'headers': {'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps(str(error))
+            'body': json.dumps({
+                'error': f"Database error ({error_code}): {error_message}"
+            })
+        }
+    except Exception as e:
+        print(f"Unexpected error in get_evaluation_summaries: {str(e)}")
+        return {
+            'statusCode': 500,
+            'headers': {'Access-Control-Allow-Origin': '*'},
+            'body': json.dumps({
+                'error': f"Unexpected server error: {str(e)}"
+            })
         }
 
 # function to retrieve detailed results for a specific evaluation from DynamoDB

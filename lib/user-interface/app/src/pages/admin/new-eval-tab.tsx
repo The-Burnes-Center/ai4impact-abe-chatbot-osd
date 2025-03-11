@@ -24,16 +24,11 @@ import {
     documentType: AdminDataType;
   }
 
-  const onProblemClick = (NewEvaluationItem): void => {
-    console.log("New Evaluation item: ", NewEvaluationItem);
-    const navigate = useNavigate();
-    navigate(`/admin/llm-evaluation/${NewEvaluationItem.evaluationId}`);
-  }
-
   export default function NewEvalTab(props: FileUploadTabProps) {
     const appContext = useContext(AppContext);
     const apiClient = new ApiClient(appContext);
     const { addNotification } = useNotifications();
+    const navigate = useNavigate();
 
     const [evalName, setEvalName] = useState<string>("SampleEvalName");
     const [globalError, setGlobalError] = useState<string | undefined>(undefined);
@@ -42,6 +37,13 @@ import {
     const [currentPageIndex, setCurrentPageIndex] = useState(1);
     const [pages, setPages] = useState<any[]>([]);
     const [selectedFile, setSelectedFile] = useState<any | null>(null);
+
+    const onProblemClick = (newEvaluationItem) => {
+      console.log("New Evaluation item: ", newEvaluationItem);
+      if (newEvaluationItem && newEvaluationItem.EvaluationId) {
+        navigate(`/admin/llm-evaluation/${newEvaluationItem.EvaluationId}`, { replace: true });
+      }
+    };
 
     const { items, collectionProps, paginationProps } = useCollection(pages, {
       filtering: {
@@ -251,7 +253,7 @@ import {
         // Show success notification
         addNotification("success", "Evaluation started successfully. It may take a few minutes to complete.");
         
-        // Optionally navigate to the current evaluations tab
+        // Navigate to the current evaluations tab without causing URL duplication
         props.tabChangeFunction();
       } catch (error) {
         console.error("Error starting evaluation:", error);

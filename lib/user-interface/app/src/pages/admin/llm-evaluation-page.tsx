@@ -18,6 +18,7 @@ import {
   import { Auth } from "aws-amplify";
   import { ApiClient } from "../../common/api-client/api-client";
   import { AppContext } from "../../common/app-context";
+  import { useNavigate, useLocation } from "react-router-dom";
 
   export default function LlmEvaluationPage() {
     const onFollow = useOnFollow();
@@ -27,6 +28,8 @@ import {
     const apiClient = new ApiClient(appContext);
     const [lastSyncTime, setLastSyncTime] = useState("")
     const [showUnsyncedAlert, setShowUnsyncedAlert] = useState(false);
+    const navigate = useNavigate();
+    const location = useLocation();
 
     /** Function to get the last synced time */
     const refreshSyncTime = async () => {
@@ -66,6 +69,17 @@ import {
       observer.disconnect();
     };
   }, []);
+
+  // Set active tab based on URL hash on component mount
+  useEffect(() => {
+    const hash = location.hash.replace('#', '');
+    if (hash === 'current-eval' || hash === 'past-evals' || hash === 'add-test-cases' || hash === 'new-eval') {
+      setActiveTab(hash);
+    } else if (!location.hash) {
+      // If no hash, set the URL to include the default tab
+      navigate(`/admin/llm-evaluation#current-eval`, { replace: true });
+    }
+  }, [location, navigate]);
       
     /** Checks for admin status */
     useEffect(() => {
@@ -93,6 +107,19 @@ import {
         }
       })();
     }, []);
+
+    /** Handler for tab changes to update URL */
+    const handleTabChange = (tabId) => {
+      setActiveTab(tabId);
+      // Use replace:true to avoid adding to browser history stack
+      navigate(`/admin/llm-evaluation#${tabId}`, { replace: true });
+    };
+
+    // Create direct tab change handlers for each tab to avoid nested function issues
+    const handleCurrentEvalTab = () => handleTabChange("current-eval");
+    const handlePastEvalsTab = () => handleTabChange("past-evals");
+    const handleAddTestCasesTab = () => handleTabChange("add-test-cases");
+    const handleNewEvalTab = () => handleTabChange("new-eval");
 
     /** If the admin status check fails, just show an access denied page*/
     if (!admin) {
@@ -166,7 +193,9 @@ import {
                     id: "current-eval",
                     content: (
                         <CurrentEvalTab
-                        tabChangeFunction={() => setActiveTab("current-eval")}
+                        tabChangeFunction={handleCurrentEvalTab}
+                        addTestCasesHandler={handleAddTestCasesTab}
+                        newEvalHandler={handleNewEvalTab}
                         />
                     ),
                     },
@@ -175,7 +204,7 @@ import {
                     id: "past-evals",
                     content: (
                       <PastEvalsTab 
-                        tabChangeFunction={() => setActiveTab("past-evals")}
+                        tabChangeFunction={handlePastEvalsTab}
                         documentType="evaluationSummary"
                       />
                     ),
@@ -185,7 +214,7 @@ import {
                     id: "add-test-cases",
                     content: (
                         <TestCasesTab 
-                        tabChangeFunction={() => setActiveTab("add-test-cases")}
+                        tabChangeFunction={handleAddTestCasesTab}
                         />
                     ),
                     },
@@ -194,7 +223,7 @@ import {
                       id: "new-eval",
                       content: (
                           <NewEvalTab 
-                          tabChangeFunction={() => setActiveTab("new-eval")}
+                          tabChangeFunction={handleNewEvalTab}
                           documentType="file"
                           />
                       ),
@@ -202,7 +231,7 @@ import {
                 ]}
                 activeTabId={activeTab}
                 onChange={({ detail: { activeTabId } }) => {
-                    setActiveTab(activeTabId);
+                    handleTabChange(activeTabId);
                 }}
                 />
 

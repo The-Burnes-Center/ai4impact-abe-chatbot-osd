@@ -315,7 +315,8 @@ const evalResultsAPIHandlerFunction = new lambda.Function(scope, 'EvalResultsHan
   environment: {
     "EVALUATION_RESULTS_TABLE" : props.evalResutlsTable.tableName,
     "EVALUATION_SUMMARIES_TABLE" : props.evalSummariesTable.tableName
-  }
+  },
+  timeout: cdk.Duration.seconds(30)
 });
 evalResultsAPIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({ 
   effect: iam.Effect.ALLOW,

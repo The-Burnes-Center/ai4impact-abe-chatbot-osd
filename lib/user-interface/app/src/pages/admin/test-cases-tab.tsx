@@ -181,21 +181,6 @@ import {
                 <li>File size should not exceed 100MB.</li>
             </ul>
             
-            <div style={{ backgroundColor: "#f2f3f3", padding: "10px", borderRadius: "4px", fontFamily: "monospace" }}>
-              <pre style={{ margin: 0 }}>
-{`[
-  {
-    "question": "What services does the Burnes Center offer?",
-    "expectedResponse": "The Burnes Center offers various services including..."
-  },
-  {
-    "question": "How do I schedule an appointment?",
-    "expectedResponse": "You can schedule an appointment by..."
-  }
-]`}
-              </pre>
-            </div>
-            
             <h4>CSV Format</h4>
             <ul>
                 <li>File must be in CSV format with a .csv extension.</li>
