@@ -333,6 +333,9 @@ const evalResultsAPIHandlerFunction = new lambda.Function(scope, 'EvalResultsHan
   code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/eval-results-handler')), // Points to the lambda directory
   handler: 'lambda_function.lambda_handler', // Points to the 'hello' file in the lambda directory
   environment: {
+    // Using the full table names: 
+    // GenAiOsdChatStack-ChatbotAPIEvaluationResultsTableE72FCF7C-136Z3LGPGTSF1
+    // GenAiOsdChatStack-ChatbotAPIEvaluationSummariesTableE9B95A54-1S7WAPF93R60M
     "EVALUATION_RESULTS_TABLE" : props.evalResutlsTable.tableName,
     "EVALUATION_SUMMARIES_TABLE" : props.evalSummariesTable.tableName
   },

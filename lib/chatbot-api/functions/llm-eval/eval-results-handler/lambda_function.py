@@ -7,8 +7,8 @@ from datetime import datetime
 from decimal import Decimal
 
 # Retrieve DynamoDB table names from environment variables
-EVALUATION_SUMMARIES_TABLE = os.environ["EVALUATION_SUMMARIES_TABLE"]
-EVALUATION_RESULTS_TABLE = os.environ["EVALUATION_RESULTS_TABLE"]
+EVALUATION_SUMMARIES_TABLE = os.environ.get("EVALUATION_SUMMARIES_TABLE")
+EVALUATION_RESULTS_TABLE = os.environ.get("EVALUATION_RESULTS_TABLE")
 
 # Initialize a DynamoDB resource using boto3
 dynamodb = boto3.resource("dynamodb", region_name='us-east-1')
@@ -75,15 +75,23 @@ def get_evaluation_summaries(continuation_token=None, limit=10):
             'NextPageToken': last_evaluated_key
         }
 
+        # Build response with correct headers
         return {
             'statusCode': 200,
-            'headers': {'Access-Control-Allow-Origin': '*'},
+            'headers': {
+                'Access-Control-Allow-Origin': '*',  # Will be overridden by the lambda_handler
+                'Content-Type': 'application/json'
+            },
             'body': json.dumps(response_body)
         }
     except ClientError as error:
+        # Build error response with correct headers
         return {
             'statusCode': 500,
-            'headers': {'Access-Control-Allow-Origin': '*'},
+            'headers': {
+                'Access-Control-Allow-Origin': '*',  # Will be overridden by the lambda_handler
+                'Content-Type': 'application/json'
+            },
             'body': json.dumps(str(error))
         }
 
@@ -114,15 +122,23 @@ def get_evaluation_results(evaluation_id, continuation_token=None, limit=10):
             'NextPageToken': last_evaluated_key
         }
 
+        # Build response with correct headers
         return {
             'statusCode': 200,
-            'headers': {'Access-Control-Allow-Origin': '*'},
+            'headers': {
+                'Access-Control-Allow-Origin': '*',  # Will be overridden by the lambda_handler
+                'Content-Type': 'application/json'
+            },
             'body': json.dumps(response_body)
         }
     except ClientError as error:
+        # Build error response with correct headers
         return {
             'statusCode': 500,
-            'headers': {'Access-Control-Allow-Origin': '*'},
+            'headers': {
+                'Access-Control-Allow-Origin': '*',  # Will be overridden by the lambda_handler
+                'Content-Type': 'application/json'
+            },
             'body': json.dumps(str(error))
         }
 

@@ -6,8 +6,8 @@ from datetime import datetime
 from decimal import Decimal
 
 # Retrieve DynamoDB table names from environment variables
-EVALUATION_SUMMARIES_TABLE = os.environ["EVAL_SUMMARIES_TABLE"]
-EVALUATION_RESULTS_TABLE = os.environ["EVAL_RESULTS_TABLE"]
+EVALUATION_SUMMARIES_TABLE = os.environ.get("EVAL_SUMMARIES_TABLE")
+EVALUATION_RESULTS_TABLE = os.environ.get("EVAL_RESULTS_TABLE")
 TEST_CASES_BUCKET = os.environ["TEST_CASES_BUCKET"]
 
 # Initialize a DynamoDB resource using boto3

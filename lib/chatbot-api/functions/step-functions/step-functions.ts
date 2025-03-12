@@ -64,6 +64,8 @@ export class StepFunctionsStack extends Construct {
             environment: {
                 "EVAL_SUMMARIES_TABLE" : props.evalSummariesTable.tableName,
                 "EVAL_RESULTS_TABLE" : props.evalResutlsTable.tableName,
+                "EVALUATION_SUMMARIES_TABLE" : props.evalSummariesTable.tableName,
+                "EVALUATION_RESULTS_TABLE" : props.evalResutlsTable.tableName,
                 "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,
             },
             timeout: cdk.Duration.seconds(30)
