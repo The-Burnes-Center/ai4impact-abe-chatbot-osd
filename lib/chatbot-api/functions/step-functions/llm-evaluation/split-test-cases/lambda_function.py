@@ -10,17 +10,24 @@ TEST_CASE_BUCKET = os.environ['TEST_CASES_BUCKET']
 
 def lambda_handler(event, context):
     s3_client = boto3.client('s3')
-    test_cases_key = event.get('testCasesKey')
+    test_cases_key = event.get('test_cases_key')
     if not test_cases_key:
-        raise ValueError("testCasesKey parameter is required in the event.")
+        # Fallback to old parameter name for backward compatibility
+        test_cases_key = event.get('testCasesKey')
+        if not test_cases_key:
+            raise ValueError("test_cases_key parameter is required in the event.")
     
     print("event: ", event)
-    eval_name = event.get('evalName')
+    eval_name = event.get('evaluation_name')
+    if not eval_name:
+        # Fallback to old parameter name for backward compatibility
+        eval_name = event.get('evalName')
     print("eval_name: ", eval_name)
     if not eval_name:
         eval_name = f"Evaluation on {str(datetime.now())}"
 
-    eval_id = str(uuid.uuid4())
+    # Use provided evaluation_id or generate a new one
+    eval_id = event.get('evaluation_id', str(uuid.uuid4()))
     
     # Read test cases from S3 
     test_cases = read_test_cases_from_s3(s3_client, TEST_CASE_BUCKET, test_cases_key)
