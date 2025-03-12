@@ -23,7 +23,7 @@ def convert_from_decimal(item):
     elif isinstance(item, dict):
         return {k: convert_from_decimal(v) for k, v in item.items()}
     elif isinstance(item, Decimal):
-        return float(item)  # Convert Decimal to float
+        return float(item) 
     else:
         return item
 
