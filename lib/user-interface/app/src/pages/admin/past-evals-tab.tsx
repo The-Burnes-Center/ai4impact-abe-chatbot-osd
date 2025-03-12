@@ -21,18 +21,6 @@ const findFirstSortableColumn = (columns) => {
   return columns.find(col => col.sortingField && !col.disableSort) || columns[0];
 };
 
-const onProblemClick = (EvaluationItem): void => {
-  console.log(" evaluation item: ", EvaluationItem);
-  const navigate = useNavigate();
-  navigate(`/admin/llm-evaluation/${EvaluationItem.evaluationId}`);
-};
-
-
-export interface PastEvalsTabProps {
-  tabChangeFunction: () => void;
-  documentType: AdminDataType;
-}
-
 export default function PastEvalsTab(props: PastEvalsTabProps) {
   const appContext = useContext(AppContext);
   const apiClient = useMemo(() => new ApiClient(appContext), [appContext]);
@@ -41,8 +29,18 @@ export default function PastEvalsTab(props: PastEvalsTabProps) {
   const { addNotification } = useNotifications();
   const [currentPageIndex, setCurrentPageIndex] = useState(1);
   const [pages, setPages] = useState([]);
-  const needsRefresh = useRef(false);
+  const needsRefresh = useRef(true); // Set default to true to ensure initial load
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  // Handle click on evaluation item
+  const onProblemClick = useCallback((evaluationItem) => {
+    // Make sure we have the correct property name (EvaluationId vs evaluationId)
+    const evaluationId = evaluationItem.EvaluationId || evaluationItem.evaluationId;
+    if (evaluationId) {
+      navigate(`/admin/llm-evaluation/details/${evaluationId}`);
+    }
+  }, [navigate]);
 
   const columnDefinitions = getColumnDefinition(props.documentType, onProblemClick);
   const defaultSortingColumn = findFirstSortableColumn(columnDefinitions);
@@ -118,7 +116,7 @@ export default function PastEvalsTab(props: PastEvalsTabProps) {
     return () => observer.disconnect();
   }, []);  
 
-  /** Function to get evaluations from api*/
+  // Load evaluation data
   const getEvaluations = useCallback(
     async (params : { pageIndex?: number, nextPageToken? }) => {
       setLoading(true);
@@ -127,7 +125,6 @@ export default function PastEvalsTab(props: PastEvalsTabProps) {
         
         // Check if there's an error in the result
         if (result.error) {
-          console.error("Error from API:", result.error);
           setError(result.error);
           setPages([]);
           setLoading(false);
@@ -142,13 +139,14 @@ export default function PastEvalsTab(props: PastEvalsTabProps) {
           return;
         }
         
-        // Map the evaluations to the expected format if needed
+        // Map the evaluations to the expected format
         const processedResult = {
           ...result,
           Items: result.Items.map(evaluation => ({
             ...evaluation,
-            // Ensure we have the required fields for the UI
+            // Ensure we have the required fields with correct casing for the UI
             EvaluationId: evaluation.EvaluationId,
+            evaluationId: evaluation.EvaluationId, // Add both versions for safety
             evaluation_name: evaluation.evaluation_name || "Unnamed Evaluation",
             Timestamp: evaluation.Timestamp,
             average_similarity: typeof evaluation.average_similarity === 'number' ? evaluation.average_similarity : 0,
@@ -161,22 +159,23 @@ export default function PastEvalsTab(props: PastEvalsTabProps) {
         // Clear any previous errors
         setError(null);
         
+        // Update pages state
         setPages((current) => {
           if (needsRefresh.current) {
             needsRefresh.current = false;
             return [processedResult];
           }
           if (typeof params.pageIndex !== "undefined") {
-            current[params.pageIndex - 1] = processedResult;
-            return [...current];
+            // Create a new array with the updated page
+            const newPages = [...current];
+            newPages[params.pageIndex - 1] = processedResult;
+            return newPages;
           } else {
             return [...current, processedResult];
           }
         });
       } catch (error) {
-        console.error("Error fetching evaluations:", error);
         const errorMessage = Utils.getErrorMessage(error);
-        console.error("Error details:", errorMessage);
         setError(`Failed to load evaluations: ${errorMessage}`);
         setPages([]);
       } finally {
@@ -186,13 +185,11 @@ export default function PastEvalsTab(props: PastEvalsTabProps) {
     [apiClient]
   );
 
+  // Initial data fetch
   useEffect(() => {
+    needsRefresh.current = true;
     setCurrentPageIndex(1);
-    if (needsRefresh.current) {
-      getEvaluations({ pageIndex: 1 });
-    } else {
-      getEvaluations({ pageIndex: currentPageIndex });
-    }
+    getEvaluations({ pageIndex: 1 });
   }, [getEvaluations]);
 
   const onNextPageClick = async () => {
@@ -257,4 +254,9 @@ export default function PastEvalsTab(props: PastEvalsTabProps) {
       }
     />
   );
+}
+
+export interface PastEvalsTabProps {
+  tabChangeFunction: () => void;
+  documentType: AdminDataType;
 }

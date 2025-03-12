@@ -55,8 +55,17 @@ function App() {
               <Route path="user-feedback/:feedbackId" element={<UserFeedbackDetailPage />} />
               <Route path="llm-evaluation" element={<Outlet />}>
                 <Route index element={<LlmEvaluationPage />} />
+                {/* Support both URL formats for backward compatibility */}
                 <Route
                   path=":evaluationId"
+                  element={
+                    <DetailedEvaluationPage
+                      documentType="detailedEvaluation" 
+                    />
+                  }
+                />
+                <Route
+                  path="details/:evaluationId"
                   element={
                     <DetailedEvaluationPage
                       documentType="detailedEvaluation" 

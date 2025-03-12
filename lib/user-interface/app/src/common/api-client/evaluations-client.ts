@@ -28,12 +28,11 @@ export class EvaluationsClient {
             "Accept": "application/json"
           },
           body: JSON.stringify(body),
-          mode: "cors", // Explicitly set CORS mode
-          credentials: "same-origin" // Changed from "include" to "same-origin"
+          mode: "cors",
+          credentials: "same-origin"
         });
         
         if (response.status === 404) {
-          console.error("API endpoint not found: /eval-results-handler");
           // Return an empty result structure instead of throwing an error
           return { Items: [], NextPageToken: null };
         }
@@ -42,7 +41,6 @@ export class EvaluationsClient {
           const errorText = await response.text();
           // Check for specific DynamoDB errors
           if (errorText.includes("ResourceNotFoundException") || errorText.includes("ValidationException")) {
-            console.error("DynamoDB error:", errorText);
             return { 
               Items: [], 
               NextPageToken: null,
@@ -61,14 +59,11 @@ export class EvaluationsClient {
           
           // Check if result has Items property, if not create an empty structure
           if (!result.Items) {
-            console.warn("Response missing Items property, creating empty structure");
             return { Items: [], NextPageToken: null };
           }
           
           return result;
         } catch (parseError) {
-          console.error("Error parsing JSON response:", parseError);
-          console.error("Raw response was:", responseText);
           throw new Error(`Invalid JSON response from server: ${parseError.message}`);
         }
       } catch (fetchError) {
@@ -76,13 +71,11 @@ export class EvaluationsClient {
         if (fetchError.message.includes("CORS") || 
             fetchError.message.includes("cross-origin") || 
             fetchError.message.includes("Cross-Origin")) {
-          console.error("CORS error:", fetchError);
           throw new Error("Cross-Origin Request Blocked: The API doesn't allow requests from this origin. Please check CORS configuration on the API Gateway.");
         }
         throw fetchError;
       }
     } catch (error) {
-      console.error("Error in getEvaluationSummaries:", error);
       // Rethrow the error for the component to handle
       throw error;
     }
@@ -101,7 +94,6 @@ export class EvaluationsClient {
         body.continuation_token = continuationToken;
       }
 
-      console.log(`Fetching from ${this.API}/eval-results-handler`);
       try {
         const response = await fetch(`${this.API}/eval-results-handler`, {
           method: "POST",
@@ -111,33 +103,49 @@ export class EvaluationsClient {
             "Accept": "application/json"
           },
           body: JSON.stringify(body),
-          mode: "cors", // Explicitly set CORS mode
-          credentials: "same-origin" // Changed from "include" to "same-origin"
+          mode: "cors",
+          credentials: "same-origin"
         });
         
         if (response.status === 404) {
-          console.error("API endpoint not found: /eval-results-handler");
           // Return an empty result structure instead of throwing an error
-          return { Items: [], NextPageToken: null };
+          return { 
+            Items: [], 
+            NextPageToken: null,
+            error: "API endpoint not found: The results handler API is not available or improperly configured."
+          };
         }
         
         if (!response.ok) {
           const errorText = await response.text();
+          
           // Check for specific DynamoDB errors
           if (errorText.includes("ResourceNotFoundException") || errorText.includes("ValidationException")) {
-            console.error("DynamoDB error:", errorText);
             return { 
               Items: [], 
               NextPageToken: null,
               error: "Database error: The evaluation data could not be retrieved. This may be due to missing tables or incorrect configuration."
             };
           }
-          throw new Error(`Failed to get evaluation results: ${response.status} ${response.statusText} - ${errorText}`);
+          
+          // Check for other common errors
+          if (errorText.includes("AccessDeniedException")) {
+            return {
+              Items: [],
+              NextPageToken: null,
+              error: "Access denied: The Lambda function doesn't have permission to access the DynamoDB table."
+            };
+          }
+          
+          return {
+            Items: [],
+            NextPageToken: null,
+            error: `Failed to get evaluation results: ${response.status} ${response.statusText} - ${errorText}`
+          };
         }
 
         // Get the response text first to log it in case of parsing errors
         const responseText = await response.text();
-        console.log("Raw response:", responseText);
         
         try {
           // Then parse it as JSON
@@ -145,43 +153,51 @@ export class EvaluationsClient {
           
           // Check if result has Items property, if not create an empty structure
           if (!result.Items) {
-            console.warn("Response missing Items property, creating empty structure");
             return { Items: [], NextPageToken: null };
           }
           
           return result;
         } catch (parseError) {
-          console.error("Error parsing JSON response:", parseError);
-          console.error("Raw response was:", responseText);
-          throw new Error(`Invalid JSON response from server: ${parseError.message}`);
+          return {
+            Items: [],
+            NextPageToken: null,
+            error: `Invalid JSON response from server: ${parseError.message}`
+          };
         }
       } catch (fetchError) {
         // Handle CORS errors specifically
         if (fetchError.message.includes("CORS") || 
             fetchError.message.includes("cross-origin") || 
             fetchError.message.includes("Cross-Origin")) {
-          console.error("CORS error:", fetchError);
-          throw new Error("Cross-Origin Request Blocked: The API doesn't allow requests from this origin. Please check CORS configuration on the API Gateway.");
+          return {
+            Items: [],
+            NextPageToken: null,
+            error: "Cross-Origin Request Blocked: The API doesn't allow requests from this origin. Please check CORS configuration on the API Gateway."
+          };
         }
-        throw fetchError;
+        
+        return {
+          Items: [],
+          NextPageToken: null,
+          error: `Network error: ${fetchError.message}`
+        };
       }
     } catch (error) {
-      console.error("Error in getEvaluationResults:", error);
-      // Rethrow the error for the component to handle
-      throw error;
+      return {
+        Items: [],
+        NextPageToken: null,
+        error: `Client error: ${error.message}`
+      };
     }
   }
   async startNewEvaluation(evaluationName: string, testCaseFile: string) {
     try {
       const auth = await Utils.authenticate();
       const body: any = {
-        // operation: "start_new_evaluation",
         evaluation_name: evaluationName,
         testCasesKey: testCaseFile,
       };
-      console.log("body in the api", body);
-      console.log(`Posting to ${this.API}/eval-run-handler`);
-
+      
       try {
         const response = await fetch(`${this.API}/eval-run-handler`, {
           method: "POST",
@@ -191,12 +207,11 @@ export class EvaluationsClient {
             "Accept": "application/json"
           },
           body: JSON.stringify(body),
-          mode: "cors", // Explicitly set CORS mode
-          credentials: "same-origin" // Use same-origin for consistency
+          mode: "cors",
+          credentials: "same-origin"
         });
         
         if (response.status === 404) {
-          console.error("API endpoint not found: /eval-run-handler");
           throw new Error("Evaluation service is not available. The API endpoint could not be found. Please ensure the backend is deployed correctly.");
         }
         
@@ -207,15 +222,12 @@ export class EvaluationsClient {
 
         // Get the response text first to log it in case of parsing errors
         const responseText = await response.text();
-        console.log("Raw response:", responseText);
         
         try {
           // Then parse it as JSON
           const result = JSON.parse(responseText);
           return result;
         } catch (parseError) {
-          console.error("Error parsing JSON response:", parseError);
-          console.error("Raw response was:", responseText);
           throw new Error(`Invalid JSON response from server: ${parseError.message}`);
         }
       } catch (fetchError) {
@@ -223,13 +235,11 @@ export class EvaluationsClient {
         if (fetchError.message.includes("CORS") || 
             fetchError.message.includes("cross-origin") || 
             fetchError.message.includes("Cross-Origin")) {
-          console.error("CORS error:", fetchError);
           throw new Error("Cross-Origin Request Blocked: The API doesn't allow requests from this origin. Please check CORS configuration on the API Gateway.");
         }
         throw fetchError;
       }
     } catch (error) {
-      console.error("Error in startNewEvaluation:", error);
       // Rethrow the error for the component to handle
       throw error;
     }
@@ -251,7 +261,7 @@ export class EvaluationsClient {
           'Authorization' : auth
         },
         body: JSON.stringify({ fileName, fileType }),
-        credentials: "same-origin" // Added for consistency
+        credentials: "same-origin"
       });
 
       if (!response.ok) {
@@ -261,12 +271,11 @@ export class EvaluationsClient {
       const data = await response.json();
       return data.signedUrl;
     } catch (error) {
-      console.error('Error:', error);
       throw error;
     }
   }
 
-  // Returns a list of documents in the S3 bucket (hard-coded on the backend)
+  // Returns a list of documents in the S3 bucket
   async getDocuments(continuationToken?: string, pageIndex?: number) {
     const auth = await Utils.authenticate();
     const response = await fetch(this.API + '/s3-test-cases-bucket-data', {
@@ -279,12 +288,12 @@ export class EvaluationsClient {
         continuationToken: continuationToken,
         pageIndex: pageIndex,
       }),
-      credentials: "same-origin" // Added for consistency
+      credentials: "same-origin"
     });
     if (!response.ok) {
       throw new Error('Failed to get files');
     }
-    console.log('response in the api', response);
+    
     const result = await response.json();
     return result;
   }

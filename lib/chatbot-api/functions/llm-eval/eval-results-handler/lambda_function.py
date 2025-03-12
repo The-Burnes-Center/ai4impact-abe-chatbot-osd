@@ -7,8 +7,8 @@ from datetime import datetime
 from decimal import Decimal
 
 # Retrieve DynamoDB table names from environment variables
-EVALUATION_SUMMARIES_TABLE = os.environ.get("EVALUATION_SUMMARIES_TABLE")
-EVALUATION_RESULTS_TABLE = os.environ.get("EVALUATION_RESULTS_TABLE")
+EVALUATION_SUMMARIES_TABLE = os.environ.get("EVALUATION_SUMMARIES_TABLE") or os.environ.get("EVAL_SUMMARIES_TABLE")
+EVALUATION_RESULTS_TABLE = os.environ.get("EVALUATION_RESULTS_TABLE") or os.environ.get("EVAL_RESULTS_TABLE")
 
 # Initialize a DynamoDB resource using boto3
 dynamodb = boto3.resource("dynamodb", region_name='us-east-1')
@@ -51,9 +51,11 @@ def get_evaluation_summaries(continuation_token=None, limit=10):
             # Add continuation token if provided
             if continuation_token:
                 query_params["ExclusiveStartKey"] = continuation_token
+                
             response = summaries_table.query(**query_params)
             items = response.get('Items', [])
             last_evaluated_key = response.get('LastEvaluatedKey')
+            
         except ClientError as partition_error:
             # Fallback to scan if PartitionKey doesn't exist
             scan_params = {
@@ -69,7 +71,7 @@ def get_evaluation_summaries(continuation_token=None, limit=10):
         # Sort items to return most recent evaluations first if Timestamp exists
         if items and 'Timestamp' in items[0]:
             items = sorted(items, key=lambda x: x.get('Timestamp', ''), reverse=True)
-            
+                
         response_body = {
             'Items': convert_from_decimal(items),
             'NextPageToken': last_evaluated_key
@@ -79,7 +81,7 @@ def get_evaluation_summaries(continuation_token=None, limit=10):
         return {
             'statusCode': 200,
             'headers': {
-                'Access-Control-Allow-Origin': '*',  # Will be overridden by the lambda_handler
+                'Access-Control-Allow-Origin': '*',
                 'Content-Type': 'application/json'
             },
             'body': json.dumps(response_body)
@@ -89,10 +91,20 @@ def get_evaluation_summaries(continuation_token=None, limit=10):
         return {
             'statusCode': 500,
             'headers': {
-                'Access-Control-Allow-Origin': '*',  # Will be overridden by the lambda_handler
+                'Access-Control-Allow-Origin': '*',
                 'Content-Type': 'application/json'
             },
-            'body': json.dumps(str(error))
+            'body': json.dumps({"error": str(error), "table": EVALUATION_SUMMARIES_TABLE})
+        }
+    except Exception as e:
+        import traceback
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Content-Type': 'application/json'
+            },
+            'body': json.dumps({"error": str(e), "table": EVALUATION_SUMMARIES_TABLE})
         }
 
 # function to retrieve detailed results for a specific evaluation from DynamoDB
@@ -126,7 +138,7 @@ def get_evaluation_results(evaluation_id, continuation_token=None, limit=10):
         return {
             'statusCode': 200,
             'headers': {
-                'Access-Control-Allow-Origin': '*',  # Will be overridden by the lambda_handler
+                'Access-Control-Allow-Origin': '*',
                 'Content-Type': 'application/json'
             },
             'body': json.dumps(response_body)
@@ -136,10 +148,20 @@ def get_evaluation_results(evaluation_id, continuation_token=None, limit=10):
         return {
             'statusCode': 500,
             'headers': {
-                'Access-Control-Allow-Origin': '*',  # Will be overridden by the lambda_handler
+                'Access-Control-Allow-Origin': '*',
                 'Content-Type': 'application/json'
             },
-            'body': json.dumps(str(error))
+            'body': json.dumps({"error": str(error), "table": EVALUATION_RESULTS_TABLE})
+        }
+    except Exception as e:
+        # For any other errors
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Content-Type': 'application/json'
+            },
+            'body': json.dumps({"error": str(e), "table": EVALUATION_RESULTS_TABLE})
         }
 
 def lambda_handler(event, context):
@@ -198,8 +220,14 @@ def lambda_handler(event, context):
                 'body': json.dumps(f'Operation not found/allowed! Operation Sent: {operation}')
             }
     except Exception as e:
+        import traceback
         return {
             'statusCode': 500,
             'headers': headers,
-            'body': json.dumps(f'Internal server error: {str(e)}')
+            'body': json.dumps({
+                'message': 'Internal server error', 
+                'error': str(e),
+                'summaries_table': EVALUATION_SUMMARIES_TABLE,
+                'results_table': EVALUATION_RESULTS_TABLE
+            })
         }
