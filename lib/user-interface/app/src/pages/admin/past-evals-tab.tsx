@@ -136,12 +136,27 @@ export default function PastEvalsTab(props: PastEvalsTabProps) {
         
         // Check if result exists and has Items property
         if (!result || !result.Items) {
-          console.log("No evaluations found or unexpected response structure");
           setError("No evaluation data available. This could be due to an empty database or a configuration issue.");
           setPages([]);
           setLoading(false);
           return;
         }
+        
+        // Map the evaluations to the expected format if needed
+        const processedResult = {
+          ...result,
+          Items: result.Items.map(evaluation => ({
+            ...evaluation,
+            // Ensure we have the required fields for the UI
+            EvaluationId: evaluation.EvaluationId,
+            evaluation_name: evaluation.evaluation_name || "Unnamed Evaluation",
+            Timestamp: evaluation.Timestamp,
+            average_similarity: typeof evaluation.average_similarity === 'number' ? evaluation.average_similarity : 0,
+            average_relevance: typeof evaluation.average_relevance === 'number' ? evaluation.average_relevance : 0,
+            average_correctness: typeof evaluation.average_correctness === 'number' ? evaluation.average_correctness : 0,
+            total_questions: evaluation.total_questions || 0
+          }))
+        };
         
         // Clear any previous errors
         setError(null);
@@ -149,13 +164,13 @@ export default function PastEvalsTab(props: PastEvalsTabProps) {
         setPages((current) => {
           if (needsRefresh.current) {
             needsRefresh.current = false;
-            return [result];
+            return [processedResult];
           }
           if (typeof params.pageIndex !== "undefined") {
-            current[params.pageIndex - 1] = result;
+            current[params.pageIndex - 1] = processedResult;
             return [...current];
           } else {
-            return [...current, result];
+            return [...current, processedResult];
           }
         });
       } catch (error) {

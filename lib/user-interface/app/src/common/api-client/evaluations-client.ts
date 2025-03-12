@@ -19,7 +19,6 @@ export class EvaluationsClient {
         body.continuation_token = continuationToken;
       }
 
-      console.log(`Fetching from ${this.API}/eval-results-handler`);
       try {
         const response = await fetch(`${this.API}/eval-results-handler`, {
           method: "POST",
@@ -55,7 +54,6 @@ export class EvaluationsClient {
 
         // Get the response text first to log it in case of parsing errors
         const responseText = await response.text();
-        console.log("Raw response:", responseText);
         
         try {
           // Then parse it as JSON

@@ -32,7 +32,6 @@ def add_evaluation(evaluation_id, evaluation_name, average_similarity,
                    average_relevance, average_correctness, total_questions, detailed_results, test_cases_key):
     try:
         timestamp = str(datetime.now())
-        # eval id is len of summaries table
         # Add evaluation summary
         summary_item = {
             'EvaluationId': evaluation_id,
@@ -45,7 +44,6 @@ def add_evaluation(evaluation_id, evaluation_name, average_similarity,
             'test_cases_key': test_cases_key,
             'PartitionKey': "Evaluation" 
         }
-        print("summary_item: ", summary_item)
 
         # Remove None values
         summary_item = {k: v for k, v in summary_item.items() if v is not None}
@@ -66,7 +64,6 @@ def add_evaluation(evaluation_id, evaluation_name, average_similarity,
                     'correctness': Decimal(str(result['correctness'])),
                     'test_cases_key': test_cases_key
                 }
-                print("result_item: ", result_item)
                 batch.put_item(Item=result_item)
 
         return {
@@ -78,7 +75,6 @@ def add_evaluation(evaluation_id, evaluation_name, average_similarity,
                 })
         }
     except ClientError as error:
-        print("Caught error: DynamoDB error - could not add evaluation")
         return {
             'statusCode': 500,
             'headers': {'Access-Control-Allow-Origin': '*'},
@@ -98,7 +94,6 @@ def lambda_handler(event, context):
     average_similarity = data.get('average_similarity')
     average_relevance = data.get('average_relevance')
     average_correctness = data.get('average_correctness')
-    # detailed_results = data.get('detailed_results', [])
     detailed_results_s3_key = data.get('detailed_results_s3_key')
     total_questions = data.get('total_questions')
     test_cases_key = data.get('test_cases_key')

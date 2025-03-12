@@ -74,8 +74,7 @@ import {
       setLoading(true);
       try {
         const result = await apiClient.evaluations.getEvaluationSummaries();
-        console.log("result: ", result);
-  
+
         // Check if there's an error in the result
         if (result.error) {
           console.error("Error from API:", result.error);
@@ -89,14 +88,27 @@ import {
         if (result && result.Items) {
           // Take only the first 10 evaluations
           const firstTenEvaluations = result.Items.slice(0, 10);
+          
+          // Map the evaluations to the expected format if needed
+          const processedEvaluations = firstTenEvaluations.map(evaluation => ({
+            ...evaluation,
+            // Ensure we have the required fields for the UI
+            EvaluationId: evaluation.EvaluationId,
+            evaluation_name: evaluation.evaluation_name || "Unnamed Evaluation",
+            Timestamp: evaluation.Timestamp,
+            average_similarity: typeof evaluation.average_similarity === 'number' ? evaluation.average_similarity : 0,
+            average_relevance: typeof evaluation.average_relevance === 'number' ? evaluation.average_relevance : 0,
+            average_correctness: typeof evaluation.average_correctness === 'number' ? evaluation.average_correctness : 0,
+            total_questions: evaluation.total_questions || 0
+          }));
+          
           // Update state with just these evaluations
-          setEvaluations(firstTenEvaluations);
+          setEvaluations(processedEvaluations);
           
           // Clear any previous errors
           setError(null);
         } else {
           // Handle case where result doesn't have expected structure
-          console.log("No evaluations found or unexpected response structure");
           setEvaluations([]);
           setError("No evaluation data available. This could be due to an empty database or a configuration issue.");
         }
