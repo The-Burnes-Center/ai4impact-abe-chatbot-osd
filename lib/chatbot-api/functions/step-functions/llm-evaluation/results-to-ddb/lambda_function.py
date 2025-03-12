@@ -92,10 +92,17 @@ def add_evaluation(evaluation_id, evaluation_name, average_similarity,
         }
     
 def read_detailed_results_from_s3(detailed_results_s3_key):
-    s3_client = boto3.client('s3')
-    response = s3_client.get_object(Bucket=TEST_CASES_BUCKET, Key=detailed_results_s3_key)
-    content = response['Body'].read().decode('utf-8')
-    return json.loads(content)
+    try:
+        s3_client = boto3.client('s3')
+        response = s3_client.get_object(Bucket=TEST_CASES_BUCKET, Key=detailed_results_s3_key)
+        content = response['Body'].read().decode('utf-8')
+        return json.loads(content)
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        error_message = e.response['Error']['Message']
+        raise Exception(f"Failed to read detailed results from S3: {error_code} - {error_message}. Bucket: {TEST_CASES_BUCKET}, Key: {detailed_results_s3_key}")
+    except json.JSONDecodeError as e:
+        raise Exception(f"Failed to decode JSON from S3 object. Bucket: {TEST_CASES_BUCKET}, Key: {detailed_results_s3_key}. Error: {str(e)}")
     
 def lambda_handler(event, context):
     # Get headers from request or use default
@@ -133,14 +140,26 @@ def lambda_handler(event, context):
             'body': json.dumps('Missing required parameters for adding evaluation.')
         }
     
-    detailed_results = read_detailed_results_from_s3(detailed_results_s3_key)
-    return add_evaluation(
-        evaluation_id,
-        evaluation_name,
-        average_similarity,
-        average_relevance,
-        average_correctness,
-        total_questions,
-        detailed_results, 
-        test_cases_key
-    )
+    try:
+        detailed_results = read_detailed_results_from_s3(detailed_results_s3_key)
+        return add_evaluation(
+            evaluation_id,
+            evaluation_name,
+            average_similarity,
+            average_relevance,
+            average_correctness,
+            total_questions,
+            detailed_results, 
+            test_cases_key
+        )
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'headers': headers,
+            'body': json.dumps({
+                'message': 'Failed to process evaluation results',
+                'error': str(e),
+                'evaluation_id': evaluation_id,
+                'detailed_results_s3_key': detailed_results_s3_key
+            })
+        }

@@ -85,11 +85,16 @@ def lambda_handler(event, context):
         }
         # Write partial_results to S3
         partial_result_key = f"evaluations/{evaluation_id}/partial_results/{os.path.basename(chunk_key)}"
-        s3_client.put_object(
-            Bucket=TEST_CASES_BUCKET,
-            Key=partial_result_key,
-            Body=json.dumps(partial_results)
-        )
+        try:
+            s3_client.put_object(
+                Bucket=TEST_CASES_BUCKET,
+                Key=partial_result_key,
+                Body=json.dumps(partial_results)
+            )
+            logging.info(f"Successfully wrote partial results to S3: {partial_result_key}")
+        except Exception as e:
+            logging.error(f"Error writing partial results to S3: {str(e)}")
+            raise Exception(f"Failed to write partial results to S3. Bucket: {TEST_CASES_BUCKET}, Key: {partial_result_key}. Error: {str(e)}")
 
         # Return only the S3 key
         return {

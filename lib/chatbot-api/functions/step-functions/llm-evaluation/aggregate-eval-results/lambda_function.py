@@ -3,6 +3,7 @@ import os
 import json
 import logging
 from datetime import datetime
+from botocore.exceptions import ClientError
 
 TEST_CASES_BUCKET = os.environ['TEST_CASES_BUCKET']
 s3_client = boto3.client('s3')
@@ -23,12 +24,16 @@ def lambda_handler(event, context):
 
         # Read each partial result from S3
         for partial_result_key in partial_result_keys:
-            partial_result = read_partial_result_from_s3(s3_client, TEST_CASES_BUCKET, partial_result_key)
-            total_similarity += partial_result['total_similarity']
-            total_relevance += partial_result['total_relevance']
-            total_correctness += partial_result['total_correctness']
-            total_questions += partial_result['num_test_cases']
-            detailed_results.extend(partial_result['detailed_results'])
+            try:
+                partial_result = read_partial_result_from_s3(s3_client, TEST_CASES_BUCKET, partial_result_key)
+                total_similarity += partial_result['total_similarity']
+                total_relevance += partial_result['total_relevance']
+                total_correctness += partial_result['total_correctness']
+                total_questions += partial_result['num_test_cases']
+                detailed_results.extend(partial_result['detailed_results'])
+            except Exception as e:
+                logging.error(f"Error processing partial result {partial_result_key}: {str(e)}")
+                # Continue with other partial results even if one fails
 
         # Compute averages
         average_similarity = total_similarity / total_questions if total_questions > 0 else 0
@@ -37,11 +42,15 @@ def lambda_handler(event, context):
 
         # Write aggregated detailed results to S3
         detailed_results_s3_key = f'evaluations/{evaluation_id}/aggregated_results/detailed_results.json'
-        s3_client.put_object(
-            Bucket=TEST_CASES_BUCKET,
-            Key=detailed_results_s3_key,
-            Body=json.dumps(detailed_results)
-        )
+        try:
+            s3_client.put_object(
+                Bucket=TEST_CASES_BUCKET,
+                Key=detailed_results_s3_key,
+                Body=json.dumps(detailed_results)
+            )
+        except Exception as e:
+            logging.error(f"Error writing aggregated results to S3: {str(e)}")
+            raise
 
         # Return aggregated results
         return {
@@ -58,10 +67,18 @@ def lambda_handler(event, context):
         logging.error(f"Error in aggregation Lambda: {str(e)}")
         return {
             "status_code": 500,
-            "error": str(e)
+            "error": str(e),
+            "evaluation_id": event.get('evaluation_id', 'unknown')
         }
 
 def read_partial_result_from_s3(s3_client, bucket_name, key):
-    response = s3_client.get_object(Bucket=bucket_name, Key=key)
-    content = response['Body'].read().decode('utf-8')
-    return json.loads(content)
+    try:
+        response = s3_client.get_object(Bucket=bucket_name, Key=key)
+        content = response['Body'].read().decode('utf-8')
+        return json.loads(content)
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        error_message = e.response['Error']['Message']
+        raise Exception(f"Failed to read partial result from S3: {error_code} - {error_message}. Bucket: {bucket_name}, Key: {key}")
+    except json.JSONDecodeError as e:
+        raise Exception(f"Failed to decode JSON from S3 object. Bucket: {bucket_name}, Key: {key}. Error: {str(e)}")
