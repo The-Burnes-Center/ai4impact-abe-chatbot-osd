@@ -68,7 +68,12 @@ def add_evaluation(evaluation_id, evaluation_name, average_similarity,
 
         return {
             'statusCode': 200,
-            'headers': {'Access-Control-Allow-Origin': '*'},
+            'headers': {
+                'Access-Control-Allow-Origin': 'https://dcf43zj2k8alr.cloudfront.net',
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
+                'Access-Control-Allow-Credentials': 'true'
+            },
             'body': json.dumps({
                 'message': 'Evaluation added successfully',
                 'evaluation_id': evaluation_id
@@ -77,7 +82,12 @@ def add_evaluation(evaluation_id, evaluation_name, average_similarity,
     except ClientError as error:
         return {
             'statusCode': 500,
-            'headers': {'Access-Control-Allow-Origin': '*'},
+            'headers': {
+                'Access-Control-Allow-Origin': 'https://dcf43zj2k8alr.cloudfront.net',
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
+                'Access-Control-Allow-Credentials': 'true'
+            },
             'body': json.dumps(str(error))
         }
     
@@ -88,6 +98,22 @@ def read_detailed_results_from_s3(detailed_results_s3_key):
     return json.loads(content)
     
 def lambda_handler(event, context):
+    # Get headers from request or use default
+    headers = {
+        'Access-Control-Allow-Origin': 'https://dcf43zj2k8alr.cloudfront.net',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+        'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
+        'Access-Control-Allow-Credentials': 'true'
+    }
+    
+    # Handle OPTIONS request if needed
+    if event.get('httpMethod') == 'OPTIONS':
+        return {
+            'statusCode': 200,
+            'headers': headers,
+            'body': json.dumps({'message': 'CORS preflight request successful'})
+        }
+        
     data = json.loads(event['body']) if 'body' in event else event
     evaluation_id = data.get('evaluation_id')
     evaluation_name = data.get('evaluation_name', f"Evaluation on {str(datetime.now())}")
@@ -103,7 +129,7 @@ def lambda_handler(event, context):
     if not all(flags):        
         return {
             'statusCode': 400,
-            'headers': {'Access-Control-Allow-Origin': '*'},
+            'headers': headers,
             'body': json.dumps('Missing required parameters for adding evaluation.')
         }
     

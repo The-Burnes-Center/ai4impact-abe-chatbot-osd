@@ -29,7 +29,7 @@ export class EvaluationsClient {
           },
           body: JSON.stringify(body),
           mode: "cors", // Explicitly set CORS mode
-          credentials: "include" // Include credentials if needed
+          credentials: "same-origin" // Changed from "include" to "same-origin"
         });
         
         if (response.status === 404) {
@@ -112,7 +112,7 @@ export class EvaluationsClient {
           },
           body: JSON.stringify(body),
           mode: "cors", // Explicitly set CORS mode
-          credentials: "include" // Include credentials if needed
+          credentials: "same-origin" // Changed from "include" to "same-origin"
         });
         
         if (response.status === 404) {
@@ -192,7 +192,7 @@ export class EvaluationsClient {
           },
           body: JSON.stringify(body),
           mode: "cors", // Explicitly set CORS mode
-          credentials: "same-origin" // Changed from 'include' to 'same-origin' to avoid CORS preflight issues
+          credentials: "same-origin" // Use same-origin for consistency
         });
         
         if (response.status === 404) {
@@ -250,7 +250,8 @@ export class EvaluationsClient {
           'Content-Type': 'application/json',
           'Authorization' : auth
         },
-        body: JSON.stringify({ fileName, fileType })
+        body: JSON.stringify({ fileName, fileType }),
+        credentials: "same-origin" // Added for consistency
       });
 
       if (!response.ok) {
@@ -278,6 +279,7 @@ export class EvaluationsClient {
         continuationToken: continuationToken,
         pageIndex: pageIndex,
       }),
+      credentials: "same-origin" // Added for consistency
     });
     if (!response.ok) {
       throw new Error('Failed to get files');

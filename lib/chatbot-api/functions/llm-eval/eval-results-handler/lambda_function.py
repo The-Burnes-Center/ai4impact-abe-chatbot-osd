@@ -127,11 +127,15 @@ def get_evaluation_results(evaluation_id, continuation_token=None, limit=10):
         }
 
 def lambda_handler(event, context):
-    # Add CORS headers for all responses
+    # Get the origin from the request
+    origin = event.get('headers', {}).get('origin') or event.get('headers', {}).get('Origin') or 'https://dcf43zj2k8alr.cloudfront.net'
+    
+    # Add CORS headers for all responses with specific origin
     headers = {
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': origin,
         'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-        'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+        'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
+        'Access-Control-Allow-Credentials': 'true'  # Important for credentials
     }
     
     # Handle OPTIONS request (preflight)
