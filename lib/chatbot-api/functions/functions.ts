@@ -22,6 +22,7 @@ interface LambdaFunctionStackProps {
   readonly evalSummariesTable : Table;
   readonly evalResutlsTable : Table;
   readonly evalTestCasesBucket : s3.Bucket;
+  readonly evalResultsBucket : s3.Bucket;
 }
 
 export class LambdaFunctionStack extends cdk.Stack {  
@@ -362,7 +363,8 @@ this.stepFunctionsStack = new StepFunctionsStack(scope, 'StepFunctionsStack', {
   knowledgeBase: props.knowledgeBase,
   evalSummariesTable: props.evalSummariesTable,
   evalResutlsTable: props.evalResutlsTable,
-  evalTestCasesBucket: props.evalTestCasesBucket
+  evalTestCasesBucket: props.evalTestCasesBucket,
+  evalResultsBucket: props.evalResultsBucket
 });
 }
 }

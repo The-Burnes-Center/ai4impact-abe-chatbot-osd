@@ -9,6 +9,7 @@ from decimal import Decimal
 EVALUATION_SUMMARIES_TABLE = os.environ.get("EVAL_SUMMARIES_TABLE")
 EVALUATION_RESULTS_TABLE = os.environ.get("EVAL_RESULTS_TABLE")
 TEST_CASES_BUCKET = os.environ["TEST_CASES_BUCKET"]
+EVAL_RESULTS_BUCKET = os.environ.get("EVAL_RESULTS_BUCKET", TEST_CASES_BUCKET)  # Fallback to TEST_CASES_BUCKET if not set
 
 # Initialize a DynamoDB resource using boto3
 dynamodb = boto3.resource("dynamodb", region_name='us-east-1')
@@ -94,15 +95,26 @@ def add_evaluation(evaluation_id, evaluation_name, average_similarity,
 def read_detailed_results_from_s3(detailed_results_s3_key):
     try:
         s3_client = boto3.client('s3')
-        response = s3_client.get_object(Bucket=TEST_CASES_BUCKET, Key=detailed_results_s3_key)
-        content = response['Body'].read().decode('utf-8')
-        return json.loads(content)
+        # First try to read from the EVAL_RESULTS_BUCKET
+        try:
+            response = s3_client.get_object(Bucket=EVAL_RESULTS_BUCKET, Key=detailed_results_s3_key)
+            content = response['Body'].read().decode('utf-8')
+            return json.loads(content)
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey' and EVAL_RESULTS_BUCKET != TEST_CASES_BUCKET:
+                # If the key doesn't exist in EVAL_RESULTS_BUCKET, try TEST_CASES_BUCKET as a fallback
+                response = s3_client.get_object(Bucket=TEST_CASES_BUCKET, Key=detailed_results_s3_key)
+                content = response['Body'].read().decode('utf-8')
+                return json.loads(content)
+            else:
+                # Re-raise the error if it's not a NoSuchKey error
+                raise
     except ClientError as e:
         error_code = e.response['Error']['Code']
         error_message = e.response['Error']['Message']
-        raise Exception(f"Failed to read detailed results from S3: {error_code} - {error_message}. Bucket: {TEST_CASES_BUCKET}, Key: {detailed_results_s3_key}")
+        raise Exception(f"Failed to read detailed results from S3: {error_code} - {error_message}. Primary bucket: {EVAL_RESULTS_BUCKET}, Key: {detailed_results_s3_key}")
     except json.JSONDecodeError as e:
-        raise Exception(f"Failed to decode JSON from S3 object. Bucket: {TEST_CASES_BUCKET}, Key: {detailed_results_s3_key}. Error: {str(e)}")
+        raise Exception(f"Failed to decode JSON from S3 object. Bucket: {EVAL_RESULTS_BUCKET}, Key: {detailed_results_s3_key}. Error: {str(e)}")
     
 def lambda_handler(event, context):
     # Get headers from request or use default
@@ -160,6 +172,8 @@ def lambda_handler(event, context):
                 'message': 'Failed to process evaluation results',
                 'error': str(e),
                 'evaluation_id': evaluation_id,
-                'detailed_results_s3_key': detailed_results_s3_key
+                'detailed_results_s3_key': detailed_results_s3_key,
+                'results_bucket': EVAL_RESULTS_BUCKET,
+                'test_cases_bucket': TEST_CASES_BUCKET
             })
         }

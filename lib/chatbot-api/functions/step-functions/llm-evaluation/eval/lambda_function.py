@@ -20,17 +20,19 @@ from langchain_aws import BedrockEmbeddings
 GENERATE_RESPONSE_LAMBDA_NAME = os.environ['GENERATE_RESPONSE_LAMBDA_NAME']
 BEDROCK_MODEL_ID = os.environ['BEDROCK_MODEL_ID']
 TEST_CASES_BUCKET = os.environ['TEST_CASES_BUCKET']
+# Note: We're keeping partial results in TEST_CASES_BUCKET but retrieving this env var
+# for future improvements where we might want to write directly to EVAL_RESULTS_BUCKET
+EVAL_RESULTS_BUCKET = os.environ.get('EVAL_RESULTS_BUCKET', TEST_CASES_BUCKET)
 
 # Initialize clients outside the loop
 s3_client = boto3.client('s3')
 lambda_client = boto3.client('lambda')
 
 def lambda_handler(event, context): 
-    print("in the handler function")
     try:  
         chunk_key = event["chunk_key"]
         evaluation_id = event["evaluation_id"]
-        print("Processing chunk:", chunk_key)
+        logging.info(f"Processing chunk: {chunk_key} for evaluation: {evaluation_id}")
         test_cases = read_chunk_from_s3(s3_client, TEST_CASES_BUCKET, chunk_key)
 
         # Arrays to collect results
@@ -38,13 +40,9 @@ def lambda_handler(event, context):
         total_similarity = 0
         total_relevance = 0
         total_correctness = 0
-        #num_test_cases = len(test_cases)
-        # num_test_cases = len(event)
-
 
         # Process each test case
         for test_case in test_cases:
-            print("test_case: ", test_case)
             question = test_case['question']
             expected_response = test_case['expectedResponse']
 
@@ -53,9 +51,8 @@ def lambda_handler(event, context):
 
             # Evaluate the response using RAGAS
             response = evaluate_with_ragas(question, expected_response, actual_response)
-            print("response: ", response)
             if response['status'] == 'error':
-                print("error status going to next iteration")
+                logging.warning(f"Error evaluating test case with question: {question[:50]}...")
                 continue
             else:
                 similarity = response['scores']['similarity']
@@ -91,7 +88,7 @@ def lambda_handler(event, context):
                 Key=partial_result_key,
                 Body=json.dumps(partial_results)
             )
-            logging.info(f"Successfully wrote partial results to S3: {partial_result_key}")
+            logging.info(f"Successfully wrote partial results to S3: {TEST_CASES_BUCKET}/{partial_result_key}")
         except Exception as e:
             logging.error(f"Error writing partial results to S3: {str(e)}")
             raise Exception(f"Failed to write partial results to S3. Bucket: {TEST_CASES_BUCKET}, Key: {partial_result_key}. Error: {str(e)}")

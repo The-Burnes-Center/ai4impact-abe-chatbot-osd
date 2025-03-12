@@ -18,6 +18,7 @@ interface StepFunctionsStackProps {
     readonly evalSummariesTable : Table;
     readonly evalResutlsTable : Table;
     readonly evalTestCasesBucket : s3.Bucket;
+    readonly evalResultsBucket : s3.Bucket;
 }
 
 export class StepFunctionsStack extends Construct {
@@ -67,6 +68,7 @@ export class StepFunctionsStack extends Construct {
                 "EVALUATION_SUMMARIES_TABLE" : props.evalSummariesTable.tableName,
                 "EVALUATION_RESULTS_TABLE" : props.evalResutlsTable.tableName,
                 "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,
+                "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName
             },
             timeout: cdk.Duration.seconds(30)
         });
@@ -92,6 +94,9 @@ export class StepFunctionsStack extends Construct {
                 props.evalTestCasesBucket.bucketArn, 
                 props.evalTestCasesBucket.bucketArn + "/*", 
                 props.evalTestCasesBucket.arnForObjects('*'),
+                props.evalResultsBucket.bucketArn,
+                props.evalResultsBucket.bucketArn + "/*",
+                props.evalResultsBucket.arnForObjects('*')
             ]
         }));
         props.evalResutlsTable.grantReadWriteData(llmEvalResultsHandlerFunction);
@@ -134,7 +139,8 @@ export class StepFunctionsStack extends Construct {
             environment: {
                 "GENERATE_RESPONSE_LAMBDA_NAME" : generateResponseFunction.functionName,
                 "BEDROCK_MODEL_ID" : "anthropic.claude-3-haiku-20240307-v1:0",
-                "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName
+                "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,
+                "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName
             },
             timeout: cdk.Duration.minutes(15),
             memorySize: 10240
@@ -167,6 +173,9 @@ export class StepFunctionsStack extends Construct {
                 props.evalTestCasesBucket.bucketArn, 
                 props.evalTestCasesBucket.bucketArn + "/*", 
                 props.evalTestCasesBucket.arnForObjects('*'),
+                props.evalResultsBucket.bucketArn,
+                props.evalResultsBucket.bucketArn + "/*",
+                props.evalResultsBucket.arnForObjects('*')
             ]
         }));
         generateResponseFunction.grantInvoke(llmEvalFunction);
@@ -178,6 +187,7 @@ export class StepFunctionsStack extends Construct {
             handler: 'lambda_function.lambda_handler', 
             environment: {
                 "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,
+                "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName
             },
             timeout: cdk.Duration.seconds(30)
         });
@@ -191,6 +201,9 @@ export class StepFunctionsStack extends Construct {
                 props.evalTestCasesBucket.bucketArn, 
                 props.evalTestCasesBucket.bucketArn + "/*", 
                 props.evalTestCasesBucket.arnForObjects('*'),
+                props.evalResultsBucket.bucketArn,
+                props.evalResultsBucket.bucketArn + "/*",
+                props.evalResultsBucket.arnForObjects('*')
             ]
         }));
         this.aggregateEvalResultsFunction = aggregateEvalResultsFunction;
@@ -200,7 +213,8 @@ export class StepFunctionsStack extends Construct {
             code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/cleanup')), 
             handler: 'lambda_function.lambda_handler', 
             environment: {
-                "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName
+                "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,
+                "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName
             },
             timeout: cdk.Duration.seconds(30)
         });
@@ -215,6 +229,9 @@ export class StepFunctionsStack extends Construct {
                 props.evalTestCasesBucket.bucketArn, 
                 props.evalTestCasesBucket.bucketArn + "/*", 
                 props.evalTestCasesBucket.arnForObjects('*'),
+                props.evalResultsBucket.bucketArn,
+                props.evalResultsBucket.bucketArn + "/*",
+                props.evalResultsBucket.arnForObjects('*')
             ]
         }));
         this.llmEvalCleanupFunction = llmEvalCleanupFunction;

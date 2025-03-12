@@ -6,6 +6,7 @@ from datetime import datetime
 from botocore.exceptions import ClientError
 
 TEST_CASES_BUCKET = os.environ['TEST_CASES_BUCKET']
+EVAL_RESULTS_BUCKET = os.environ.get('EVAL_RESULTS_BUCKET', TEST_CASES_BUCKET)  # Fallback to TEST_CASES_BUCKET if not set
 s3_client = boto3.client('s3')
 
 def lambda_handler(event, context): 
@@ -40,14 +41,15 @@ def lambda_handler(event, context):
         average_relevance = total_relevance / total_questions if total_questions > 0 else 0
         average_correctness = total_correctness / total_questions if total_questions > 0 else 0
 
-        # Write aggregated detailed results to S3
+        # Write aggregated detailed results to S3 in the EVAL_RESULTS_BUCKET
         detailed_results_s3_key = f'evaluations/{evaluation_id}/aggregated_results/detailed_results.json'
         try:
             s3_client.put_object(
-                Bucket=TEST_CASES_BUCKET,
+                Bucket=EVAL_RESULTS_BUCKET,
                 Key=detailed_results_s3_key,
                 Body=json.dumps(detailed_results)
             )
+            logging.info(f"Successfully wrote aggregated results to S3: {EVAL_RESULTS_BUCKET}/{detailed_results_s3_key}")
         except Exception as e:
             logging.error(f"Error writing aggregated results to S3: {str(e)}")
             raise

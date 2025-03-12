@@ -4,6 +4,7 @@ import logging
 import json
 
 TEST_CASE_BUCKET = os.environ['TEST_CASES_BUCKET']
+EVAL_RESULTS_BUCKET = os.environ.get('EVAL_RESULTS_BUCKET', TEST_CASE_BUCKET)  # Fallback to TEST_CASE_BUCKET if not set
 
 def lambda_handler(event, context):
     s3_client = boto3.client('s3')
@@ -24,6 +25,11 @@ def lambda_handler(event, context):
 
         for prefix in prefixes_to_delete:
             delete_objects_in_prefix(s3_client, TEST_CASE_BUCKET, prefix)
+        
+        # Also clean up from EVAL_RESULTS_BUCKET if it's different
+        if EVAL_RESULTS_BUCKET != TEST_CASE_BUCKET:
+            for prefix in prefixes_to_delete:
+                delete_objects_in_prefix(s3_client, EVAL_RESULTS_BUCKET, prefix)
 
         return {
             'statusCode': 200,
@@ -38,22 +44,51 @@ def lambda_handler(event, context):
         }
 
 def delete_objects_in_prefix(s3_client, bucket, prefix):
-    # List all objects under the prefix
-    objects_to_delete = []
-    paginator = s3_client.get_paginator('list_objects_v2')
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        contents = page.get('Contents', [])
-        for obj in contents:
-            objects_to_delete.append({'Key': obj['Key']})
-
-    # Delete objects if there are any
-    if objects_to_delete:
-        # S3 supports deleting up to 1000 objects in a single request
-        for i in range(0, len(objects_to_delete), 1000):
-            response = s3_client.delete_objects(
+    try:
+        # List objects with the specified prefix
+        response = s3_client.list_objects_v2(
+            Bucket=bucket,
+            Prefix=prefix
+        )
+        
+        # If there are no objects with this prefix, just return
+        if 'Contents' not in response:
+            logging.info(f"No objects found in {bucket}/{prefix}")
+            return
+        
+        # Create a list of objects to delete
+        objects_to_delete = [{'Key': obj['Key']} for obj in response['Contents']]
+        
+        # Delete the objects
+        if objects_to_delete:
+            s3_client.delete_objects(
                 Bucket=bucket,
-                Delete={'Objects': objects_to_delete[i:i+1000]}
+                Delete={
+                    'Objects': objects_to_delete,
+                    'Quiet': True
+                }
             )
-        print(f"Deleted {len(objects_to_delete)} objects from {bucket}/{prefix}")
-    else:
-        print(f"No objects found under {bucket}/{prefix}")
+            logging.info(f"Deleted {len(objects_to_delete)} objects from {bucket}/{prefix}")
+        
+        # Check if there are more objects to delete (pagination)
+        while response.get('IsTruncated', False):
+            response = s3_client.list_objects_v2(
+                Bucket=bucket,
+                Prefix=prefix,
+                ContinuationToken=response['NextContinuationToken']
+            )
+            
+            if 'Contents' in response:
+                objects_to_delete = [{'Key': obj['Key']} for obj in response['Contents']]
+                if objects_to_delete:
+                    s3_client.delete_objects(
+                        Bucket=bucket,
+                        Delete={
+                            'Objects': objects_to_delete,
+                            'Quiet': True
+                        }
+                    )
+                    logging.info(f"Deleted additional {len(objects_to_delete)} objects from {bucket}/{prefix}")
+    except Exception as e:
+        logging.error(f"Error deleting objects in {bucket}/{prefix}: {str(e)}")
+        raise
