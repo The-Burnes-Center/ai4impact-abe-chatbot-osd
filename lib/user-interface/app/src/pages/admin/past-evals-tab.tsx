@@ -152,6 +152,11 @@ export default function PastEvalsTab(props: PastEvalsTabProps) {
             average_similarity: typeof evaluation.average_similarity === 'number' ? evaluation.average_similarity : 0,
             average_relevance: typeof evaluation.average_relevance === 'number' ? evaluation.average_relevance : 0,
             average_correctness: typeof evaluation.average_correctness === 'number' ? evaluation.average_correctness : 0,
+            // Add new retrieval metrics
+            average_context_precision: typeof evaluation.average_context_precision === 'number' ? evaluation.average_context_precision : 0,
+            average_context_recall: typeof evaluation.average_context_recall === 'number' ? evaluation.average_context_recall : 0,
+            average_response_relevancy: typeof evaluation.average_response_relevancy === 'number' ? evaluation.average_response_relevancy : 0,
+            average_faithfulness: typeof evaluation.average_faithfulness === 'number' ? evaluation.average_faithfulness : 0,
             total_questions: evaluation.total_questions || 0
           }))
         };

@@ -9,6 +9,8 @@ import {
   Box,
   Pagination,
   StatusIndicator,
+  Modal,
+  SpaceBetween,
 } from "@cloudscape-design/components";
 import { useParams, useNavigate } from "react-router-dom";
 import BaseAppLayout from "../../components/base-app-layout";
@@ -47,7 +49,11 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
   const [pages, setPages] = useState([]);
   const needsRefresh = useRef(false);
   const [error, setError] = useState<string | null>(null);
-
+  // Add state for context dialog
+  const [isContextModalVisible, setContextModalVisible] = useState(false);
+  const [selectedContext, setSelectedContext] = useState("");
+  const [selectedQuestion, setSelectedQuestion] = useState("");
+  
 
   useEffect(() => {
     setCurrentPageIndex(1);
@@ -57,6 +63,13 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
   const onProblemClick = (ProblemItem): void => {
     console.log("ProblemItem: ", ProblemItem);
     navigate(`/admin/llm-evaluation/${evaluationId}/problem/${ProblemItem.question_id}`);
+  };
+
+  // Add function to handle clicking on a context cell
+  const handleContextClick = (item) => {
+    setSelectedContext(item.retrieved_context || "No context available");
+    setSelectedQuestion(item.question || "Unknown question");
+    setContextModalVisible(true);
   };
 
   const fetchEvaluationDetails = async (params : { pageIndex?: number, nextPageToken? }) => {
@@ -129,7 +142,32 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
     { text: `Evaluation ${evaluationName || evaluationId}`, href: "#" },
   ];
 
-  const columnDefinitions = getColumnDefinition(props.documentType, onProblemClick);
+  // Update column definitions to include handler for context clicks
+  const getCustomColumnDefinitions = () => {
+    const baseColumns = getColumnDefinition(props.documentType, onProblemClick);
+    
+    // Find and update the context column to be clickable
+    const updatedColumns = baseColumns.map(column => {
+      if (column.id === "retrievedContext") {
+        return {
+          ...column,
+          cell: (item) => (
+            <Button 
+              onClick={() => handleContextClick(item)} 
+              variant="link"
+            >
+              View Context
+            </Button>
+          )
+        };
+      }
+      return column;
+    });
+    
+    return updatedColumns;
+  };
+  
+  const columnDefinitions = getCustomColumnDefinitions();
   const defaultSortingColumn = findFirstSortableColumn(columnDefinitions);
   const currentPageItems = pages[Math.min(pages.length - 1, currentPageIndex - 1)]?.Items || [];
 
@@ -170,8 +208,6 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
     }
   };
 
-
-
   const convertToCSV = (data: readonly unknown[]): string => {
     if (data.length === 0) {
       return '';
@@ -185,9 +221,6 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
     );
     return [headers, ...rows].join('\n');
   };
-
-
-
 
   return (
     <BaseAppLayout
@@ -244,6 +277,36 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
               )
             }
           />
+          
+          {/* Context Modal */}
+          <Modal
+            visible={isContextModalVisible}
+            onDismiss={() => setContextModalVisible(false)}
+            header={<Header variant="h2">Retrieved Context</Header>}
+            footer={
+              <Box float="right">
+                <SpaceBetween direction="horizontal" size="xs">
+                  <Button variant="primary" onClick={() => setContextModalVisible(false)}>
+                    Close
+                  </Button>
+                </SpaceBetween>
+              </Box>
+            }
+            size="large"
+          >
+            <SpaceBetween size="m">
+              <div>
+                <h4>Question:</h4>
+                <p>{selectedQuestion}</p>
+              </div>
+              <div>
+                <h4>Context:</h4>
+                <div style={{ maxHeight: '400px', overflow: 'auto', whiteSpace: 'pre-wrap', border: '1px solid #eee', padding: '10px', backgroundColor: '#f9f9f9' }}>
+                  {selectedContext}
+                </div>
+              </div>
+            </SpaceBetween>
+          </Modal>
         </>
       }
     />

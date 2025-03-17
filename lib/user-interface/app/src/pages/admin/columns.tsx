@@ -2,9 +2,28 @@ import { AdminDataType } from "../../common/types";
 import { DateTime } from "luxon";
 import { Utils } from "../../common/utils";
 import { useNavigate } from 'react-router-dom';
-import { Button } from "@cloudscape-design/components";
+import { Button, Popover } from "@cloudscape-design/components";
 import { TruncatedTextCell } from "../../components/truncated-text-call";
 
+// Helper component for metric columns with tooltips
+function MetricColumnWithTooltip({ value, description }) {
+  if (value === undefined || value === null) return "N/A";
+  const displayValue = parseFloat(value).toFixed(2);
+  
+  return (
+    <Popover
+      dismissAriaLabel="Close"
+      position="top"
+      size="medium"
+      content={description}
+      triggerType="custom"
+    >
+      <span style={{ cursor: 'help', borderBottom: '1px dotted #888' }}>
+        {displayValue}
+      </span>
+    </Popover>
+  );
+}
 
 export function getColumnDefinition(documentType: AdminDataType, onProblemClick: (item: any) => void) {
   function ViewDetailsButton({ evaluationId }) {
@@ -47,11 +66,10 @@ const EVAL_SUMMARY_COLUMN_DEFINITIONS = [
   {
     id: "averageSimilarity",
     header: "Average Similarity",
-    cell: (item) => {
-      const value = item.average_similarity;
-      if (value === undefined || value === null) return "N/A";
-      return parseFloat(value).toFixed(2);
-    },
+    cell: (item) => MetricColumnWithTooltip({
+      value: item.average_similarity,
+      description: "Semantic similarity between chatbot response and reference answer (0-1)"
+    }),
     sortingField: "average_similarity",
     sortingComparator: (a, b) => {
       const aVal = a.average_similarity === undefined || a.average_similarity === null ? 0 : parseFloat(a.average_similarity);
@@ -64,11 +82,10 @@ const EVAL_SUMMARY_COLUMN_DEFINITIONS = [
   {
     id: "averageRelevance",
     header: "Average Relevance",
-    cell: (item) => {
-      const value = item.average_relevance;
-      if (value === undefined || value === null) return "N/A";
-      return parseFloat(value).toFixed(2);
-    },
+    cell: (item) => MetricColumnWithTooltip({
+      value: item.average_relevance,
+      description: "How relevant the response is to the original question (0-1)"
+    }),
     sortingField: "average_relevance",
     sortingComparator: (a, b) => {
       const aVal = a.average_relevance === undefined || a.average_relevance === null ? 0 : parseFloat(a.average_relevance);
@@ -81,15 +98,79 @@ const EVAL_SUMMARY_COLUMN_DEFINITIONS = [
   {
     id: "averageCorrectness",
     header: "Average Correctness",
-    cell: (item) => {
-      const value = item.average_correctness;
-      if (value === undefined || value === null) return "N/A";
-      return parseFloat(value).toFixed(2);
-    },
+    cell: (item) => MetricColumnWithTooltip({
+      value: item.average_correctness,
+      description: "F1-score combining precision and recall between response and reference answer (0-1)"
+    }),
     sortingField: "average_correctness",
     sortingComparator: (a, b) => {
       const aVal = a.average_correctness === undefined || a.average_correctness === null ? 0 : parseFloat(a.average_correctness);
       const bVal = b.average_correctness === undefined || b.average_correctness === null ? 0 : parseFloat(b.average_correctness);
+      return aVal - bVal;
+    },
+    width: "10%",
+    wrapText: true 
+  },
+  // New RAG metrics
+  {
+    id: "averageContextPrecision",
+    header: "Context Precision",
+    cell: (item) => MetricColumnWithTooltip({
+      value: item.average_context_precision,
+      description: "How relevant/precise the retrieved context is to the question - measures if the retrieved chunks are focused and relevant (0-1)"
+    }),
+    sortingField: "average_context_precision",
+    sortingComparator: (a, b) => {
+      const aVal = a.average_context_precision === undefined || a.average_context_precision === null ? 0 : parseFloat(a.average_context_precision);
+      const bVal = b.average_context_precision === undefined || b.average_context_precision === null ? 0 : parseFloat(b.average_context_precision);
+      return aVal - bVal;
+    },
+    width: "10%",
+    wrapText: true 
+  },
+  {
+    id: "averageContextRecall",
+    header: "Context Recall",
+    cell: (item) => MetricColumnWithTooltip({
+      value: item.average_context_recall,
+      description: "How well the retrieved context covers the information needed for a correct answer - measures if all necessary information was retrieved (0-1)"
+    }),
+    sortingField: "average_context_recall",
+    sortingComparator: (a, b) => {
+      const aVal = a.average_context_recall === undefined || a.average_context_recall === null ? 0 : parseFloat(a.average_context_recall);
+      const bVal = b.average_context_recall === undefined || b.average_context_recall === null ? 0 : parseFloat(b.average_context_recall);
+      return aVal - bVal;
+    },
+    width: "10%",
+    wrapText: true 
+  },
+  {
+    id: "averageResponseRelevancy",
+    header: "Response Relevancy",
+    cell: (item) => MetricColumnWithTooltip({
+      value: item.average_response_relevancy,
+      description: "How relevant the response is to the original question - measures if the response directly addresses what was asked (0-1)"
+    }),
+    sortingField: "average_response_relevancy",
+    sortingComparator: (a, b) => {
+      const aVal = a.average_response_relevancy === undefined || a.average_response_relevancy === null ? 0 : parseFloat(a.average_response_relevancy);
+      const bVal = b.average_response_relevancy === undefined || b.average_response_relevancy === null ? 0 : parseFloat(b.average_response_relevancy);
+      return aVal - bVal;
+    },
+    width: "10%",
+    wrapText: true 
+  },
+  {
+    id: "averageFaithfulness",
+    header: "Faithfulness",
+    cell: (item) => MetricColumnWithTooltip({
+      value: item.average_faithfulness,
+      description: "How faithful/grounded the response is to the retrieved context - measures if the response contains only information from the context without hallucination (0-1)"
+    }),
+    sortingField: "average_faithfulness",
+    sortingComparator: (a, b) => {
+      const aVal = a.average_faithfulness === undefined || a.average_faithfulness === null ? 0 : parseFloat(a.average_faithfulness);
+      const bVal = b.average_faithfulness === undefined || b.average_faithfulness === null ? 0 : parseFloat(b.average_faithfulness);
       return aVal - bVal;
     },
     width: "10%",
@@ -123,33 +204,74 @@ const DETAILED_EVAL_COLUMN_DEFINITIONS = [
   {
     id: "similarity",
     header: "Similarity",
-    cell: (item) => {
-      const value = item.similarity;
-      if (value === undefined || value === null) return "N/A";
-      return parseFloat(value).toFixed(2);
-    },
+    cell: (item) => MetricColumnWithTooltip({
+      value: item.similarity,
+      description: "Semantic similarity between chatbot response and reference answer (0-1)"
+    }),
     sortingField: "similarity"
   },
   {
     id: "relevance",
     header: "Relevance",
-    cell: (item) => {
-      const value = item.relevance;
-      if (value === undefined || value === null) return "N/A";
-      return parseFloat(value).toFixed(2);
-    },
+    cell: (item) => MetricColumnWithTooltip({
+      value: item.relevance,
+      description: "How relevant the response is to the original question (0-1)"
+    }),
     sortingField: "relevance"
   },
   {
     id: "correctness",
     header: "Correctness",
-    cell: (item) => {
-      const value = item.correctness;
-      if (value === undefined || value === null) return "N/A";
-      return parseFloat(value).toFixed(2);
-    },
+    cell: (item) => MetricColumnWithTooltip({
+      value: item.correctness,
+      description: "F1-score combining precision and recall between response and reference answer (0-1)"
+    }),
     sortingField: "correctness"
   },
+  // New RAG metrics for detailed evaluation
+  {
+    id: "contextPrecision",
+    header: "Context Precision",
+    cell: (item) => MetricColumnWithTooltip({
+      value: item.context_precision,
+      description: "How relevant/precise the retrieved context is to the question - measures if the retrieved chunks are focused and relevant (0-1)"
+    }),
+    sortingField: "context_precision"
+  },
+  {
+    id: "contextRecall",
+    header: "Context Recall",
+    cell: (item) => MetricColumnWithTooltip({
+      value: item.context_recall,
+      description: "How well the retrieved context covers the information needed for a correct answer - measures if all necessary information was retrieved (0-1)"
+    }),
+    sortingField: "context_recall"
+  },
+  {
+    id: "responseRelevancy",
+    header: "Response Relevancy",
+    cell: (item) => MetricColumnWithTooltip({
+      value: item.response_relevancy,
+      description: "How relevant the response is to the original question - measures if the response directly addresses what was asked (0-1)"
+    }),
+    sortingField: "response_relevancy"
+  },
+  {
+    id: "faithfulness",
+    header: "Faithfulness",
+    cell: (item) => MetricColumnWithTooltip({
+      value: item.faithfulness, 
+      description: "How faithful/grounded the response is to the retrieved context - measures if the response contains only information from the context without hallucination (0-1)"
+    }),
+    sortingField: "faithfulness"
+  },
+  // Optional: Add retrieved context column
+  {
+    id: "retrievedContext",
+    header: "Retrieved Context",
+    cell: (item) => <TruncatedTextCell text={item.retrieved_context || "No context available"} maxLength={50}/>,
+    width: "15%"
+  }
 ];
   
 const FEEDBACK_COLUMN_DEFINITIONS = [
