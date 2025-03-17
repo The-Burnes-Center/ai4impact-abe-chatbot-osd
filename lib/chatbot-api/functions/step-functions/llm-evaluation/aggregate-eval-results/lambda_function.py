@@ -27,7 +27,11 @@ s3_client = boto3.client('s3')
 # Initialize sentence transformer model for semantic similarity
 model = None  # Will be lazily loaded when needed
 
-def lambda_handler(event, context): 
+def lambda_handler(event, context):
+    # Configure logging
+    logging.basicConfig(level=logging.INFO)
+    logging.info(f"Lambda invoked with event: {json.dumps(event)}")
+    
     try:
         partial_result_keys = [pr['partial_result_key'] for pr in event['partial_result_keys']]
         evaluation_id = event['evaluation_id']
@@ -241,11 +245,16 @@ def lambda_handler(event, context):
             
         return result
     except Exception as e:
-        logging.error(f"Error in aggregation Lambda: {str(e)}")
+        error_msg = f"Unhandled exception in lambda_handler: {str(e)}"
+        logging.error(error_msg)
+        
+        # Return a proper error response
         return {
-            "status_code": 500,
-            "error": str(e),
-            "evaluation_id": event.get('evaluation_id', 'unknown')
+            "statusCode": 500,
+            "body": json.dumps({
+                "error": error_msg,
+                "evaluation_id": event.get('evaluation_id', 'unknown')
+            })
         }
 
 def read_partial_result_from_s3(s3_client, bucket_name, key):
@@ -451,31 +460,6 @@ def calculate_faithfulness(response, context):
     return float(np.mean(sentence_scores))
 
 def query_chatbot_with_chunks(query, config=None, chat_history=None, retrieval_source="all"):
-    """
-    Query the chatbot and retrieve both the response and the chunks used.
-    
-    Args:
-        query (str): The question/query to send to the chatbot
-        config (dict, optional): Configuration dictionary containing:
-            - ws_endpoint (str): WebSocket API endpoint
-            - cognito_user_pool_id (str): Cognito user pool ID
-            - cognito_client_id (str): Cognito client ID
-            - username (str): Username for authentication
-            - password (str): Password for authentication
-            - region (str): AWS region (default: 'us-east-1')
-        chat_history (list, optional): List of previous chat messages in the format:
-            [{"user": "user message", "chatbot": "chatbot response"}, ...]
-        retrieval_source (str, optional): Source to retrieve from (default: "all")
-        
-    Returns:
-        dict: Dictionary containing:
-            - response (str): The chatbot's text response
-            - sources (list): List of source objects with title and URI properties
-            
-    Raises:
-        Exception: If authentication fails, WebSocket connection fails,
-                  or any other error occurs during the process
-    """
     if config is None:
         config = {}
     
@@ -486,9 +470,13 @@ def query_chatbot_with_chunks(query, config=None, chat_history=None, retrieval_s
     username = config.get('username')
     password = config.get('password')
     
+    logging.info(f"WebSocket endpoint: {ws_endpoint}")
+    
     # Validate required configuration
     if not all([ws_endpoint, cognito_user_pool_id, cognito_client_id, username, password]):
-        raise ValueError("Missing required configuration parameters")
+        error_msg = "Missing required configuration parameters for WebSocket"
+        logging.error(error_msg)
+        raise ValueError(error_msg)
     
     # Initialize chat history if None
     if chat_history is None:
@@ -498,6 +486,7 @@ def query_chatbot_with_chunks(query, config=None, chat_history=None, retrieval_s
     session_id = str(uuid.uuid4())
     
     # Authenticate with Cognito
+    logging.info("Authenticating with Cognito")
     cognito_client = boto3.client('cognito-idp', region_name=region)
     try:
         auth_response = cognito_client.initiate_auth(
@@ -509,80 +498,130 @@ def query_chatbot_with_chunks(query, config=None, chat_history=None, retrieval_s
             }
         )
         token = auth_response['AuthenticationResult']['IdToken']
+        logging.info("Authentication successful")
     except Exception as e:
-        logging.error(f"Authentication failed: {str(e)}")
-        raise Exception(f"Authentication failed: {str(e)}")
+        error_msg = f"Authentication failed: {str(e)}"
+        logging.error(error_msg)
+        raise Exception(error_msg)
     
     # Connect to WebSocket API
     ws_url = f"{ws_endpoint}?Authorization={token}"
+    logging.info(f"Connecting to WebSocket: {ws_url[:50]}...")
     
     # Set up result variables
     response_text = ""
     sources = []
     is_metadata = False
     ws_error = None
+    ws_closed = False
+    connection_success = False
     
     # Define WebSocket callbacks
     def on_message(ws, message):
-        nonlocal response_text, sources, is_metadata
+        nonlocal response_text, sources, is_metadata, connection_success
         
-        # Check for error message
-        if "<!ERROR!>:" in message:
-            ws.close()
-            raise Exception(message.replace("<!ERROR!>:", ""))
-        
-        # Check for end of response marker
-        if message == "!<|EOF_STREAM|>!":
-            is_metadata = True
-            return
-        
-        if not is_metadata:
-            # This is the chatbot's response text
-            response_text += message
-        else:
-            # This is the source/chunks metadata
-            try:
-                source_data = json.loads(message)
-                # Process and clean up source data
-                processed_sources = []
-                for item in source_data:
-                    if item.get("title") == "":
-                        uri = item.get("uri", "")
-                        title = uri.split("/")[-1] if uri else ""
-                        processed_sources.append({
-                            "title": title,
-                            "uri": uri
-                        })
-                    else:
-                        processed_sources.append(item)
-                sources = processed_sources
-                # Close the connection once we have the sources
+        try:
+            # Connection is successful if we get a message
+            connection_success = True
+            
+            # Log message receipt (truncated for large messages)
+            if len(message) > 100:
+                logging.info(f"Received message: {message[:100]}...")
+            else:
+                logging.info(f"Received message: {message}")
+            
+            # Check for error message
+            if "<!ERROR!>:" in message:
+                nonlocal ws_error
+                ws_error = message.replace("<!ERROR!>:", "")
+                logging.error(f"WebSocket error message: {ws_error}")
                 ws.close()
-            except json.JSONDecodeError as e:
-                logging.error(f"Failed to parse source data: {str(e)}")
-                raise Exception(f"Failed to parse source data: {str(e)}")
+                return
+            
+            # Check for end of response marker
+            if message == "!<|EOF_STREAM|>!":
+                logging.info("End of response stream received")
+                is_metadata = True
+                return
+            
+            if not is_metadata:
+                # This is the chatbot's response text
+                response_text += message
+            else:
+                # This is the source/chunks metadata
+                try:
+                    source_data = json.loads(message)
+                    logging.info(f"Received sources data with {len(source_data)} items")
+                    
+                    # Process and clean up source data
+                    processed_sources = []
+                    for item in source_data:
+                        if item.get("title") == "":
+                            uri = item.get("uri", "")
+                            title = uri.split("/")[-1] if uri else ""
+                            processed_sources.append({
+                                "title": title,
+                                "uri": uri
+                            })
+                        else:
+                            processed_sources.append(item)
+                    sources = processed_sources
+                    # Close the connection once we have the sources
+                    ws.close()
+                except json.JSONDecodeError as e:
+                    error_msg = f"Failed to parse source data: {str(e)}"
+                    logging.error(error_msg)
+                    ws_error = error_msg
+                    ws.close()
+                except Exception as e:
+                    error_msg = f"Error processing source data: {str(e)}"
+                    logging.error(error_msg)
+                    ws_error = error_msg
+                    ws.close()
+        except Exception as e:
+            error_msg = f"Error in on_message handler: {str(e)}"
+            logging.error(error_msg)
+            nonlocal ws_error
+            ws_error = error_msg
+            ws.close()
     
     def on_error(ws, error):
         nonlocal ws_error
-        ws_error = error
-        logging.error(f"WebSocket error: {str(error)}")
+        ws_error = str(error)
+        logging.error(f"WebSocket error: {ws_error}")
+        ws.close()
     
     def on_close(ws, close_status_code, close_reason):
+        nonlocal ws_closed
+        ws_closed = True
         logging.info(f"WebSocket connection closed: {close_status_code} - {close_reason}")
     
     def on_open(ws):
-        # Format the request
-        message = json.dumps({
-            "action": "getChatbotResponse",
-            "data": {
-                "userMessage": query,
-                "session_id": session_id,
-                "user_id": username,
-                "chatHistory": chat_history,
-                "retrievalSource": retrieval_source
-            }
-        })
-        ws.send(message)
+        nonlocal connection_success
+        connection_success = True
+        logging.info("WebSocket connection opened, sending message")
+        
+        try:
+            # Format the request
+            message = json.dumps({
+                "action": "getChatbotResponse",
+                "data": {
+                    "userMessage": query,
+                    "session_id": session_id,
+                    "user_id": username,
+                    "chatHistory": chat_history,
+                    "retrievalSource": retrieval_source
+                }
+            })
+            logging.info(f"Sending message: {message[:100]}...")
+            ws.send(message)
+            logging.info("Message sent successfully")
+        except Exception as e:
+            error_msg = f"Error sending message: {str(e)}"
+            logging.error(error_msg)
+            nonlocal ws_error
+            ws_error = error_msg
+            ws.close()
     
     # Create and connect WebSocket
     websocket.enableTrace(False)
@@ -597,33 +636,81 @@ def query_chatbot_with_chunks(query, config=None, chat_history=None, retrieval_s
     # Set up timeout
     timeout = 60  # 60 seconds timeout
     
-    # Run the WebSocket connection with a timeout
-    ws_thread = ws.run_forever()
+    # Run the WebSocket connection in a separate thread
+    import threading
+    def run_ws():
+        try:
+            ws.run_forever()
+        except Exception as e:
+            nonlocal ws_error
+            ws_error = f"WebSocket run_forever error: {str(e)}"
+            logging.error(ws_error)
     
-    # Wait for timeout or completion
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        if not ws.sock or not ws.sock.connected:
-            break
-        time.sleep(0.1)
+    ws_thread = threading.Thread(target=run_ws)
+    ws_thread.daemon = True
     
-    # Close connection if still open
-    if ws.sock and ws.sock.connected:
-        ws.close()
-    
-    # Check for errors
-    if ws_error:
-        raise Exception(f"WebSocket error: {str(ws_error)}")
-    
-    # Check if we got a response
-    if not response_text:
-        raise Exception("No response received from chatbot within timeout period")
-    
-    # Return the results
-    return {
-        "response": response_text,
-        "sources": sources
-    }
+    try:
+        logging.info("Starting WebSocket thread")
+        ws_thread.start()
+        
+        # Wait for timeout or completion
+        start_time = time.time()
+        connection_timeout = 5  # 5 seconds to establish connection
+        
+        # First wait for connection to be established
+        while time.time() - start_time < connection_timeout and not connection_success and not ws_error:
+            time.sleep(0.1)
+        
+        if not connection_success and not ws_error:
+            ws_error = "Failed to establish WebSocket connection within timeout"
+            logging.error(ws_error)
+            ws.close()
+        
+        # Then wait for response or timeout
+        while time.time() - start_time < timeout and not ws_closed and not ws_error:
+            time.sleep(0.1)
+        
+        # If timeout occurs but connection is still open
+        if not ws_closed and not ws_error:
+            ws_error = "Request timed out waiting for response"
+            logging.error(ws_error)
+            ws.close()
+        
+        # Wait for thread to finish
+        ws_thread.join(timeout=5)
+        
+        # Check for errors
+        if ws_error:
+            raise Exception(f"WebSocket error: {ws_error}")
+        
+        # Check if we got a response
+        if not response_text:
+            raise Exception("No response received from chatbot")
+        
+        logging.info(f"Successfully received response of length {len(response_text)} and {len(sources)} sources")
+        
+        # Return the results
+        return {
+            "response": response_text,
+            "sources": sources
+        }
+    except Exception as e:
+        logging.error(f"Error in WebSocket request: {str(e)}")
+        # Try to close the connection if still open
+        try:
+            if not ws_closed and ws.sock and ws.sock.connected:
+                ws.close()
+        except:
+            pass
+        
+        # Wait for thread to finish if it's still running
+        try:
+            if ws_thread.is_alive():
+                ws_thread.join(timeout=2)
+        except:
+            pass
+        
+        raise Exception(f"WebSocket request failed: {str(e)}")
 
 # Example usage:
 # config = {
