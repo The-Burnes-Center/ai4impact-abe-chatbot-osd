@@ -137,10 +137,10 @@ export class StepFunctionsStack extends Construct {
                 platform: Platform.LINUX_AMD64, // Specify the correct platform
               }),
             environment: {
-                "GENERATE_RESPONSE_LAMBDA_NAME" : generateResponseFunction.functionName,
                 "BEDROCK_MODEL_ID" : "anthropic.claude-3-haiku-20240307-v1:0",
                 "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,
-                "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName
+                "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName,
+                "CHATBOT_API_URL" : "https://dcf43zj2k8alr.cloudfront.net"
             },
             timeout: cdk.Duration.minutes(15),
             memorySize: 10240

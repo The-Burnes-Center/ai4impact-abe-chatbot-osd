@@ -17,12 +17,17 @@ from langchain_aws import BedrockEmbeddings
 #from langchain.chat_models import ChatBedrock as BedrockChat
 #from langchain.embeddings import BedrockEmbeddings
 
-GENERATE_RESPONSE_LAMBDA_NAME = os.environ['GENERATE_RESPONSE_LAMBDA_NAME']
+# Import the API client for getting app responses
+from api_client import get_app_response
+
+GENERATE_RESPONSE_LAMBDA_NAME = os.environ.get('GENERATE_RESPONSE_LAMBDA_NAME')
 BEDROCK_MODEL_ID = os.environ['BEDROCK_MODEL_ID']
 TEST_CASES_BUCKET = os.environ['TEST_CASES_BUCKET']
 # Note: We're keeping partial results in TEST_CASES_BUCKET but retrieving this env var
 # for future improvements where we might want to write directly to EVAL_RESULTS_BUCKET
 EVAL_RESULTS_BUCKET = os.environ.get('EVAL_RESULTS_BUCKET', TEST_CASES_BUCKET)
+# Chatbot API URL for websocket connection
+CHATBOT_API_URL = os.environ.get('CHATBOT_API_URL', 'https://dcf43zj2k8alr.cloudfront.net')
 
 # Initialize clients outside the loop
 s3_client = boto3.client('s3')
@@ -41,16 +46,25 @@ def lambda_handler(event, context):
         total_relevance = 0
         total_correctness = 0
 
+        # Initialize an event loop for async operations
+        loop = asyncio.get_event_loop()
+        
+        # Set the API URL in the environment for the API client to use
+        os.environ['CHATBOT_API_URL'] = CHATBOT_API_URL
+
         # Process each test case
         for test_case in test_cases:
             question = test_case['question']
             expected_response = test_case['expectedResponse']
 
-            # Invoke generateResponseLambda to get the actual response
-            actual_response = invoke_generate_response_lambda(lambda_client, question)
+            # Get app's response using the API client
+            app_response_data = loop.run_until_complete(get_app_response(question))
+            
+            actual_response = app_response_data['response']
+            retrieved_contexts = app_response_data['retrieved_contexts']
 
             # Evaluate the response using RAGAS
-            response = evaluate_with_ragas(question, expected_response, actual_response)
+            response = evaluate_with_ragas(question, expected_response, actual_response, retrieved_contexts)
             if response['status'] == 'error':
                 logging.warning(f"Error evaluating test case with question: {question[:50]}...")
                 continue
@@ -64,6 +78,8 @@ def lambda_handler(event, context):
                 'question': question,
                 'expectedResponse': expected_response,
                 'actualResponse': actual_response,
+                'retrievedContexts': retrieved_contexts,
+                'sources': app_response_data.get('sources', []),
                 'similarity': similarity,
                 'relevance': relevance,
                 'correctness': correctness,
@@ -107,54 +123,7 @@ def lambda_handler(event, context):
             }),
         }
 
-async def process_test_case(lambda_client, test_case):
-    try:
-        question = test_case['question']
-        expected_response = test_case['expectedResponse']
-
-        # Invoke generate response Lambda
-        actual_response = invoke_generate_response_lambda(lambda_client, question)
-
-        # Evaluate with RAGAS
-        result = evaluate_with_ragas(question, expected_response, actual_response)
-        if result['status'] == 'error':
-            return None
-
-        return {
-            'question': question,
-            'expectedResponse': expected_response,
-            'actualResponse': actual_response,
-            'similarity': result['scores']['similarity'],
-            'relevance': result['scores']['relevance'],
-            'correctness': result['scores']['correctness'],
-        }
-    except Exception as e:
-        logging.error(f"Error processing test case: {e}")
-        return None
-    
-async def process_all_test_cases(test_cases, lambda_client):
-    tasks = [process_test_case(lambda_client, test_case) for test_case in test_cases]
-    return await asyncio.gather(*tasks)
-
-def invoke_generate_response_lambda(lambda_client, question):
-    try:
-        response = lambda_client.invoke(
-            FunctionName=GENERATE_RESPONSE_LAMBDA_NAME,
-            InvocationType='RequestResponse',
-            Payload=json.dumps({'userMessage': question, 'chatHistory': []}),
-        )
-        print("response: ", response["Payload"])
-        payload = response['Payload'].read().decode('utf-8')
-        result = json.loads(payload)
-        print("result: ", result)
-        body = json.loads(result.get('body', {}))
-        print("body: ", body)
-        return body.get('modelResponse', '')
-    except Exception as e:
-        logging.error(f"Error invoking generateResponseLambda: {str(e)}")
-        return ""
-
-def evaluate_with_ragas(question, expected_response, actual_response):
+def evaluate_with_ragas(question, expected_response, actual_response, retrieved_contexts=None):
     try:
         from datasets import Dataset
         from ragas import evaluate
@@ -162,11 +131,16 @@ def evaluate_with_ragas(question, expected_response, actual_response):
         metrics = [answer_correctness, answer_similarity, answer_relevancy]
 
         # Prepare data for RAGAS
+        if retrieved_contexts and len(retrieved_contexts) > 0:
+            contexts = retrieved_contexts
+        else:
+            contexts = [expected_response]  # Fallback to using expected response as context
+
         data_sample = {
             "question": [question],
             "answer": [actual_response],
             "reference": [expected_response],
-            "retrieved_contexts": [[expected_response]]
+            "retrieved_contexts": [contexts]
         }
         data_samples = Dataset.from_dict(data_sample)
 
