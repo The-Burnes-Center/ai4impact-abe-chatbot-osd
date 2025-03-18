@@ -9,8 +9,5 @@ COPY api_client.py ${LAMBDA_TASK_ROOT}
 COPY requirements.txt .
 RUN pip install -r requirements.txt --target "${LAMBDA_TASK_ROOT}"
 
-# Download nltk data if required for BLEU score
-RUN python -m nltk.downloader -d ${LAMBDA_TASK_ROOT}/nltk_data punkt
-
 # Set the CMD to your handler (function name)
 CMD ["lambda_function.lambda_handler"]
