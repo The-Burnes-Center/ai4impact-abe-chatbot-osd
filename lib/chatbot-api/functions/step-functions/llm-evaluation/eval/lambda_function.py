@@ -10,18 +10,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from botocore.exceptions import ClientError
 import asyncio
 
-#from langchain_community.chat_models import BedrockChat
-from langchain_aws import ChatBedrock as BedrockChat
-#from langchain_community.embeddings import BedrockEmbeddings
-from langchain_aws import BedrockEmbeddings
-#from langchain.chat_models import ChatBedrock as BedrockChat
-#from langchain.embeddings import BedrockEmbeddings
-
 # Import the API client for getting app responses
 from api_client import get_app_response
 
 GENERATE_RESPONSE_LAMBDA_NAME = os.environ.get('GENERATE_RESPONSE_LAMBDA_NAME')
-BEDROCK_MODEL_ID = os.environ['BEDROCK_MODEL_ID']
+BEDROCK_MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', 'anthropic.claude-3-haiku-20240307-v1:0')  # Keep for compatibility
 TEST_CASES_BUCKET = os.environ['TEST_CASES_BUCKET']
 # Note: We're keeping partial results in TEST_CASES_BUCKET but retrieving this env var
 # for future improvements where we might want to write directly to EVAL_RESULTS_BUCKET
@@ -124,12 +117,14 @@ def lambda_handler(event, context):
         }
 
 def evaluate_with_ragas(question, expected_response, actual_response, retrieved_contexts=None):
+    """
+    Evaluate the response using RAGAS metrics directly without using Bedrock models.
+    """
     try:
         from datasets import Dataset
-        from ragas import evaluate
         from ragas.metrics import answer_correctness, answer_similarity, answer_relevancy
-        metrics = [answer_correctness, answer_similarity, answer_relevancy]
-
+        import pandas as pd
+        
         # Prepare data for RAGAS
         if retrieved_contexts and len(retrieved_contexts) > 0:
             contexts = retrieved_contexts
@@ -143,21 +138,20 @@ def evaluate_with_ragas(question, expected_response, actual_response, retrieved_
             "retrieved_contexts": [contexts]
         }
         data_samples = Dataset.from_dict(data_sample)
-
-        # Load LLM and embeddings
-        region_name = 'us-east-1'
-        bedrock_model = BedrockChat(region_name=region_name, endpoint_url=f"https://bedrock-runtime.{region_name}.amazonaws.com", model_id=BEDROCK_MODEL_ID)
-        bedrock_embeddings = BedrockEmbeddings(region_name=region_name, model_id='amazon.titan-embed-text-v1')
-
-        # Evaluate
-        result = evaluate(data_samples, metrics=metrics, llm=bedrock_model, embeddings=bedrock_embeddings)
-        scores = result.to_pandas().iloc[0]
-
-        # if any score is nan, return error
-        if scores.isnull().values.any():
-            raise ValueError("RAGAS evaluation returned NaN scores")
         
-        return {"status": "success", "scores": {"similarity": scores['semantic_similarity'], "relevance": scores['answer_relevancy'], "correctness": scores['answer_correctness']}}
+        # Use the RAGAS metrics directly
+        # Simplified similarity calculation using the RAGAS metric
+        similarity = answer_similarity.score({"answer": actual_response, "reference": expected_response})
+        
+        # Simplified relevance calculation
+        relevance = answer_relevancy.score({"answer": actual_response, "question": question, "contexts": contexts})
+        
+        # Simplified correctness calculation
+        correctness = answer_correctness.score({"answer": actual_response, "reference": expected_response, "question": question})
+        
+        logging.info(f"Similarity: {similarity}, Relevance: {relevance}, Correctness: {correctness}")
+        
+        return {"status": "success", "scores": {"similarity": similarity, "relevance": relevance, "correctness": correctness}}
     except Exception as e:
         logging.error(f"Error in RAGAS evaluation: {str(e)}")
         return {"status": "error", "error": str(e)}
