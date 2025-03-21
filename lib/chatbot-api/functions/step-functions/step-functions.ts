@@ -19,6 +19,7 @@ interface StepFunctionsStackProps {
     readonly evalResutlsTable : Table;
     readonly evalTestCasesBucket : s3.Bucket;
     readonly evalResultsBucket : s3.Bucket;
+    readonly wsEndpoint?: string;
 }
 
 export class StepFunctionsStack extends Construct {
@@ -139,7 +140,7 @@ export class StepFunctionsStack extends Construct {
             environment: {
                 "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,
                 "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName,
-                "CHATBOT_API_URL" : "https://dcf43zj2k8alr.cloudfront.net"
+                "CHATBOT_API_URL" : props.wsEndpoint || "https://dcf43zj2k8alr.cloudfront.net"
             },
             timeout: cdk.Duration.minutes(15),
             memorySize: 10240

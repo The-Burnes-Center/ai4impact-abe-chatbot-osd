@@ -364,7 +364,8 @@ this.stepFunctionsStack = new StepFunctionsStack(scope, 'StepFunctionsStack', {
   evalSummariesTable: props.evalSummariesTable,
   evalResutlsTable: props.evalResutlsTable,
   evalTestCasesBucket: props.evalTestCasesBucket,
-  evalResultsBucket: props.evalResultsBucket
+  evalResultsBucket: props.evalResultsBucket,
+  wsEndpoint: props.wsApiEndpoint
 });
 }
 }
