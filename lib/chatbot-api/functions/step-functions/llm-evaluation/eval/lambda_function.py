@@ -178,48 +178,47 @@ def evaluate_with_ragas(question, expected_response, actual_response, retrieved_
         from datasets import Dataset
         import pandas as pd
         
-        # Try to use llama_index embeddings if available
+        # Try to set up embeddings for RAGAS - using sentence-transformers directly
         try:
-            from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-            from llama_index.core import Settings
+            from sentence_transformers import SentenceTransformer
             
-            # Initialize embeddings
-            embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
-            Settings.embed_model = embed_model
-            logging.info("Successfully initialized llama_index embeddings")
+            # Initialize sentence transformer model
+            model = SentenceTransformer('all-MiniLM-L6-v2')
             
-            # Create RAGAS metrics with embeddings
-            similarity_metric = answer_similarity.AnswerSimilarity()
-            relevancy_metric = answer_relevancy.AnswerRelevancy()
-            correctness_metric = answer_correctness.AnswerCorrectness()
+            # Use the model to create embeddings for RAGAS
+            from ragas.llms import SentenceTransformerEmbeddings
+            embeddings = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
             
-            # Calculate scores
-            similarity = similarity_metric.score({"answer": actual_response, "reference": expected_response})
-            relevance = relevancy_metric.score({"answer": actual_response, "question": question, "contexts": contexts})
-            correctness = correctness_metric.score({"answer": actual_response, "reference": expected_response, "question": question})
+            # Create RAGAS metrics with specified embeddings
+            similarity_metric = answer_similarity.AnswerSimilarity(embeddings=embeddings)
+            relevancy_metric = answer_relevancy.AnswerRelevancy(embeddings=embeddings)
+            correctness_metric = answer_correctness.AnswerCorrectness(embeddings=embeddings)
             
-            logging.info(f"RAGAS evaluation scores - Similarity: {similarity}, Relevance: {relevance}, Correctness: {correctness}")
-            return {"status": "success", "scores": {"similarity": similarity, "relevance": relevance, "correctness": correctness}}
-            
-        except Exception as e:
-            logging.warning(f"Error using llama_index embeddings: {str(e)}")
-            logging.warning("Falling back to default RAGAS metrics")
-            
-            # Try with default RAGAS evaluation
+            # Build dataset
             data_sample = {
                 "question": [question],
                 "answer": [actual_response],
                 "reference": [expected_response],
-                "retrieved_contexts": [contexts]
+                "contexts": [contexts]
             }
             data_samples = Dataset.from_dict(data_sample)
             
-            similarity = answer_similarity.score(data_samples)[0]
-            relevance = answer_relevancy.score(data_samples)[0]
-            correctness = answer_correctness.score(data_samples)[0]
+            # Calculate scores
+            try:
+                similarity = similarity_metric.score(data_samples)[0]
+                relevance = relevancy_metric.score(data_samples)[0]
+                correctness = correctness_metric.score(data_samples)[0]
+                
+                logging.info(f"RAGAS evaluation scores - Similarity: {similarity}, Relevance: {relevance}, Correctness: {correctness}")
+                return {"status": "success", "scores": {"similarity": similarity, "relevance": relevance, "correctness": correctness}}
+            except Exception as e:
+                logging.warning(f"Error during RAGAS scoring: {str(e)}")
+                raise e
             
-            logging.info(f"RAGAS evaluation scores - Similarity: {similarity}, Relevance: {relevance}, Correctness: {correctness}")
-            return {"status": "success", "scores": {"similarity": similarity, "relevance": relevance, "correctness": correctness}}
+        except Exception as e:
+            logging.warning(f"Error setting up embeddings: {str(e)}")
+            logging.warning("Falling back to NLTK/scikit-learn approach")
+            raise e
             
     except Exception as e:
         logging.warning(f"Error using RAGAS for evaluation: {str(e)}")
