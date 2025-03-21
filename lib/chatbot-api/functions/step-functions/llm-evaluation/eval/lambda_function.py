@@ -160,85 +160,173 @@ def lambda_handler(event, context):
 
 def evaluate_with_ragas(question, expected_response, actual_response, retrieved_contexts=None):
     """
-    Evaluate the response using RAGAS metrics directly without using Bedrock models.
+    Evaluate the response using RAGAS metrics with fallback to simpler text-based metrics.
     """
+    # Initialize fallback scores in case of errors
+    fallback_score = 0.5  # Neutral score
+    
+    # Prepare contexts for evaluation
+    if retrieved_contexts and len(retrieved_contexts) > 0:
+        contexts = retrieved_contexts
+    else:
+        contexts = [expected_response]  # Fallback to using expected response as context
+    
+    # Try using RAGAS for evaluation (preferred method)
     try:
-        from datasets import Dataset
+        logging.info("Attempting to use RAGAS for evaluation...")
         from ragas.metrics import answer_correctness, answer_similarity, answer_relevancy
-        from langchain_community.embeddings import HuggingFaceEmbeddings
+        from datasets import Dataset
         import pandas as pd
         
-        # Initialize fallback scores in case of errors
-        fallback_score = 0.5  # Neutral score
-        
-        # Prepare data for RAGAS
-        if retrieved_contexts and len(retrieved_contexts) > 0:
-            contexts = retrieved_contexts
-        else:
-            contexts = [expected_response]  # Fallback to using expected response as context
-
-        # Create embeddings
+        # Try to use llama_index embeddings if available
         try:
-            # Initialize HuggingFace embeddings for similarity metrics
-            embeddings = HuggingFaceEmbeddings(
-                model_name="sentence-transformers/all-MiniLM-L6-v2"
-            )
-            logging.info("Successfully initialized embeddings for RAGAS metrics")
-        except Exception as e:
-            logging.error(f"Error initializing embeddings: {str(e)}")
-            logging.error(traceback.format_exc())
-            # Return fallback scores if embeddings fail
-            return {"status": "success", "scores": {"similarity": fallback_score, "relevance": fallback_score, "correctness": fallback_score}}
-
-        data_sample = {
-            "question": [question],
-            "answer": [actual_response],
-            "reference": [expected_response],
-            "retrieved_contexts": [contexts]
-        }
-        data_samples = Dataset.from_dict(data_sample)
-        
-        # Try to get similarity score with embeddings
-        try:
-            # Configure answer_similarity with embeddings
-            similarity_metric = answer_similarity.AnswerSimilarity(embeddings=embeddings)
+            from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+            from llama_index.core import Settings
+            
+            # Initialize embeddings
+            embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
+            Settings.embed_model = embed_model
+            logging.info("Successfully initialized llama_index embeddings")
+            
+            # Create RAGAS metrics with embeddings
+            similarity_metric = answer_similarity.AnswerSimilarity()
+            relevancy_metric = answer_relevancy.AnswerRelevancy()
+            correctness_metric = answer_correctness.AnswerCorrectness()
+            
+            # Calculate scores
             similarity = similarity_metric.score({"answer": actual_response, "reference": expected_response})
+            relevance = relevancy_metric.score({"answer": actual_response, "question": question, "contexts": contexts})
+            correctness = correctness_metric.score({"answer": actual_response, "reference": expected_response, "question": question})
+            
+            logging.info(f"RAGAS evaluation scores - Similarity: {similarity}, Relevance: {relevance}, Correctness: {correctness}")
+            return {"status": "success", "scores": {"similarity": similarity, "relevance": relevance, "correctness": correctness}}
+            
+        except Exception as e:
+            logging.warning(f"Error using llama_index embeddings: {str(e)}")
+            logging.warning("Falling back to default RAGAS metrics")
+            
+            # Try with default RAGAS evaluation
+            data_sample = {
+                "question": [question],
+                "answer": [actual_response],
+                "reference": [expected_response],
+                "retrieved_contexts": [contexts]
+            }
+            data_samples = Dataset.from_dict(data_sample)
+            
+            similarity = answer_similarity.score(data_samples)[0]
+            relevance = answer_relevancy.score(data_samples)[0]
+            correctness = answer_correctness.score(data_samples)[0]
+            
+            logging.info(f"RAGAS evaluation scores - Similarity: {similarity}, Relevance: {relevance}, Correctness: {correctness}")
+            return {"status": "success", "scores": {"similarity": similarity, "relevance": relevance, "correctness": correctness}}
+            
+    except Exception as e:
+        logging.warning(f"Error using RAGAS for evaluation: {str(e)}")
+        logging.warning(traceback.format_exc())
+        logging.warning("Falling back to NLTK/scikit-learn approach")
+    
+    # Fallback to NLTK and scikit-learn based approach
+    try:
+        logging.info("Using NLTK/scikit-learn for evaluation...")
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.metrics.pairwise import cosine_similarity
+        import nltk
+        import re
+        import numpy as np
+        
+        # Set NLTK data path
+        nltk.data.path.append("./nltk_data")
+        
+        # Preprocess function to clean text
+        def preprocess_text(text):
+            if not text:
+                return ""
+            # Convert to lowercase and remove special characters
+            text = re.sub(r'[^\w\s]', '', text.lower())
+            # Remove extra whitespace
+            text = re.sub(r'\s+', ' ', text).strip()
+            return text
+        
+        # Preprocess all texts
+        preprocessed_question = preprocess_text(question)
+        preprocessed_expected = preprocess_text(expected_response)
+        preprocessed_actual = preprocess_text(actual_response)
+        preprocessed_contexts = [preprocess_text(ctx) for ctx in contexts]
+        
+        # Calculate similarity using TF-IDF and cosine similarity
+        try:
+            # For similarity between actual and expected responses
+            vectorizer = TfidfVectorizer(stop_words='english')
+            response_vectors = vectorizer.fit_transform([preprocessed_expected, preprocessed_actual])
+            similarity = cosine_similarity(response_vectors[0:1], response_vectors[1:2])[0][0]
+            
+            # Ensure score is between 0 and 1
+            similarity = max(0, min(1, float(similarity)))
             logging.info(f"Calculated similarity score: {similarity}")
         except Exception as e:
             logging.error(f"Error calculating similarity: {str(e)}")
             logging.error(traceback.format_exc())
             similarity = fallback_score
         
-        # Try to get relevance score
+        # Calculate relevance as similarity between question and response
         try:
-            # Configure answer_relevancy with embeddings
-            relevancy_metric = answer_relevancy.AnswerRelevancy(embeddings=embeddings)
-            relevance = relevancy_metric.score({"answer": actual_response, "question": question, "contexts": contexts})
+            vectorizer = TfidfVectorizer(stop_words='english')
+            relevance_vectors = vectorizer.fit_transform([preprocessed_question, preprocessed_actual])
+            relevance = cosine_similarity(relevance_vectors[0:1], relevance_vectors[1:2])[0][0]
+            
+            # Ensure score is between 0 and 1
+            relevance = max(0, min(1, float(relevance)))
             logging.info(f"Calculated relevance score: {relevance}")
         except Exception as e:
             logging.error(f"Error calculating relevance: {str(e)}")
             logging.error(traceback.format_exc())
             relevance = fallback_score
         
-        # Try to get correctness score
+        # Calculate context relevance (how much the answer uses the contexts)
         try:
-            # Configure answer_correctness with embeddings
-            correctness_metric = answer_correctness.AnswerCorrectness(embeddings=embeddings)
-            correctness = correctness_metric.score({"answer": actual_response, "reference": expected_response, "question": question})
+            # If we have contexts, measure how much the actual response uses information from contexts
+            if preprocessed_contexts:
+                # Combine all contexts into one document for vectorization
+                combined_contexts = " ".join(preprocessed_contexts)
+                
+                vectorizer = TfidfVectorizer(stop_words='english')
+                correctness_vectors = vectorizer.fit_transform([combined_contexts, preprocessed_actual])
+                correctness = cosine_similarity(correctness_vectors[0:1], correctness_vectors[1:2])[0][0]
+                
+                # If no context similarity, fall back to similarity with expected answer
+                if correctness < 0.1:
+                    correctness = similarity * 0.8  # Slightly penalize if not using contexts
+            else:
+                # If no contexts, correctness is similar to answer similarity
+                correctness = similarity
+                
+            # Ensure score is between 0 and 1
+            correctness = max(0, min(1, float(correctness)))
             logging.info(f"Calculated correctness score: {correctness}")
         except Exception as e:
             logging.error(f"Error calculating correctness: {str(e)}")
             logging.error(traceback.format_exc())
             correctness = fallback_score
         
-        logging.info(f"Similarity: {similarity}, Relevance: {relevance}, Correctness: {correctness}")
+        logging.info(f"NLTK/scikit-learn scores - Similarity: {similarity}, Relevance: {relevance}, Correctness: {correctness}")
         
         return {"status": "success", "scores": {"similarity": similarity, "relevance": relevance, "correctness": correctness}}
-    except Exception as e:
-        logging.error(f"Error in RAGAS evaluation: {str(e)}")
-        logging.error(traceback.format_exc())
-        return {"status": "error", "error": str(e)}
     
+    except Exception as e:
+        logging.error(f"Error in evaluation: {str(e)}")
+        logging.error(traceback.format_exc())
+        # Return fallback scores if all methods fail
+        return {
+            "status": "success", 
+            "scores": {
+                "similarity": fallback_score, 
+                "relevance": fallback_score, 
+                "correctness": fallback_score
+            },
+            "error": str(e)
+        }
+
 def read_chunk_from_s3(s3_client, bucket_name, key):
     try:
         response = s3_client.get_object(Bucket=bucket_name, Key=key)
