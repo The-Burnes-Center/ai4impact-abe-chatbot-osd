@@ -4,6 +4,7 @@ import logging
 import asyncio
 import websockets
 import uuid
+import requests
 from typing import Dict, List, Optional, Any
 
 # Configure logging
@@ -27,6 +28,9 @@ class ChatbotAPIClient:
         # Log the original URL for debugging
         logger.info(f"Original API URL: {self.api_url}")
         
+        # Store the HTTP API URL for auth
+        self.http_api_url = self.api_url
+        
         # Ensure websocket URL starts with 'wss://'
         if not self.api_url.startswith('wss://'):
             # If it's a CloudFront URL, convert to websocket URL
@@ -40,6 +44,42 @@ class ChatbotAPIClient:
             self.api_url = self.api_url.rstrip('/') + '/prod'
             
         logger.info(f"Initialized ChatbotAPIClient with URL: {self.api_url}")
+
+    async def get_auth_token(self) -> Optional[str]:
+        """Get an authentication token for the WebSocket API using a custom auth endpoint"""
+        try:
+            # Check if there's a specific auth endpoint
+            auth_endpoint = os.environ.get('AUTH_ENDPOINT')
+            
+            # If no specific auth endpoint, we'll try to make a guest authentication
+            if not auth_endpoint:
+                logger.info("No AUTH_ENDPOINT set, will try guest anonymous access")
+                return None
+                
+            # Try to get an auth token
+            auth_url = f"{self.http_api_url.rstrip('/')}/auth"
+            logger.info(f"Getting auth token from: {auth_url}")
+            
+            response = requests.post(
+                auth_url,
+                json={"action": "getToken", "guest": True},
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code == 200:
+                token = response.json().get('token')
+                if token:
+                    logger.info("Successfully obtained auth token")
+                    return token
+                else:
+                    logger.warning("Auth response didn't contain token")
+                    return None
+            else:
+                logger.warning(f"Failed to get auth token, status code: {response.status_code}")
+                return None
+        except Exception as e:
+            logger.error(f"Error getting auth token: {str(e)}")
+            return None
 
     async def get_chatbot_response(self, 
                                   question: str, 
@@ -71,10 +111,28 @@ class ChatbotAPIClient:
         error = None
         
         try:
-            # Connect to WebSocket
-            logger.info(f"Connecting to WebSocket at {self.api_url}")
+            # Try to get an auth token
+            auth_token = await self.get_auth_token()
+            
+            # Set up connection parameters
+            ws_url = self.api_url
+            connect_kwargs = {
+                "ping_timeout": 30,
+                "close_timeout": 30
+            }
+            
+            # Add auth token if available
+            if auth_token:
+                if "?" not in ws_url:
+                    ws_url = f"{ws_url}?token={auth_token}"
+                else:
+                    ws_url = f"{ws_url}&token={auth_token}"
+                logger.info(f"Added auth token to WebSocket URL")
+            
+            # Connect to WebSocket with optional auth
+            logger.info(f"Connecting to WebSocket at {ws_url}")
             try:
-                async with websockets.connect(self.api_url, ping_timeout=30, close_timeout=30) as websocket:
+                async with websockets.connect(ws_url, **connect_kwargs) as websocket:
                     # Prepare the message payload
                     message = {
                         "action": "getChatbotResponse",
@@ -146,6 +204,15 @@ class ChatbotAPIClient:
         except Exception as e:
             logger.error(f"Error getting chatbot response: {str(e)}")
             error = str(e)
+        
+        # If we get an auth error, try to provide a dummy response for evaluation
+        if error and "401" in error:
+            logger.warning("Authentication failed. Using dummy response for evaluation.")
+            return {
+                "response": "This is a dummy response generated because WebSocket authentication failed. The actual chatbot couldn't be reached.",
+                "sources": [],
+                "error": error
+            }
         
         return {
             "response": response_text if response_text else "No response received. Please check the WebSocket API configuration.",

@@ -1,5 +1,9 @@
 FROM public.ecr.aws/lambda/python:3.12
 
+# Install system dependencies for sentence-transformers
+RUN yum update -y && \
+    yum install -y gcc g++ make cmake && \
+    yum clean all
 
 # Copy function code
 COPY lambda_function.py ${LAMBDA_TASK_ROOT}

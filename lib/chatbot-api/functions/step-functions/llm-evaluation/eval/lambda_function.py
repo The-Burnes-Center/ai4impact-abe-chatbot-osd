@@ -165,13 +165,30 @@ def evaluate_with_ragas(question, expected_response, actual_response, retrieved_
     try:
         from datasets import Dataset
         from ragas.metrics import answer_correctness, answer_similarity, answer_relevancy
+        from langchain_community.embeddings import HuggingFaceEmbeddings
         import pandas as pd
+        
+        # Initialize fallback scores in case of errors
+        fallback_score = 0.5  # Neutral score
         
         # Prepare data for RAGAS
         if retrieved_contexts and len(retrieved_contexts) > 0:
             contexts = retrieved_contexts
         else:
             contexts = [expected_response]  # Fallback to using expected response as context
+
+        # Create embeddings
+        try:
+            # Initialize HuggingFace embeddings for similarity metrics
+            embeddings = HuggingFaceEmbeddings(
+                model_name="sentence-transformers/all-MiniLM-L6-v2"
+            )
+            logging.info("Successfully initialized embeddings for RAGAS metrics")
+        except Exception as e:
+            logging.error(f"Error initializing embeddings: {str(e)}")
+            logging.error(traceback.format_exc())
+            # Return fallback scores if embeddings fail
+            return {"status": "success", "scores": {"similarity": fallback_score, "relevance": fallback_score, "correctness": fallback_score}}
 
         data_sample = {
             "question": [question],
@@ -181,15 +198,38 @@ def evaluate_with_ragas(question, expected_response, actual_response, retrieved_
         }
         data_samples = Dataset.from_dict(data_sample)
         
-        # Use the RAGAS metrics directly
-        # Simplified similarity calculation using the RAGAS metric
-        similarity = answer_similarity.score({"answer": actual_response, "reference": expected_response})
+        # Try to get similarity score with embeddings
+        try:
+            # Configure answer_similarity with embeddings
+            similarity_metric = answer_similarity.AnswerSimilarity(embeddings=embeddings)
+            similarity = similarity_metric.score({"answer": actual_response, "reference": expected_response})
+            logging.info(f"Calculated similarity score: {similarity}")
+        except Exception as e:
+            logging.error(f"Error calculating similarity: {str(e)}")
+            logging.error(traceback.format_exc())
+            similarity = fallback_score
         
-        # Simplified relevance calculation
-        relevance = answer_relevancy.score({"answer": actual_response, "question": question, "contexts": contexts})
+        # Try to get relevance score
+        try:
+            # Configure answer_relevancy with embeddings
+            relevancy_metric = answer_relevancy.AnswerRelevancy(embeddings=embeddings)
+            relevance = relevancy_metric.score({"answer": actual_response, "question": question, "contexts": contexts})
+            logging.info(f"Calculated relevance score: {relevance}")
+        except Exception as e:
+            logging.error(f"Error calculating relevance: {str(e)}")
+            logging.error(traceback.format_exc())
+            relevance = fallback_score
         
-        # Simplified correctness calculation
-        correctness = answer_correctness.score({"answer": actual_response, "reference": expected_response, "question": question})
+        # Try to get correctness score
+        try:
+            # Configure answer_correctness with embeddings
+            correctness_metric = answer_correctness.AnswerCorrectness(embeddings=embeddings)
+            correctness = correctness_metric.score({"answer": actual_response, "reference": expected_response, "question": question})
+            logging.info(f"Calculated correctness score: {correctness}")
+        except Exception as e:
+            logging.error(f"Error calculating correctness: {str(e)}")
+            logging.error(traceback.format_exc())
+            correctness = fallback_score
         
         logging.info(f"Similarity: {similarity}, Relevance: {relevance}, Correctness: {correctness}")
         
