@@ -107,10 +107,8 @@ export class StepFunctionsStack extends Construct {
 
         const generateResponseFunction = new lambda.Function(this, 'GenerateResponseFunction', {
             runtime: lambda.Runtime.NODEJS_20_X,
-            code: lambda.Code.fromAsset(path.join(__dirname, '..'), {
-                exclude: ['*', '!websocket-chat/models/**', '!step-functions/llm-evaluation/generate-response/**', '!websocket-chat/prompt.mjs'],
-            }),
-            handler: 'step-functions/llm-evaluation/generate-response/index.handler', 
+            code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/generate-response')),
+            handler: 'index.handler', 
             environment : {
                 'KB_ID' : props.knowledgeBase.attrKnowledgeBaseId,
                 'METADATA_RETRIEVAL_FUNCTION': process.env.METADATA_RETRIEVAL_FUNCTION || ''
