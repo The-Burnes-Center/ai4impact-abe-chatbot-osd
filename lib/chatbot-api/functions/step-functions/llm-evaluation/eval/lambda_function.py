@@ -51,6 +51,12 @@ def lambda_handler(event, context):
         total_relevance = 0
         total_correctness = 0
 
+        # Adding retrieval metrics
+        total_context_precision = 0
+        total_context_recall = 0
+        total_response_relevancy = 0
+        total_faithfulness = 0
+
         # Process each test case
         for idx, test_case in enumerate(test_cases):
             question = test_case['question']
@@ -71,7 +77,15 @@ def lambda_handler(event, context):
                 similarity = response['scores']['similarity']
                 relevance = response['scores']['relevance']
                 correctness = response['scores']['correctness']
+                
+                # Get retrieval metrics
+                context_precision = response['scores'].get('context_precision', 0)
+                context_recall = response['scores'].get('context_recall', 0)
+                response_relevancy = response['scores'].get('response_relevancy', 0)
+                faithfulness = response['scores'].get('faithfulness', 0)
+                
                 logging.info(f"Evaluation scores - Similarity: {similarity:.4f}, Relevance: {relevance:.4f}, Correctness: {correctness:.4f}")
+                logging.info(f"Retrieval scores - Context Precision: {context_precision:.4f}, Context Recall: {context_recall:.4f}, Response Relevancy: {response_relevancy:.4f}, Faithfulness: {faithfulness:.4f}")
 
             # Collect results
             detailed_results.append({
@@ -81,11 +95,20 @@ def lambda_handler(event, context):
                 'similarity': similarity,
                 'relevance': relevance,
                 'correctness': correctness,
+                'context_precision': context_precision,
+                'context_recall': context_recall,
+                'response_relevancy': response_relevancy,
+                'faithfulness': faithfulness,
+                'retrieved_context': response.get('retrieved_context', '')
             })
 
             total_similarity += similarity
             total_relevance += relevance
             total_correctness += correctness
+            total_context_precision += context_precision
+            total_context_recall += context_recall
+            total_response_relevancy += response_relevancy
+            total_faithfulness += faithfulness
 
         partial_results = {
             "detailed_results": detailed_results,
@@ -93,6 +116,10 @@ def lambda_handler(event, context):
             "total_relevance": total_relevance,
             "total_correctness": total_correctness, 
             "num_test_cases": len(detailed_results),
+            "total_context_precision": total_context_precision,
+            "total_context_recall": total_context_recall,
+            "total_response_relevancy": total_response_relevancy,
+            "total_faithfulness": total_faithfulness
         }
         
         # Write partial_results to S3
@@ -151,15 +178,19 @@ async def process_all_test_cases(test_cases, lambda_client):
     tasks = [process_test_case(lambda_client, test_case) for test_case in test_cases]
     return await asyncio.gather(*tasks)
 
-def invoke_generate_response_lambda(lambda_client, question):
+def invoke_generate_response_lambda(lambda_client, question, get_context_only=False):
     try:
         logging.info(f"Invoking generate-response Lambda for question: {question[:50]}...")
         
         # Call the generate-response Lambda function with authorization
+        payload = {'userMessage': question, 'chatHistory': []}
+        if get_context_only:
+            payload['get_context_only'] = True
+            
         response = lambda_client.invoke(
             FunctionName=GENERATE_RESPONSE_LAMBDA_NAME,
             InvocationType='RequestResponse',
-            Payload=json.dumps({'userMessage': question, 'chatHistory': []}),
+            Payload=json.dumps(payload),
         )
         
         logging.info("Response received from Lambda")
@@ -172,12 +203,15 @@ def invoke_generate_response_lambda(lambda_client, question):
             return ""
             
         body = json.loads(result.get('body', '{}'))
-        response_text = body.get('modelResponse', '')
         
-        # Log response length for verification
-        logging.info(f"Received response of length: {len(response_text)} characters")
-        
-        return response_text
+        if get_context_only:
+            context = body.get('context', '')
+            logging.info(f"Received context of length: {len(context)} characters")
+            return context
+        else:
+            response_text = body.get('modelResponse', '')
+            logging.info(f"Received response of length: {len(response_text)} characters")
+            return response_text
     except Exception as e:
         logging.error(f"Error invoking generateResponseLambda: {str(e)}")
         return ""
@@ -186,15 +220,20 @@ def evaluate_with_ragas(question, expected_response, actual_response):
     try:
         from datasets import Dataset
         from ragas import evaluate
-        from ragas.metrics import answer_correctness, answer_similarity, answer_relevancy
-        metrics = [answer_correctness, answer_similarity, answer_relevancy]
+        from ragas.metrics import answer_correctness, answer_similarity, answer_relevancy, context_precision, context_recall, faithfulness
 
+        # Include all the metrics
+        metrics = [answer_correctness, answer_similarity, answer_relevancy, context_precision, context_recall, faithfulness]
+
+        # Get the context from the generate_response lambda
+        retrieved_context = invoke_generate_response_lambda(lambda_client, question, get_context_only=True)
+        
         # Prepare data for RAGAS
         data_sample = {
             "question": [question],
             "answer": [actual_response],
             "reference": [expected_response],
-            "retrieved_contexts": [[expected_response]]
+            "retrieved_contexts": [[retrieved_context]]
         }
         data_samples = Dataset.from_dict(data_sample)
 
@@ -218,7 +257,19 @@ def evaluate_with_ragas(question, expected_response, actual_response):
             raise ValueError("RAGAS evaluation returned NaN scores")
         
         logging.info("RAGAS evaluation completed successfully")
-        return {"status": "success", "scores": {"similarity": scores['semantic_similarity'], "relevance": scores['answer_relevancy'], "correctness": scores['answer_correctness']}}
+        return {
+            "status": "success", 
+            "scores": {
+                "similarity": scores['semantic_similarity'], 
+                "relevance": scores['answer_relevancy'], 
+                "correctness": scores['answer_correctness'],
+                "context_precision": scores.get('context_precision', 0),
+                "context_recall": scores.get('context_recall', 0),
+                "response_relevancy": scores.get('answer_relevancy', 0),
+                "faithfulness": scores.get('faithfulness', 0)
+            },
+            "retrieved_context": retrieved_context
+        }
     except Exception as e:
         logging.error(f"Error in RAGAS evaluation: {str(e)}")
         return {"status": "error", "error": str(e)}

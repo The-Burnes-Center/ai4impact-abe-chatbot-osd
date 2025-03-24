@@ -272,6 +272,7 @@ export class StepFunctionsStack extends Construct {
             'evaluation_id.$': '$.evaluation_id',
             'evaluation_name.$': '$.evaluation_name',
             'test_cases_key.$': '$.test_cases_key',
+            'perform_retrieval_evaluation': true
         }),
         outputPath: '$.Payload',
         });
@@ -288,6 +289,10 @@ export class StepFunctionsStack extends Construct {
             'detailed_results_s3_key.$': '$.detailed_results_s3_key',
             // 'detailed_results.$': '$.detailed_results',
             'test_cases_key.$': '$.test_cases_key',
+            'average_context_precision.$': '$.average_context_precision',
+            'average_context_recall.$': '$.average_context_recall',
+            'average_response_relevancy.$': '$.average_response_relevancy',
+            'average_faithfulness.$': '$.average_faithfulness'
         }),
         outputPath: '$.Payload',
         });
