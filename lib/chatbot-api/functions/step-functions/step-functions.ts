@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as path from 'path';
+import * as process from 'process';
 
 // Import Lambda L2 construct
 import * as lambda from 'aws-cdk-lib/aws-lambda';
@@ -106,14 +107,18 @@ export class StepFunctionsStack extends Construct {
 
         const generateResponseFunction = new lambda.Function(this, 'GenerateResponseFunction', {
             runtime: lambda.Runtime.NODEJS_20_X,
-            code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/generate-response')), 
-            handler: 'index.handler', 
+            code: lambda.Code.fromAsset(path.join(__dirname, '..'), {
+                exclude: ['*', '!websocket-chat/models/**', '!step-functions/llm-evaluation/generate-response/**'],
+            }),
+            handler: 'step-functions/llm-evaluation/generate-response/index.handler', 
             environment : {
                 "PROMPT" : `You are a helpful AI chatbot that will answer questions based on your knowledge. 
                 You have access to a search tool that you will use to look up answers to questions.`,
                 'KB_ID' : props.knowledgeBase.attrKnowledgeBaseId,
-              },
-            timeout: cdk.Duration.seconds(30)
+                'SYS_PROMPT_HANDLER': process.env.SYS_PROMPT_HANDLER || '',
+                'AWS_REGION': process.env.AWS_REGION || 'us-east-1'
+            },
+            timeout: cdk.Duration.seconds(60)
         });
         generateResponseFunction.addToRolePolicy(new iam.PolicyStatement({
             effect: iam.Effect.ALLOW,
@@ -136,11 +141,14 @@ export class StepFunctionsStack extends Construct {
         const llmEvalFunction = new lambda.DockerImageFunction(this, 'LlmEvaluationFunction', {
             code: lambda.DockerImageCode.fromImageAsset(path.join(__dirname, 'llm-evaluation/eval'), {
                 platform: Platform.LINUX_AMD64, // Specify the correct platform
-              }),
+            }),
             environment: {
                 "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,
                 "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName,
-                "CHATBOT_API_URL" : props.wsEndpoint || "https://dcf43zj2k8alr.cloudfront.net"
+                "CHATBOT_API_URL" : props.wsEndpoint || "https://dcf43zj2k8alr.cloudfront.net",
+                "GENERATE_RESPONSE_LAMBDA_NAME": generateResponseFunction.functionName,
+                "BEDROCK_MODEL_ID": "anthropic.claude-3-sonnet-20240229-v1:0",
+                "AWS_REGION": process.env.AWS_REGION || 'us-east-1'
             },
             timeout: cdk.Duration.minutes(15),
             memorySize: 10240
