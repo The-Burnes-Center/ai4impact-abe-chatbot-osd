@@ -14,7 +14,6 @@ RUN python -m nltk.downloader -d ${LAMBDA_TASK_ROOT}/nltk_data punkt stopwords
 
 # Set default environment variables for authentication fallbacks
 ENV AUTH_ENDPOINT=""
-ENV USE_DUMMY_RESPONSES_ON_401="true"
 
 # Set the CMD to your handler (function name)
 CMD ["lambda_function.lambda_handler"]
