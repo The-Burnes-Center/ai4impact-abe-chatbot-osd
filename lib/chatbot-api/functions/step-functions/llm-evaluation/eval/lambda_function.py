@@ -33,9 +33,8 @@ TEST_CASES_BUCKET = os.environ['TEST_CASES_BUCKET']
 EVAL_RESULTS_BUCKET = os.environ.get('EVAL_RESULTS_BUCKET', TEST_CASES_BUCKET)
 
 # Initialize clients outside the loop with proper configuration
-region_name = os.environ.get('AWS_REGION', 'us-east-1')
-s3_client = boto3.client('s3', region_name=region_name)
-lambda_client = boto3.client('lambda', region_name=region_name)
+s3_client = boto3.client('s3')
+lambda_client = boto3.client('lambda')
 
 def lambda_handler(event, context): 
     try:  
@@ -200,14 +199,11 @@ def evaluate_with_ragas(question, expected_response, actual_response):
         data_samples = Dataset.from_dict(data_sample)
 
         # Load LLM and embeddings with proper credentials
-        region_name = os.environ.get('AWS_REGION', 'us-east-1')
         bedrock_model = BedrockChat(
-            region_name=region_name, 
-            endpoint_url=f"https://bedrock-runtime.{region_name}.amazonaws.com", 
+            endpoint_url="https://bedrock-runtime.us-east-1.amazonaws.com", 
             model_id=BEDROCK_MODEL_ID
         )
         bedrock_embeddings = BedrockEmbeddings(
-            region_name=region_name, 
             model_id='amazon.titan-embed-text-v1'
         )
 

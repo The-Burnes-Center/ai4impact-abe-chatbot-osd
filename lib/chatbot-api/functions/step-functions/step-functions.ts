@@ -108,15 +108,12 @@ export class StepFunctionsStack extends Construct {
         const generateResponseFunction = new lambda.Function(this, 'GenerateResponseFunction', {
             runtime: lambda.Runtime.NODEJS_20_X,
             code: lambda.Code.fromAsset(path.join(__dirname, '..'), {
-                exclude: ['*', '!websocket-chat/models/**', '!step-functions/llm-evaluation/generate-response/**'],
+                exclude: ['*', '!websocket-chat/models/**', '!step-functions/llm-evaluation/generate-response/**', '!websocket-chat/prompt.mjs'],
             }),
             handler: 'step-functions/llm-evaluation/generate-response/index.handler', 
             environment : {
-                "PROMPT" : `You are a helpful AI chatbot that will answer questions based on your knowledge. 
-                You have access to a search tool that you will use to look up answers to questions.`,
                 'KB_ID' : props.knowledgeBase.attrKnowledgeBaseId,
-                'SYS_PROMPT_HANDLER': process.env.SYS_PROMPT_HANDLER || '',
-                'AWS_REGION': process.env.AWS_REGION || 'us-east-1'
+                'METADATA_RETRIEVAL_FUNCTION': process.env.METADATA_RETRIEVAL_FUNCTION || ''
             },
             timeout: cdk.Duration.seconds(60)
         });
@@ -147,8 +144,7 @@ export class StepFunctionsStack extends Construct {
                 "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName,
                 "CHATBOT_API_URL" : props.wsEndpoint || "https://dcf43zj2k8alr.cloudfront.net",
                 "GENERATE_RESPONSE_LAMBDA_NAME": generateResponseFunction.functionName,
-                "BEDROCK_MODEL_ID": "anthropic.claude-3-sonnet-20240229-v1:0",
-                "AWS_REGION": process.env.AWS_REGION || 'us-east-1'
+                "BEDROCK_MODEL_ID": "anthropic.claude-3-sonnet-20240229-v1:0"
             },
             timeout: cdk.Duration.minutes(15),
             memorySize: 10240
