@@ -66,6 +66,7 @@ def lambda_handler(event, context):
 
             # Invoke generateResponseLambda to get the actual response
             actual_response = invoke_generate_response_lambda(lambda_client, question)
+            logging.info(f"Chatbot Response for question '{question}':\n{actual_response}")
 
             # Evaluate the response using RAGAS
             logging.info(f"Evaluating response for test case {idx+1}")
