@@ -145,7 +145,7 @@ def read_detailed_results_from_s3(detailed_results_s3_key):
 def lambda_handler(event, context):
     # Get headers from request or use default
     headers = {
-        'Access-Control-Allow-Origin': 'https://dcf43zj2k8alr.cloudfront.net',
+        'Access-Control-Allow-Origin': '*',  # Updated to allow all origins for testing
         'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
         'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
         'Access-Control-Allow-Credentials': 'true'
@@ -158,58 +158,111 @@ def lambda_handler(event, context):
             'headers': headers,
             'body': json.dumps({'message': 'CORS preflight request successful'})
         }
-        
-    data = json.loads(event['body']) if 'body' in event else event
-    evaluation_id = data.get('evaluation_id')
-    evaluation_name = data.get('evaluation_name', f"Evaluation on {str(datetime.now())}")
-    average_similarity = data.get('average_similarity')
-    average_relevance = data.get('average_relevance')
-    average_correctness = data.get('average_correctness')
-    detailed_results_s3_key = data.get('detailed_results_s3_key')
-    total_questions = data.get('total_questions')
-    test_cases_key = data.get('test_cases_key')
-    
-    # Get RAG metrics if available
-    average_context_precision = data.get('average_context_precision')
-    average_context_recall = data.get('average_context_recall')
-    average_response_relevancy = data.get('average_response_relevancy')
-    average_faithfulness = data.get('average_faithfulness')
-
-    vals = [average_similarity, average_relevance, average_correctness, total_questions, detailed_results_s3_key, test_cases_key] 
-    flags = [elem if elem != 0 else 1 for elem in vals]
-    if not all(flags):        
-        return {
-            'statusCode': 400,
-            'headers': headers,
-            'body': json.dumps('Missing required parameters for adding evaluation.')
-        }
     
     try:
-        detailed_results = read_detailed_results_from_s3(detailed_results_s3_key)
-        return add_evaluation(
-            evaluation_id,
-            evaluation_name,
-            average_similarity,
-            average_relevance,
-            average_correctness,
-            total_questions,
-            detailed_results, 
-            test_cases_key,
-            average_context_precision,
-            average_context_recall,
-            average_response_relevancy,
-            average_faithfulness
-        )
+        # Extract data from event
+        if isinstance(event, dict) and 'body' in event and event['body']:
+            data = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
+        else:
+            data = event
+        
+        # Log received data
+        print(f"Received data: {json.dumps(data)}")
+            
+        evaluation_id = data.get('evaluation_id')
+        if not evaluation_id:
+            return {
+                'statusCode': 400,
+                'headers': headers,
+                'body': json.dumps({'message': 'Missing evaluation_id'})
+            }
+            
+        # Check if we received an error status from previous step
+        if data.get('statusCode') == 500:
+            return {
+                'statusCode': 500,
+                'headers': headers,
+                'body': json.dumps({
+                    'message': 'Error received from previous step',
+                    'error': data.get('error', 'Unknown error'),
+                    'evaluation_id': evaluation_id
+                })
+            }
+        
+        evaluation_name = data.get('evaluation_name', f"Evaluation on {str(datetime.now())}")
+        average_similarity = data.get('average_similarity', 0)
+        average_relevance = data.get('average_relevance', 0)
+        average_correctness = data.get('average_correctness', 0)
+        detailed_results_s3_key = data.get('detailed_results_s3_key')
+        total_questions = data.get('total_questions', 0)
+        test_cases_key = data.get('test_cases_key')
+        
+        # Get RAG metrics if available
+        average_context_precision = data.get('average_context_precision', 0)
+        average_context_recall = data.get('average_context_recall', 0)
+        average_response_relevancy = data.get('average_response_relevancy', 0)
+        average_faithfulness = data.get('average_faithfulness', 0)
+
+        # Validate required fields
+        required_fields = [evaluation_id, detailed_results_s3_key, test_cases_key]
+        if not all(required_fields):
+            missing_fields = [field for field, value in {
+                'evaluation_id': evaluation_id,
+                'detailed_results_s3_key': detailed_results_s3_key,
+                'test_cases_key': test_cases_key
+            }.items() if not value]
+            
+            return {
+                'statusCode': 400,
+                'headers': headers,
+                'body': json.dumps({
+                    'message': 'Missing required parameters for adding evaluation',
+                    'missing_fields': missing_fields
+                })
+            }
+        
+        try:
+            # Read detailed results
+            detailed_results = read_detailed_results_from_s3(detailed_results_s3_key)
+            
+            # Add evaluation to DynamoDB
+            response = add_evaluation(
+                evaluation_id,
+                evaluation_name,
+                average_similarity,
+                average_relevance,
+                average_correctness,
+                total_questions,
+                detailed_results, 
+                test_cases_key,
+                average_context_precision,
+                average_context_recall,
+                average_response_relevancy,
+                average_faithfulness
+            )
+            
+            return response
+        except Exception as e:
+            print(f"Error processing evaluation results: {str(e)}")
+            return {
+                'statusCode': 500,
+                'headers': headers,
+                'body': json.dumps({
+                    'message': 'Failed to process evaluation results',
+                    'error': str(e),
+                    'evaluation_id': evaluation_id,
+                    'detailed_results_s3_key': detailed_results_s3_key,
+                    'results_bucket': EVAL_RESULTS_BUCKET,
+                    'test_cases_bucket': TEST_CASES_BUCKET
+                })
+            }
     except Exception as e:
+        print(f"Unhandled exception in lambda_handler: {str(e)}")
         return {
             'statusCode': 500,
             'headers': headers,
             'body': json.dumps({
-                'message': 'Failed to process evaluation results',
-                'error': str(e),
-                'evaluation_id': evaluation_id,
-                'detailed_results_s3_key': detailed_results_s3_key,
-                'results_bucket': EVAL_RESULTS_BUCKET,
-                'test_cases_bucket': TEST_CASES_BUCKET
+                'message': 'Unhandled exception in lambda handler',
+                'error': str(e)
             })
         }

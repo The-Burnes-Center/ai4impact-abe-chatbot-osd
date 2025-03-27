@@ -33,7 +33,14 @@ def lambda_handler(event, context):
     logging.info(f"Lambda invoked with event: {json.dumps(event)}")
     
     try:
-        partial_result_keys = [pr['partial_result_key'] for pr in event['partial_result_keys']]
+        # Extract partial result keys - handle both array of strings and array of objects
+        partial_result_keys = []
+        for pr in event.get('partial_result_keys', []):
+            if isinstance(pr, dict) and 'partial_result_key' in pr:
+                partial_result_keys.append(pr['partial_result_key'])
+            else:
+                partial_result_keys.append(pr)
+                
         evaluation_id = event['evaluation_id']
         test_cases_key = event['test_cases_key']
         evaluation_name = event.get('evaluation_name', f"Evaluation on {str(datetime.now())}")
@@ -43,6 +50,8 @@ def lambda_handler(event, context):
         
         # Check for retrieval-based evaluation flag
         perform_retrieval_evaluation = event.get('perform_retrieval_evaluation', False)
+        
+        logging.info(f"Processing {len(partial_result_keys)} partial results for evaluation {evaluation_id}")
         
         # If either live or retrieval evaluation is requested, we'll need to query the chatbot
         need_chatbot_query = perform_live_evaluation or perform_retrieval_evaluation
@@ -226,35 +235,34 @@ def lambda_handler(event, context):
         result = {
             'evaluation_id': evaluation_id, 
             'evaluation_name': evaluation_name,
-            'average_similarity': average_similarity,
-            'average_relevance': average_relevance,
-            'average_correctness': average_correctness,
+            'average_similarity': round(average_similarity, 4),
+            'average_relevance': round(average_relevance, 4),
+            'average_correctness': round(average_correctness, 4),
             'total_questions': total_questions,
             'detailed_results_s3_key': detailed_results_s3_key,
             'test_cases_key': test_cases_key
         }
         
         # Add retrieval metrics 
-        if perform_retrieval_evaluation or any(partial_result.get('total_context_precision', 0) > 0 for partial_result in (partial_results or [])):
-            result.update({
-                'average_context_precision': average_context_precision,
-                'average_context_recall': average_context_recall,
-                'average_response_relevancy': average_response_relevancy,
-                'average_faithfulness': average_faithfulness
-            })
-            
+        result.update({
+            'average_context_precision': round(average_context_precision, 4),
+            'average_context_recall': round(average_context_recall, 4),
+            'average_response_relevancy': round(average_response_relevancy, 4),
+            'average_faithfulness': round(average_faithfulness, 4)
+        })
+        
+        logging.info(f"Aggregation complete for evaluation {evaluation_id}. Results: {json.dumps(result)}")
+        
         return result
     except Exception as e:
         error_msg = f"Unhandled exception in lambda_handler: {str(e)}"
         logging.error(error_msg)
         
-        # Return a proper error response
+        # Return a structured error that preserves the evaluation ID
         return {
-            "statusCode": 500,
-            "body": json.dumps({
-                "error": error_msg,
-                "evaluation_id": event.get('evaluation_id', 'unknown')
-            })
+            'statusCode': 500,
+            'evaluation_id': event.get('evaluation_id', 'unknown'),
+            'error': str(e)
         }
 
 def read_partial_result_from_s3(s3_client, bucket_name, key):

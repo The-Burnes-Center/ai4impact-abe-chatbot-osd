@@ -64,52 +64,56 @@ def lambda_handler(event, context):
             
             logging.info(f"Processing test case {idx+1}/{len(test_cases)}: {question[:50]}...")
 
-            # Invoke generateResponseLambda to get the actual response
-            actual_response = invoke_generate_response_lambda(lambda_client, question)
-            logging.info(f"Chatbot Response for question '{question}':\n{actual_response}")
+            try:
+                # Invoke generateResponseLambda to get the actual response
+                actual_response = invoke_generate_response_lambda(lambda_client, question)
+                logging.info(f"Chatbot Response for question '{question}':\n{actual_response}")
 
-            # Evaluate the response using RAGAS
-            logging.info(f"Evaluating response for test case {idx+1}")
-            response = evaluate_with_ragas(question, expected_response, actual_response)
-            if response['status'] == 'error':
-                logging.warning(f"Error evaluating test case with question: {question[:50]}... - {response.get('error', 'Unknown error')}")
-                continue
-            else:
-                similarity = response['scores']['similarity']
-                relevance = response['scores']['relevance']
-                correctness = response['scores']['correctness']
-                
-                # Get retrieval metrics
-                context_precision = response['scores'].get('context_precision', 0)
-                context_recall = response['scores'].get('context_recall', 0)
-                response_relevancy = response['scores'].get('response_relevancy', 0)
-                faithfulness = response['scores'].get('faithfulness', 0)
-                
-                logging.info(f"Evaluation scores - Similarity: {similarity:.4f}, Relevance: {relevance:.4f}, Correctness: {correctness:.4f}")
-                logging.info(f"Retrieval scores - Context Precision: {context_precision:.4f}, Context Recall: {context_recall:.4f}, Response Relevancy: {response_relevancy:.4f}, Faithfulness: {faithfulness:.4f}")
+                # Evaluate the response using RAGAS
+                logging.info(f"Evaluating response for test case {idx+1}")
+                response = evaluate_with_ragas(question, expected_response, actual_response)
+                if response['status'] == 'error':
+                    logging.warning(f"Error evaluating test case with question: {question[:50]}... - {response.get('error', 'Unknown error')}")
+                    continue
+                else:
+                    similarity = response['scores']['similarity']
+                    relevance = response['scores']['relevance']
+                    correctness = response['scores']['correctness']
+                    
+                    # Get retrieval metrics
+                    context_precision = response['scores'].get('context_precision', 0)
+                    context_recall = response['scores'].get('context_recall', 0)
+                    response_relevancy = response['scores'].get('response_relevancy', 0)
+                    faithfulness = response['scores'].get('faithfulness', 0)
+                    
+                    logging.info(f"Evaluation scores - Similarity: {similarity:.4f}, Relevance: {relevance:.4f}, Correctness: {correctness:.4f}")
+                    logging.info(f"Retrieval scores - Context Precision: {context_precision:.4f}, Context Recall: {context_recall:.4f}, Response Relevancy: {response_relevancy:.4f}, Faithfulness: {faithfulness:.4f}")
 
-            # Collect results
-            detailed_results.append({
-                'question': question,
-                'expectedResponse': expected_response,
-                'actualResponse': actual_response,
-                'similarity': similarity,
-                'relevance': relevance,
-                'correctness': correctness,
-                'context_precision': context_precision,
-                'context_recall': context_recall,
-                'response_relevancy': response_relevancy,
-                'faithfulness': faithfulness,
-                'retrieved_context': response.get('retrieved_context', '')
-            })
+                # Collect results
+                detailed_results.append({
+                    'question': question,
+                    'expectedResponse': expected_response,
+                    'actualResponse': actual_response,
+                    'similarity': similarity,
+                    'relevance': relevance,
+                    'correctness': correctness,
+                    'context_precision': context_precision,
+                    'context_recall': context_recall,
+                    'response_relevancy': response_relevancy,
+                    'faithfulness': faithfulness,
+                    'retrieved_context': response.get('retrieved_context', '')
+                })
 
-            total_similarity += similarity
-            total_relevance += relevance
-            total_correctness += correctness
-            total_context_precision += context_precision
-            total_context_recall += context_recall
-            total_response_relevancy += response_relevancy
-            total_faithfulness += faithfulness
+                total_similarity += similarity
+                total_relevance += relevance
+                total_correctness += correctness
+                total_context_precision += context_precision
+                total_context_recall += context_recall
+                total_response_relevancy += response_relevancy
+                total_faithfulness += faithfulness
+            except Exception as e:
+                logging.error(f"Error processing test case {idx+1}: {str(e)}")
+                # Continue with next test case even if current one fails
 
         partial_results = {
             "detailed_results": detailed_results,
@@ -136,17 +140,20 @@ def lambda_handler(event, context):
             logging.error(f"Error writing partial results to S3: {str(e)}")
             raise Exception(f"Failed to write partial results to S3. Bucket: {TEST_CASES_BUCKET}, Key: {partial_result_key}. Error: {str(e)}")
 
-        # Return only the S3 key
+        # Return the partial results key and also include the evaluation_id to ensure it's passed through the state machine
         return {
-            "partial_result_key": partial_result_key
+            "partial_result_key": partial_result_key,
+            "evaluation_id": evaluation_id  # Ensure the evaluation_id is included in the response
         }
         
     except Exception as e:
         logging.error(f"Error in evaluation Lambda: {str(e)}")
+        # Return a structured error that preserves the evaluation_id
         return {
             'statusCode': 500,
             'body': json.dumps({
                 'error': str(e),
+                'evaluation_id': event.get("evaluation_id")  # Return the evaluation_id even in case of error
             }),
         }
 
