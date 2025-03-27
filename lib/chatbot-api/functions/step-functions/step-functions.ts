@@ -183,15 +183,21 @@ export class StepFunctionsStack extends Construct {
         generateResponseFunction.grantInvoke(llmEvalFunction);
         this.llmEvalFunction = llmEvalFunction;
 
-        const aggregateEvalResultsFunction = new lambda.Function(this, 'AggregateEvalResultsFunction', {
-            runtime: lambda.Runtime.PYTHON_3_12,
-            code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/aggregate-eval-results')), 
-            handler: 'lambda_function.lambda_handler', 
+        const aggregateEvalResultsFunction = new lambda.DockerImageFunction(this, 'AggregateEvalResultsFunction', {
+            code: lambda.DockerImageCode.fromImageAsset(path.join(__dirname, 'llm-evaluation/aggregate-eval-results'), {
+                platform: Platform.LINUX_AMD64, // Specify the correct platform
+            }),
             environment: {
                 "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,
-                "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName
+                "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName,
+                "WEBSOCKET_ENDPOINT": props.wsEndpoint || "",
+                "COGNITO_USER_POOL_ID": process.env.COGNITO_USER_POOL_ID || "",
+                "COGNITO_CLIENT_ID": process.env.COGNITO_CLIENT_ID || "",
+                "COGNITO_USERNAME": process.env.COGNITO_USERNAME || "",
+                "COGNITO_PASSWORD": process.env.COGNITO_PASSWORD || ""
             },
-            timeout: cdk.Duration.seconds(30)
+            timeout: cdk.Duration.seconds(300), // Increase timeout to 5 minutes
+            memorySize: 1024 // Increase memory size
         });
         aggregateEvalResultsFunction.addToRolePolicy(new iam.PolicyStatement({
             effect: iam.Effect.ALLOW,
@@ -207,6 +213,26 @@ export class StepFunctionsStack extends Construct {
                 props.evalResultsBucket.bucketArn + "/*",
                 props.evalResultsBucket.arnForObjects('*')
             ]
+        }));
+        aggregateEvalResultsFunction.addToRolePolicy(new iam.PolicyStatement({
+            effect: iam.Effect.ALLOW,
+            actions: [
+                'cognito-idp:InitiateAuth',
+                'cognito-idp:AdminInitiateAuth'
+            ],
+            resources: ['*']
+        }));
+        
+        // Add ECR permissions
+        aggregateEvalResultsFunction.addToRolePolicy(new iam.PolicyStatement({
+            effect: iam.Effect.ALLOW,
+            actions: [
+              'ecr:GetAuthorization',
+              'ecr:GetDownloadUrlForLayer',
+              'ecr:BatchGetImage',
+              'ecr:BatchCheckLayerAvailability'
+            ],
+            resources: ['*']
         }));
         this.aggregateEvalResultsFunction = aggregateEvalResultsFunction;
 

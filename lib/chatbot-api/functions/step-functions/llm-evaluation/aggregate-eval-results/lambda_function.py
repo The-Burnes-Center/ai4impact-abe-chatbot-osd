@@ -4,7 +4,6 @@ import json
 import logging
 import uuid
 import time
-import websocket
 import requests
 import numpy as np
 from datetime import datetime
@@ -12,6 +11,27 @@ from botocore.exceptions import ClientError
 from nltk.tokenize import sent_tokenize
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
+
+# Try to import websocket, but handle if not available
+try:
+    import websocket
+    WEBSOCKET_AVAILABLE = True
+except ImportError:
+    try:
+        # Try alternate import pattern used by some environments
+        from websocket import WebSocket, WebSocketApp, enableTrace
+        WEBSOCKET_AVAILABLE = True
+        # Monkey patch the module structure to match what our code expects
+        import sys
+        class WebSocketModule:
+            def __init__(self):
+                self.WebSocket = WebSocket
+                self.WebSocketApp = WebSocketApp
+                self.enableTrace = enableTrace
+        sys.modules['websocket'] = WebSocketModule()
+    except ImportError:
+        WEBSOCKET_AVAILABLE = False
+        logging.warning("websocket-client package not available. Live evaluation will be disabled.")
 
 # Environment variables
 TEST_CASES_BUCKET = os.environ['TEST_CASES_BUCKET']
@@ -52,6 +72,12 @@ def lambda_handler(event, context):
         perform_retrieval_evaluation = event.get('perform_retrieval_evaluation', False)
         
         logging.info(f"Processing {len(partial_result_keys)} partial results for evaluation {evaluation_id}")
+        
+        # If websocket is not available, disable live and retrieval evaluation
+        if not WEBSOCKET_AVAILABLE and (perform_live_evaluation or perform_retrieval_evaluation):
+            logging.warning("WebSocket is not available. Disabling live and retrieval evaluation.")
+            perform_live_evaluation = False
+            perform_retrieval_evaluation = False
         
         # If either live or retrieval evaluation is requested, we'll need to query the chatbot
         need_chatbot_query = perform_live_evaluation or perform_retrieval_evaluation
@@ -468,6 +494,14 @@ def calculate_faithfulness(response, context):
     return float(np.mean(sentence_scores))
 
 def query_chatbot_with_chunks(query, config=None, chat_history=None, retrieval_source="all"):
+    # Check if websocket is available
+    if not WEBSOCKET_AVAILABLE:
+        logging.warning("WebSocket is not available. Using fallback response.")
+        return {
+            "response": f"Unable to process query: {query}. WebSocket module is not available.",
+            "sources": []
+        }
+        
     if config is None:
         config = {}
     
