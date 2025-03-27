@@ -520,13 +520,13 @@ def query_chatbot_with_chunks(query, config=None, chat_history=None, retrieval_s
     response_text = ""
     sources = []
     is_metadata = False
+    connection_success = False
     ws_error = None
     ws_closed = False
-    connection_success = False
     
     # Define WebSocket callbacks
     def on_message(ws, message):
-        nonlocal response_text, sources, is_metadata, connection_success
+        nonlocal response_text, sources, is_metadata, connection_success, ws_error
         
         try:
             # Connection is successful if we get a message
@@ -540,7 +540,6 @@ def query_chatbot_with_chunks(query, config=None, chat_history=None, retrieval_s
             
             # Check for error message
             if "<!ERROR!>:" in message:
-                nonlocal ws_error
                 ws_error = message.replace("<!ERROR!>:", "")
                 logging.error(f"WebSocket error message: {ws_error}")
                 ws.close()
@@ -589,7 +588,6 @@ def query_chatbot_with_chunks(query, config=None, chat_history=None, retrieval_s
         except Exception as e:
             error_msg = f"Error in on_message handler: {str(e)}"
             logging.error(error_msg)
-            nonlocal ws_error
             ws_error = error_msg
             ws.close()
     
@@ -605,7 +603,7 @@ def query_chatbot_with_chunks(query, config=None, chat_history=None, retrieval_s
         logging.info(f"WebSocket connection closed: {close_status_code} - {close_reason}")
     
     def on_open(ws):
-        nonlocal connection_success
+        nonlocal connection_success, ws_error
         connection_success = True
         logging.info("WebSocket connection opened, sending message")
         
@@ -627,7 +625,6 @@ def query_chatbot_with_chunks(query, config=None, chat_history=None, retrieval_s
         except Exception as e:
             error_msg = f"Error sending message: {str(e)}"
             logging.error(error_msg)
-            nonlocal ws_error
             ws_error = error_msg
             ws.close()
     
@@ -647,10 +644,10 @@ def query_chatbot_with_chunks(query, config=None, chat_history=None, retrieval_s
     # Run the WebSocket connection in a separate thread
     import threading
     def run_ws():
+        nonlocal ws_error
         try:
             ws.run_forever()
         except Exception as e:
-            nonlocal ws_error
             ws_error = f"WebSocket run_forever error: {str(e)}"
             logging.error(ws_error)
     
