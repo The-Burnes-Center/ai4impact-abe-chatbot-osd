@@ -183,10 +183,20 @@ export class StepFunctionsStack extends Construct {
         generateResponseFunction.grantInvoke(llmEvalFunction);
         this.llmEvalFunction = llmEvalFunction;
 
-        const aggregateEvalResultsFunction = new lambda.DockerImageFunction(this, 'AggregateEvalResultsFunction', {
-            code: lambda.DockerImageCode.fromImageAsset(path.join(__dirname, 'llm-evaluation/aggregate-eval-results'), {
-                platform: Platform.LINUX_AMD64, // Specify the correct platform
+        const aggregateEvalResultsFunction = new lambda.Function(this, 'AggregateEvalResultsFunction', {
+            runtime: lambda.Runtime.PYTHON_3_12,
+            code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/aggregate-eval-results'), {
+                bundling: {
+                    image: lambda.Runtime.PYTHON_3_12.bundlingImage,
+                    command: [
+                        'bash', '-c', [
+                            'pip install -r requirements.txt -t /asset-output',
+                            'cp -r * /asset-output'
+                        ].join(' && ')
+                    ]
+                }
             }),
+            handler: 'lambda_function.lambda_handler',
             environment: {
                 "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,
                 "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName,
