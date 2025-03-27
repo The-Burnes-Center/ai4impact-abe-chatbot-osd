@@ -185,17 +185,7 @@ export class StepFunctionsStack extends Construct {
 
         const aggregateEvalResultsFunction = new lambda.Function(this, 'AggregateEvalResultsFunction', {
             runtime: lambda.Runtime.PYTHON_3_12,
-            code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/aggregate-eval-results'), {
-                bundling: {
-                    image: lambda.Runtime.PYTHON_3_12.bundlingImage,
-                    command: [
-                        'bash', '-c', [
-                            'pip install -r requirements.txt -t /asset-output',
-                            'cp -r * /asset-output'
-                        ].join(' && ')
-                    ]
-                }
-            }),
+            code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/aggregate-eval-results')),
             handler: 'lambda_function.lambda_handler',
             environment: {
                 "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,

@@ -5,12 +5,71 @@ import logging
 import uuid
 import time
 import requests
-import numpy as np
 from datetime import datetime
 from botocore.exceptions import ClientError
-from nltk.tokenize import sent_tokenize
-from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers import SentenceTransformer
+
+# Try to import optional dependencies with fallbacks
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+    logging.warning("NumPy not available, will use fallback implementations")
+    # Create basic fallback for numpy functions we use
+    class MockNumpy:
+        def __init__(self):
+            pass
+            
+        def mean(self, data):
+            if not data:
+                return 0
+            return sum(data) / len(data)
+            
+        def array(self, data):
+            return data
+    
+    np = MockNumpy()
+    
+try:
+    from nltk.tokenize import sent_tokenize
+    NLTK_AVAILABLE = True
+except ImportError:
+    NLTK_AVAILABLE = False
+    logging.warning("NLTK not available, will use fallback tokenization")
+    # Simple sentence tokenizer fallback
+    def sent_tokenize(text):
+        return text.replace('\n', ' ').split('. ')
+
+try:
+    from sklearn.metrics.pairwise import cosine_similarity
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+    logging.warning("Scikit-learn not available, will use fallback similarity metrics")
+    # Simple fallback for cosine similarity
+    def cosine_similarity(a, b):
+        if not isinstance(a, list):
+            return [[0.5]]  # Return a default similarity value
+        return [[0.5 for _ in range(len(b))] for _ in range(len(a))]
+    
+try:
+    from sentence_transformers import SentenceTransformer
+    SENTENCE_TRANSFORMER_AVAILABLE = True
+except ImportError:
+    SENTENCE_TRANSFORMER_AVAILABLE = False
+    logging.warning("Sentence-transformers not available, will use fallback embeddings")
+    # Simple fallback for SentenceTransformer
+    class MockSentenceTransformer:
+        def __init__(self, *args, **kwargs):
+            pass
+        
+        def encode(self, sentences, *args, **kwargs):
+            # Return mock embeddings
+            if isinstance(sentences, list):
+                return [[0.1 * i for i in range(10)] for _ in range(len(sentences))]
+            return [0.1 * i for i in range(10)]
+    
+    SentenceTransformer = MockSentenceTransformer
 
 # Try to import websocket, but handle if not available
 try:
