@@ -109,20 +109,34 @@ model = None  # Will be lazily loaded when needed
 def lambda_handler(event, context):
     # Configure logging
     logging.basicConfig(level=logging.INFO)
-    logging.info(f"Lambda invoked with event: {json.dumps(event)}")
+    logger = logging.getLogger(__name__)
+    logger.info(f"Lambda invoked with event: {json.dumps(event)}")
     
     try:
-        # Extract partial result keys - handle both array of strings and array of objects
-        partial_result_keys = []
-        for pr in event.get('partial_result_keys', []):
-            if isinstance(pr, dict) and 'partial_result_key' in pr:
-                partial_result_keys.append(pr['partial_result_key'])
-            else:
-                partial_result_keys.append(pr)
-                
-        evaluation_id = event['evaluation_id']
-        test_cases_key = event['test_cases_key']
+        # Extract required parameters and ensure we have evaluation_id
+        evaluation_id = event.get('evaluation_id')
+        if not evaluation_id:
+            logger.error("Missing required evaluation_id parameter")
+            return {
+                'statusCode': 400,
+                'body': json.dumps({"error": "Missing required evaluation_id parameter"}),
+                'evaluation_id': None  # Must include this for Step Function to continue
+            }
+        
+        # Extract other parameters
+        test_cases_key = event.get('test_cases_key')
         evaluation_name = event.get('evaluation_name', f"Evaluation on {str(datetime.now())}")
+        partial_result_keys = []
+        
+        # Handle different partial results formats
+        if 'partial_result_keys' in event:
+            for pr in event.get('partial_result_keys', []):
+                if isinstance(pr, dict) and 'partial_result_key' in pr:
+                    partial_result_keys.append(pr['partial_result_key'])
+                else:
+                    partial_result_keys.append(pr)
+        
+        logger.info(f"Processing {len(partial_result_keys)} partial results for evaluation {evaluation_id}")
         
         # Determine if we should perform live evaluation with the chatbot
         perform_live_evaluation = event.get('perform_live_evaluation', False)
@@ -130,11 +144,9 @@ def lambda_handler(event, context):
         # Check for retrieval-based evaluation flag
         perform_retrieval_evaluation = event.get('perform_retrieval_evaluation', False)
         
-        logging.info(f"Processing {len(partial_result_keys)} partial results for evaluation {evaluation_id}")
-        
         # If websocket is not available, disable live and retrieval evaluation
         if not WEBSOCKET_AVAILABLE and (perform_live_evaluation or perform_retrieval_evaluation):
-            logging.warning("WebSocket is not available. Disabling live and retrieval evaluation.")
+            logger.warning("WebSocket is not available. Disabling live and retrieval evaluation.")
             perform_live_evaluation = False
             perform_retrieval_evaluation = False
         
@@ -162,7 +174,7 @@ def lambda_handler(event, context):
             if not all([chatbot_config['ws_endpoint'], chatbot_config['cognito_user_pool_id'], 
                        chatbot_config['cognito_client_id'], chatbot_config['username'], 
                        chatbot_config['password']]):
-                logging.warning("Missing required chatbot configuration. Skipping live evaluation.")
+                logger.warning("Missing required chatbot configuration. Skipping live evaluation.")
                 perform_live_evaluation = False
                 perform_retrieval_evaluation = False
                 need_chatbot_query = False
@@ -206,12 +218,12 @@ def lambda_handler(event, context):
                         total_faithfulness += partial_result.get('total_faithfulness', 0)
                 
             except Exception as e:
-                logging.error(f"Error processing partial result {partial_result_key}: {str(e)}")
+                logger.error(f"Error processing partial result {partial_result_key}: {str(e)}")
                 # Continue with other partial results even if one fails
         
         # If we need to query the chatbot (live or retrieval evaluation)
         if need_chatbot_query and test_cases:
-            logging.info(f"Performing live evaluation with chatbot on {len(test_cases)} test cases")
+            logger.info(f"Performing live evaluation with chatbot on {len(test_cases)} test cases")
             
             # Reset totals if we're doing live evaluation
             if perform_live_evaluation:
@@ -289,7 +301,7 @@ def lambda_handler(event, context):
                         total_faithfulness += faithfulness
                 
                 except Exception as e:
-                    logging.error(f"Error evaluating test case {test_case['question']}: {str(e)}")
+                    logger.error(f"Error evaluating test case {test_case['question']}: {str(e)}")
                     # Continue with other test cases even if one fails
         
         # Compute averages for standard metrics
@@ -311,9 +323,9 @@ def lambda_handler(event, context):
                 Key=detailed_results_s3_key,
                 Body=json.dumps(detailed_results)
             )
-            logging.info(f"Successfully wrote aggregated results to S3: {EVAL_RESULTS_BUCKET}/{detailed_results_s3_key}")
+            logger.info(f"Successfully wrote aggregated results to S3: {EVAL_RESULTS_BUCKET}/{detailed_results_s3_key}")
         except Exception as e:
-            logging.error(f"Error writing aggregated results to S3: {str(e)}")
+            logger.error(f"Error writing aggregated results to S3: {str(e)}")
             raise
 
         # Return aggregated results including both standard and retrieval metrics
@@ -336,12 +348,12 @@ def lambda_handler(event, context):
             'average_faithfulness': round(average_faithfulness, 4)
         })
         
-        logging.info(f"Aggregation complete for evaluation {evaluation_id}. Results: {json.dumps(result)}")
+        logger.info(f"Aggregation complete for evaluation {evaluation_id}. Results: {json.dumps(result)}")
         
         return result
     except Exception as e:
         error_msg = f"Unhandled exception in lambda_handler: {str(e)}"
-        logging.error(error_msg)
+        logger.error(error_msg)
         
         # Return a structured error that preserves the evaluation ID
         return {

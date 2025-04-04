@@ -3,18 +3,38 @@ import os
 import logging
 import json
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
 TEST_CASE_BUCKET = os.environ['TEST_CASES_BUCKET']
 EVAL_RESULTS_BUCKET = os.environ.get('EVAL_RESULTS_BUCKET', TEST_CASE_BUCKET)  # Fallback to TEST_CASE_BUCKET if not set
 
 def lambda_handler(event, context):
     s3_client = boto3.client('s3')
-    data = event.get("body", {})
-    print(data)
-    if isinstance(data, str):
-        data = json.loads(data)
-    evaluation_id = data.get("evaluation_id")
+    logging.info(f"Received event: {json.dumps(event)}")
+    
+    # Extract evaluation_id directly from the event
+    evaluation_id = event.get("evaluation_id")
+    test_cases_key = event.get("test_cases_key")
+    
+    # Alternatively check if it's nested in 'body'
+    if not evaluation_id and 'body' in event:
+        data = event.get("body", {})
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except json.JSONDecodeError:
+                logging.error("Failed to parse body as JSON")
+                data = {}
+        evaluation_id = data.get("evaluation_id")
+    
     if not evaluation_id:
-        raise ValueError("evaluation_id parameter is required in the event.")
+        logging.error("evaluation_id parameter is required but not found in the event")
+        return {
+            'statusCode': 400,
+            'body': json.dumps({"error": "evaluation_id parameter is required"}),
+            'evaluation_id': None  # Return None to prevent Step Function from failing
+        }
 
     try:
         prefixes_to_delete = [
@@ -31,16 +51,25 @@ def lambda_handler(event, context):
             for prefix in prefixes_to_delete:
                 delete_objects_in_prefix(s3_client, EVAL_RESULTS_BUCKET, prefix)
 
+        logging.info(f"Cleanup completed for evaluation_id: {evaluation_id}")
         return {
             'statusCode': 200,
-            'body': f"Cleanup completed for evaluation_id: {evaluation_id}"
+            'body': json.dumps({
+                "message": f"Cleanup completed for evaluation_id: {evaluation_id}",
+                "evaluation_id": evaluation_id
+            }),
+            'evaluation_id': evaluation_id  # Return evaluation_id to ensure Step Function completes properly
         }
 
     except Exception as e:
         logging.error(f"Error during cleanup: {str(e)}")
         return {
             'statusCode': 500,
-            'body': f"Error during cleanup: {str(e)}"
+            'body': json.dumps({
+                "error": f"Error during cleanup: {str(e)}",
+                "evaluation_id": evaluation_id
+            }),
+            'evaluation_id': evaluation_id  # Return evaluation_id even in case of error
         }
 
 def delete_objects_in_prefix(s3_client, bucket, prefix):
@@ -91,4 +120,5 @@ def delete_objects_in_prefix(s3_client, bucket, prefix):
                     logging.info(f"Deleted additional {len(objects_to_delete)} objects from {bucket}/{prefix}")
     except Exception as e:
         logging.error(f"Error deleting objects in {bucket}/{prefix}: {str(e)}")
-        raise
+        # Don't raise the exception, just log it
+        # This ensures the cleanup function doesn't fail if one prefix fails

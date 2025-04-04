@@ -267,15 +267,13 @@ export class StepFunctionsStack extends Construct {
         const splitTestCasesTask = new tasks.LambdaInvoke(this, 'Split Test Cases', {
             lambdaFunction: this.splitEvalTestCasesFunction,
             outputPath: '$.Payload',
-          });
+            retryOnServiceExceptions: true,
+        });
 
         const evaluateTestCasesTask = new tasks.LambdaInvoke(this, 'Evaluate Test Cases', {
             lambdaFunction: this.llmEvalFunction,
-            // payload: stepfunctions.TaskInput.fromObject({
-            //     'chunk_key.$': '$',
-            //     'evaluation_id.$': '$.evaluation_id',
-            // }),
             outputPath: '$.Payload',
+            retryOnServiceExceptions: true,
         });
 
 
@@ -285,57 +283,84 @@ export class StepFunctionsStack extends Construct {
             resultPath: '$.partial_result_keys',
             itemSelector: {
                 'chunk_key.$': '$$.Map.Item.Value.chunk_key',
-                'evaluation_id.$': '$$.Map.Item.Value.evaluation_id',
+                'evaluation_id.$': '$.evaluation_id',
             },
         });
         processTestCasesMap.itemProcessor(evaluateTestCasesTask);
     
         const aggregateResultsTask = new tasks.LambdaInvoke(this, 'Aggregate Results', {
-        lambdaFunction: this.aggregateEvalResultsFunction,
-        payload: stepfunctions.TaskInput.fromObject({
-            //'partial_results_list.$': '$.ProcessedResults',
-            'partial_result_keys.$': '$.partial_result_keys',
-            'evaluation_id.$': '$.evaluation_id',
-            'evaluation_name.$': '$.evaluation_name',
-            'test_cases_key.$': '$.test_cases_key',
-            'perform_retrieval_evaluation': true
-        }),
-        outputPath: '$.Payload',
+            lambdaFunction: this.aggregateEvalResultsFunction,
+            payload: stepfunctions.TaskInput.fromObject({
+                'partial_result_keys.$': '$.partial_result_keys',
+                'evaluation_id.$': '$.evaluation_id',
+                'evaluation_name.$': '$.evaluation_name',
+                'test_cases_key.$': '$.test_cases_key',
+                'perform_retrieval_evaluation': true
+            }),
+            outputPath: '$.Payload',
+            retryOnServiceExceptions: true,
+        });
+      
+        // Create error catching
+        const catchAndPassEvaluationId = new stepfunctions.Pass(this, 'Pass Evaluation ID on Error', {
+            parameters: {
+                'evaluation_id.$': '$.evaluation_id',
+                'error.$': '$$.Execution.Error',
+                'cause.$': '$$.Execution.Cause'
+            },
         });
       
         const saveResultsTask = new tasks.LambdaInvoke(this, 'Save Evaluation Results', {
-        lambdaFunction: this.llmEvalResultsHandlerFunction,
-        payload: stepfunctions.TaskInput.fromObject({
-            'evaluation_id.$': '$.evaluation_id',
-            'evaluation_name.$': '$.evaluation_name',
-            'average_similarity.$': '$.average_similarity',
-            'average_relevance.$': '$.average_relevance',
-            'average_correctness.$': '$.average_correctness',
-            'total_questions.$': '$.total_questions',
-            'detailed_results_s3_key.$': '$.detailed_results_s3_key',
-            // 'detailed_results.$': '$.detailed_results',
-            'test_cases_key.$': '$.test_cases_key',
-            'average_context_precision.$': '$.average_context_precision',
-            'average_context_recall.$': '$.average_context_recall',
-            'average_response_relevancy.$': '$.average_response_relevancy',
-            'average_faithfulness.$': '$.average_faithfulness'
-        }),
-        outputPath: '$.Payload',
+            lambdaFunction: this.llmEvalResultsHandlerFunction,
+            payload: stepfunctions.TaskInput.fromObject({
+                'evaluation_id.$': '$.evaluation_id',
+                'evaluation_name.$': '$.evaluation_name',
+                'average_similarity.$': '$.average_similarity',
+                'average_relevance.$': '$.average_relevance',
+                'average_correctness.$': '$.average_correctness',
+                'total_questions.$': '$.total_questions',
+                'detailed_results_s3_key.$': '$.detailed_results_s3_key',
+                'test_cases_key.$': '$.test_cases_key',
+                'average_context_precision.$': '$.average_context_precision',
+                'average_context_recall.$': '$.average_context_recall',
+                'average_response_relevancy.$': '$.average_response_relevancy',
+                'average_faithfulness.$': '$.average_faithfulness'
+            }),
+            outputPath: '$.Payload',
+            retryOnServiceExceptions: true,
         });
 
         const cleanupChunksTask = new tasks.LambdaInvoke(this, 'Cleanup Chunks', {
             lambdaFunction: this.llmEvalCleanupFunction,
             payload: stepfunctions.TaskInput.fromObject({
-                'body.$': '$.body',
+                'evaluation_id.$': '$.evaluation_id',
+                'test_cases_key.$': '$.test_cases_key'
             }),
             outputPath: '$.Payload',
+            retryOnServiceExceptions: true,
+        });
+      
+        // Add error handling to each step
+        splitTestCasesTask.addCatch(catchAndPassEvaluationId, {
+            errors: ['States.ALL'],
+            resultPath: '$.error'
+        });
+        
+        aggregateResultsTask.addCatch(catchAndPassEvaluationId, {
+            errors: ['States.ALL'],
+            resultPath: '$.error'
+        });
+        
+        saveResultsTask.addCatch(catchAndPassEvaluationId, {
+            errors: ['States.ALL'],
+            resultPath: '$.error'
         });
       
         const definition = splitTestCasesTask
-        .next(processTestCasesMap)
-        .next(aggregateResultsTask)
-        .next(saveResultsTask)
-        .next(cleanupChunksTask);
+            .next(processTestCasesMap)
+            .next(aggregateResultsTask)
+            .next(saveResultsTask)
+            .next(cleanupChunksTask);
 
         const llmEvalStateMachine = new stepfunctions.StateMachine(this, 'EvaluationStateMachine', {
             definitionBody: stepfunctions.DefinitionBody.fromChainable(definition),

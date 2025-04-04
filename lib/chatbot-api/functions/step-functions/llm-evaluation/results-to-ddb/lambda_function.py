@@ -4,6 +4,11 @@ from botocore.exceptions import ClientError
 import json
 from datetime import datetime
 from decimal import Decimal
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Retrieve DynamoDB table names from environment variables
 EVALUATION_SUMMARIES_TABLE = os.environ.get("EVAL_SUMMARIES_TABLE")
@@ -167,26 +172,29 @@ def lambda_handler(event, context):
             data = event
         
         # Log received data
-        print(f"Received data: {json.dumps(data)}")
+        logger.info(f"Received data: {json.dumps(data)}")
             
         evaluation_id = data.get('evaluation_id')
         if not evaluation_id:
+            logger.error("Missing evaluation_id in input data")
             return {
                 'statusCode': 400,
                 'headers': headers,
-                'body': json.dumps({'message': 'Missing evaluation_id'})
+                'body': json.dumps({'message': 'Missing evaluation_id'}),
+                'evaluation_id': None  # Add this to ensure the Step Function can continue
             }
             
         # Check if we received an error status from previous step
         if data.get('statusCode') == 500:
+            logger.error(f"Error received from previous step: {data.get('error', 'Unknown error')}")
             return {
                 'statusCode': 500,
                 'headers': headers,
                 'body': json.dumps({
                     'message': 'Error received from previous step',
-                    'error': data.get('error', 'Unknown error'),
-                    'evaluation_id': evaluation_id
-                })
+                    'error': data.get('error', 'Unknown error')
+                }),
+                'evaluation_id': evaluation_id  # Ensure the evaluation_id is returned
             }
         
         evaluation_name = data.get('evaluation_name', f"Evaluation on {str(datetime.now())}")
@@ -212,20 +220,24 @@ def lambda_handler(event, context):
                 'test_cases_key': test_cases_key
             }.items() if not value]
             
+            logger.error(f"Missing required fields: {', '.join(missing_fields)}")
             return {
                 'statusCode': 400,
                 'headers': headers,
                 'body': json.dumps({
                     'message': 'Missing required parameters for adding evaluation',
                     'missing_fields': missing_fields
-                })
+                }),
+                'evaluation_id': evaluation_id  # Ensure the evaluation_id is returned
             }
         
         try:
             # Read detailed results
+            logger.info(f"Retrieving detailed results from S3: {detailed_results_s3_key}")
             detailed_results = read_detailed_results_from_s3(detailed_results_s3_key)
             
             # Add evaluation to DynamoDB
+            logger.info(f"Saving evaluation {evaluation_id} with {len(detailed_results)} results to DynamoDB")
             response = add_evaluation(
                 evaluation_id,
                 evaluation_name,
@@ -241,28 +253,44 @@ def lambda_handler(event, context):
                 average_faithfulness
             )
             
-            return response
+            logger.info(f"Successfully saved evaluation {evaluation_id} to DynamoDB")
+            # Return evaluation_id in the response for Step Function to continue
+            return {
+                'statusCode': 200,
+                'headers': headers,
+                'body': json.dumps({
+                    'message': 'Evaluation added successfully',
+                    'evaluation_id': evaluation_id
+                }),
+                'evaluation_id': evaluation_id  # Add evaluation_id directly at the top level for Step Function
+            }
         except Exception as e:
-            print(f"Error processing evaluation results: {str(e)}")
+            logger.error(f"Error processing evaluation results: {str(e)}")
             return {
                 'statusCode': 500,
                 'headers': headers,
                 'body': json.dumps({
-                    'message': 'Failed to process evaluation results',
+                    'message': 'Error processing evaluation results',
                     'error': str(e),
-                    'evaluation_id': evaluation_id,
-                    'detailed_results_s3_key': detailed_results_s3_key,
-                    'results_bucket': EVAL_RESULTS_BUCKET,
-                    'test_cases_bucket': TEST_CASES_BUCKET
-                })
+                    'evaluation_id': evaluation_id
+                }),
+                'evaluation_id': evaluation_id  # Add evaluation_id directly at the top level for Step Function
             }
     except Exception as e:
-        print(f"Unhandled exception in lambda_handler: {str(e)}")
+        # Get evaluation_id from event if possible, even in case of error
+        evaluation_id = None
+        if isinstance(event, dict):
+            evaluation_id = event.get('evaluation_id')
+        
+        logger.error(f"General error in lambda_handler: {str(e)}")
         return {
             'statusCode': 500,
             'headers': headers,
             'body': json.dumps({
-                'message': 'Unhandled exception in lambda handler',
-                'error': str(e)
-            })
+                'message': 'Internal server error',
+                'error': str(e),
+                'summaries_table': EVALUATION_SUMMARIES_TABLE,
+                'results_table': EVALUATION_RESULTS_TABLE
+            }),
+            'evaluation_id': evaluation_id  # Include evaluation_id even in case of error
         }
