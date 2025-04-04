@@ -1,7 +1,7 @@
+langchain-aws
+langchain-community
+langchain
 ragas
-langchain_aws
 datasets
 pandas
-nltk
-langchain_community
-llama_index
+boto3
