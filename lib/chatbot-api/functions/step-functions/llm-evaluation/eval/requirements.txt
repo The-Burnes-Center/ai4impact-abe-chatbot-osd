@@ -5,3 +5,4 @@ ragas
 datasets
 pandas
 boto3
+nltk
