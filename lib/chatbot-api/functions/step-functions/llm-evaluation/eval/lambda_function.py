@@ -4,8 +4,8 @@ import boto3
 import os
 import io
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -24,8 +24,6 @@ TEST_CASES_BUCKET = os.environ['TEST_CASES_BUCKET']
 # Note: We're keeping partial results in TEST_CASES_BUCKET but retrieving this env var
 # for future improvements where we might want to write directly to EVAL_RESULTS_BUCKET
 EVAL_RESULTS_BUCKET = os.environ.get('EVAL_RESULTS_BUCKET', TEST_CASES_BUCKET)
-# Set max workers for ThreadPoolExecutor - default to 10 or less if fewer test cases
-MAX_WORKERS = 10
 
 # Initialize clients outside the loop with proper configuration
 s3_client = boto3.client('s3')
@@ -46,7 +44,7 @@ def lambda_handler(event, context):
                 logging.error(f"Invalid test case at index {idx}: missing required fields")
                 test_cases[idx] = {'question': f"Invalid test case {idx}", 'expectedResponse': ""}
 
-        # Use ThreadPoolExecutor for parallel processing
+        # Process cases sequentially
         detailed_results = []
         total_similarity = 0
         total_relevance = 0
@@ -56,47 +54,44 @@ def lambda_handler(event, context):
         total_response_relevancy = 0
         total_faithfulness = 0
         
-        # Set workers to min of MAX_WORKERS or number of test cases
-        workers = min(MAX_WORKERS, len(test_cases))
-        
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            # Submit all tasks
-            future_to_idx = {executor.submit(process_test_case, idx, test_case): idx 
-                             for idx, test_case in enumerate(test_cases)}
-            
-            # Process results as they complete
-            for future in as_completed(future_to_idx):
-                idx = future_to_idx[future]
-                try:
-                    result = future.result()
-                    detailed_results.append(result)
-                    
-                    # Add to totals
-                    total_similarity += result['similarity']
-                    total_relevance += result['relevance']
-                    total_correctness += result['correctness']
-                    total_context_precision += result['context_precision']
-                    total_context_recall += result['context_recall']
-                    total_response_relevancy += result['response_relevancy']
-                    total_faithfulness += result['faithfulness']
-                    
-                except Exception as e:
-                    logging.error(f"Error processing test case {idx+1}: {str(e)}")
-                    # Add error entry
-                    test_case = test_cases[idx]
-                    detailed_results.append({
-                        'question': test_case.get('question', f"Question {idx+1}"),
-                        'expectedResponse': test_case.get('expectedResponse', ''),
-                        'actualResponse': 'Error during evaluation',
-                        'similarity': 0.0,
-                        'relevance': 0.0,
-                        'correctness': 0.0,
-                        'context_precision': 0.0,
-                        'context_recall': 0.0,
-                        'response_relevancy': 0.0,
-                        'faithfulness': 0.0,
-                        'error': str(e)
-                    })
+        for idx, test_case in enumerate(test_cases):
+            try:
+                logging.info(f"Starting test case {idx+1}/{len(test_cases)}")
+                
+                # Add delays between test cases to avoid throttling
+                if idx > 0:
+                    time.sleep(0.5)
+                
+                result = process_test_case(idx, test_case)
+                detailed_results.append(result)
+                
+                # Add to totals
+                total_similarity += result['similarity']
+                total_relevance += result['relevance']
+                total_correctness += result['correctness']
+                total_context_precision += result['context_precision']
+                total_context_recall += result['context_recall']
+                total_response_relevancy += result['response_relevancy']
+                total_faithfulness += result['faithfulness']
+                
+                logging.info(f"Completed test case {idx+1}/{len(test_cases)} successfully")
+                
+            except Exception as e:
+                logging.error(f"Error processing test case {idx+1}: {str(e)}")
+                # Add error entry
+                detailed_results.append({
+                    'question': test_case.get('question', f"Question {idx+1}"),
+                    'expectedResponse': test_case.get('expectedResponse', ''),
+                    'actualResponse': 'Error during evaluation',
+                    'similarity': 0.0,
+                    'relevance': 0.0,
+                    'correctness': 0.0,
+                    'context_precision': 0.0,
+                    'context_recall': 0.0,
+                    'response_relevancy': 0.0,
+                    'faithfulness': 0.0,
+                    'error': str(e)
+                })
 
         # Ensure at least one result is available
         num_results = len(detailed_results)
@@ -178,7 +173,26 @@ def process_test_case(idx, test_case):
 
         # Evaluate the response using RAGAS
         logging.info(f"Evaluating response for test case {idx+1}")
-        result = evaluate_with_ragas(question, expected_response, actual_response, retrieved_context)
+        
+        # Try up to 3 times if there are transient failures
+        max_retries = 3
+        retry_delay = 2  # seconds
+        
+        for retry in range(max_retries):
+            try:
+                result = evaluate_with_ragas(question, expected_response, actual_response, retrieved_context)
+                # If successful, break out of retry loop
+                break
+            except Exception as e:
+                if retry < max_retries - 1:
+                    logging.warning(f"Retry {retry+1}/{max_retries} for RAGAS evaluation: {str(e)}")
+                    time.sleep(retry_delay)
+                else:
+                    # Last retry failed, re-raise the exception
+                    raise
+        
+        logging.info(f"RAGAS evaluation complete with scores: similarity={result['scores']['similarity']:.2f}, "
+                    f"relevance={result['scores']['relevance']:.2f}, correctness={result['scores']['correctness']:.2f}")
         
         return {
             'question': question,
@@ -243,6 +257,20 @@ def evaluate_with_ragas(question, expected_response, actual_response, retrieved_
 
         # Include all the metrics
         metrics = [answer_correctness, answer_similarity, answer_relevancy, context_precision, context_recall, faithfulness]
+        
+        # Guard against empty inputs
+        if not actual_response:
+            actual_response = "No response"
+        if not expected_response:
+            expected_response = "No expected response provided"
+        if not retrieved_context:
+            retrieved_context = "No context retrieved"
+        
+        # Log detailed information for debugging
+        logging.info(f"RAGAS inputs - Question: {question[:50]}...")
+        logging.info(f"RAGAS inputs - Answer length: {len(actual_response)}")
+        logging.info(f"RAGAS inputs - Reference length: {len(expected_response)}")
+        logging.info(f"RAGAS inputs - Context length: {len(retrieved_context)}")
         
         # Prepare data for RAGAS
         data_sample = {
