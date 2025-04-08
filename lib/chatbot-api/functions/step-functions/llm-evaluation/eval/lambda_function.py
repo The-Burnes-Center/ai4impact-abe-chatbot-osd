@@ -2,13 +2,9 @@ from datetime import datetime
 import json
 import boto3
 import os
-import csv
 import io
-import uuid
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from botocore.exceptions import ClientError
-import asyncio
 import pandas as pd
 
 # Configure logging
@@ -18,12 +14,8 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-#from langchain_community.chat_models import BedrockChat
 from langchain_aws import ChatBedrock as BedrockChat
-#from langchain_community.embeddings import BedrockEmbeddings
 from langchain_aws import BedrockEmbeddings
-#from langchain.chat_models import ChatBedrock as BedrockChat
-#from langchain.embeddings import BedrockEmbeddings
 
 # Required environment variables
 GENERATE_RESPONSE_LAMBDA_NAME = os.environ['GENERATE_RESPONSE_LAMBDA_NAME']
@@ -32,6 +24,8 @@ TEST_CASES_BUCKET = os.environ['TEST_CASES_BUCKET']
 # Note: We're keeping partial results in TEST_CASES_BUCKET but retrieving this env var
 # for future improvements where we might want to write directly to EVAL_RESULTS_BUCKET
 EVAL_RESULTS_BUCKET = os.environ.get('EVAL_RESULTS_BUCKET', TEST_CASES_BUCKET)
+# Set max workers for ThreadPoolExecutor - default to 10 or less if fewer test cases
+MAX_WORKERS = 10
 
 # Initialize clients outside the loop with proper configuration
 s3_client = boto3.client('s3')
@@ -45,96 +39,64 @@ def lambda_handler(event, context):
         test_cases = read_chunk_from_s3(s3_client, TEST_CASES_BUCKET, chunk_key)
         
         logging.info(f"Retrieved {len(test_cases)} test cases to evaluate")
+        
+        # Validate test cases
+        for idx, test_case in enumerate(test_cases):
+            if 'question' not in test_case or 'expectedResponse' not in test_case:
+                logging.error(f"Invalid test case at index {idx}: missing required fields")
+                test_cases[idx] = {'question': f"Invalid test case {idx}", 'expectedResponse': ""}
 
-        # Arrays to collect results
+        # Use ThreadPoolExecutor for parallel processing
         detailed_results = []
         total_similarity = 0
         total_relevance = 0
         total_correctness = 0
-
-        # Adding retrieval metrics
         total_context_precision = 0
         total_context_recall = 0
         total_response_relevancy = 0
         total_faithfulness = 0
-
-        # Process each test case
-        for idx, test_case in enumerate(test_cases):
-            try:
-                question = test_case['question']
-                expected_response = test_case['expectedResponse']
-                
-                logging.info(f"Processing test case {idx+1}/{len(test_cases)}: {question[:50]}...")
-
-                # Invoke generateResponseLambda to get the actual response
-                actual_response = invoke_generate_response_lambda(lambda_client, question)
-                if not actual_response:
-                    logging.warning(f"Empty response received for question: {question[:50]}...")
-                    actual_response = "No response generated."
-
-                # Evaluate the response using RAGAS
-                logging.info(f"Evaluating response for test case {idx+1}")
-                response = evaluate_with_ragas(question, expected_response, actual_response)
-                
-                # Always use the results, even if there was an error (evaluate_with_ragas now returns fallback scores)
-                similarity = response['scores']['similarity']
-                relevance = response['scores']['relevance']
-                correctness = response['scores']['correctness']
-                
-                # Get retrieval metrics
-                context_precision = response['scores'].get('context_precision', 0)
-                context_recall = response['scores'].get('context_recall', 0)
-                response_relevancy = response['scores'].get('response_relevancy', 0)
-                faithfulness = response['scores'].get('faithfulness', 0)
-                
-                logging.info(f"Evaluation scores - Similarity: {similarity:.4f}, Relevance: {relevance:.4f}, Correctness: {correctness:.4f}")
-                
-                # Add results to detailed_results list
-                result_item = {
-                    'question': question,
-                    'expectedResponse': expected_response,
-                    'actualResponse': actual_response,
-                    'similarity': similarity,
-                    'relevance': relevance,
-                    'correctness': correctness,
-                    'context_precision': context_precision,
-                    'context_recall': context_recall,
-                    'response_relevancy': response_relevancy,
-                    'faithfulness': faithfulness,
-                    'retrieved_context': response.get('retrieved_context', '')
-                }
-                
-                # If there was an error in the evaluation, add it to the result
-                if 'error' in response:
-                    result_item['error'] = response['error']
-
-                detailed_results.append(result_item)
-
-                total_similarity += similarity
-                total_relevance += relevance
-                total_correctness += correctness
-                total_context_precision += context_precision
-                total_context_recall += context_recall
-                total_response_relevancy += response_relevancy
-                total_faithfulness += faithfulness
-                
-            except Exception as e:
-                logging.error(f"Error processing test case {idx+1}: {str(e)}")
-                # Add a placeholder result with an error message
-                detailed_results.append({
-                    'question': test_case.get('question', f"Question {idx+1}"),
-                    'expectedResponse': test_case.get('expectedResponse', ''),
-                    'actualResponse': 'Error during evaluation',
-                    'similarity': 0.0,
-                    'relevance': 0.0,
-                    'correctness': 0.0,
-                    'context_precision': 0.0,
-                    'context_recall': 0.0,
-                    'response_relevancy': 0.0,
-                    'faithfulness': 0.0,
-                    'error': str(e)
-                })
-                # Continue with next test case
+        
+        # Set workers to min of MAX_WORKERS or number of test cases
+        workers = min(MAX_WORKERS, len(test_cases))
+        
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            # Submit all tasks
+            future_to_idx = {executor.submit(process_test_case, idx, test_case): idx 
+                             for idx, test_case in enumerate(test_cases)}
+            
+            # Process results as they complete
+            for future in as_completed(future_to_idx):
+                idx = future_to_idx[future]
+                try:
+                    result = future.result()
+                    detailed_results.append(result)
+                    
+                    # Add to totals
+                    total_similarity += result['similarity']
+                    total_relevance += result['relevance']
+                    total_correctness += result['correctness']
+                    total_context_precision += result['context_precision']
+                    total_context_recall += result['context_recall']
+                    total_response_relevancy += result['response_relevancy']
+                    total_faithfulness += result['faithfulness']
+                    
+                except Exception as e:
+                    logging.error(f"Error processing test case {idx+1}: {str(e)}")
+                    # Add error entry
+                    test_case = test_cases[idx]
+                    detailed_results.append({
+                        'question': test_case.get('question', f"Question {idx+1}"),
+                        'expectedResponse': test_case.get('expectedResponse', ''),
+                        'actualResponse': 'Error during evaluation',
+                        'similarity': 0.0,
+                        'relevance': 0.0,
+                        'correctness': 0.0,
+                        'context_precision': 0.0,
+                        'context_recall': 0.0,
+                        'response_relevancy': 0.0,
+                        'faithfulness': 0.0,
+                        'error': str(e)
+                    })
 
         # Ensure at least one result is available
         num_results = len(detailed_results)
@@ -197,19 +159,27 @@ def lambda_handler(event, context):
             'evaluation_id': event.get("evaluation_id")  # Also include it at the top level
         }
 
-async def process_test_case(lambda_client, test_case):
+def process_test_case(idx, test_case):
+    """Process a single test case with proper error handling"""
     try:
         question = test_case['question']
         expected_response = test_case['expectedResponse']
+        
+        logging.info(f"Processing test case {idx+1}: {question[:50]}...")
 
-        # Invoke generate response Lambda
+        # Invoke generateResponseLambda to get the actual response
         actual_response = invoke_generate_response_lambda(lambda_client, question)
+        if not actual_response:
+            logging.warning(f"Empty response received for question: {question[:50]}...")
+            actual_response = "No response generated."
 
-        # Evaluate with RAGAS
-        result = evaluate_with_ragas(question, expected_response, actual_response)
-        if result['status'] == 'error':
-            return None
+        # Get the context for evaluation
+        retrieved_context = invoke_generate_response_lambda(lambda_client, question, get_context_only=True)
 
+        # Evaluate the response using RAGAS
+        logging.info(f"Evaluating response for test case {idx+1}")
+        result = evaluate_with_ragas(question, expected_response, actual_response, retrieved_context)
+        
         return {
             'question': question,
             'expectedResponse': expected_response,
@@ -217,14 +187,15 @@ async def process_test_case(lambda_client, test_case):
             'similarity': result['scores']['similarity'],
             'relevance': result['scores']['relevance'],
             'correctness': result['scores']['correctness'],
+            'context_precision': result['scores']['context_precision'],
+            'context_recall': result['scores']['context_recall'],
+            'response_relevancy': result['scores']['response_relevancy'],
+            'faithfulness': result['scores']['faithfulness'],
+            'retrieved_context': retrieved_context
         }
     except Exception as e:
-        logging.error(f"Error processing test case: {e}")
-        return None
-    
-async def process_all_test_cases(test_cases, lambda_client):
-    tasks = [process_test_case(lambda_client, test_case) for test_case in test_cases]
-    return await asyncio.gather(*tasks)
+        logging.error(f"Error in process_test_case for case {idx}: {str(e)}")
+        raise
 
 def invoke_generate_response_lambda(lambda_client, question, get_context_only=False):
     try:
@@ -264,7 +235,7 @@ def invoke_generate_response_lambda(lambda_client, question, get_context_only=Fa
         logging.error(f"Error invoking generateResponseLambda: {str(e)}")
         return ""
 
-def evaluate_with_ragas(question, expected_response, actual_response):
+def evaluate_with_ragas(question, expected_response, actual_response, retrieved_context):
     try:
         from datasets import Dataset
         from ragas import evaluate
@@ -272,9 +243,6 @@ def evaluate_with_ragas(question, expected_response, actual_response):
 
         # Include all the metrics
         metrics = [answer_correctness, answer_similarity, answer_relevancy, context_precision, context_recall, faithfulness]
-
-        # Get the context from the generate_response lambda
-        retrieved_context = invoke_generate_response_lambda(lambda_client, question, get_context_only=True)
         
         # Prepare data for RAGAS
         data_sample = {
@@ -290,9 +258,9 @@ def evaluate_with_ragas(question, expected_response, actual_response):
             endpoint_url="https://bedrock-runtime.us-east-1.amazonaws.com", 
             model_id=BEDROCK_MODEL_ID,
             model_kwargs={
-                "max_tokens": 4096,  # Increase max tokens to prevent LLMDidNotFinishException
-                "temperature": 0.0,  # Set to 0 for deterministic results
-                "top_p": 1.0         # Set to 1 for deterministic results
+                "max_tokens": 4096,  # Keeping hardcoded values as requested
+                "temperature": 0.0,
+                "top_p": 1.0
             }
         )
         bedrock_embeddings = BedrockEmbeddings(
@@ -304,31 +272,12 @@ def evaluate_with_ragas(question, expected_response, actual_response):
         result = evaluate(data_samples, metrics=metrics, llm=bedrock_model, embeddings=bedrock_embeddings)
         scores = result.to_pandas().iloc[0]
 
-        # If any score is nan, set default values instead of raising an exception
+        # Check for NaN scores and raise exception if found
         if scores.isnull().values.any():
-            logging.warning("RAGAS evaluation returned NaN scores, using fallback values")
-            # Create a dictionary with default values for any NaN scores
-            valid_scores = {}
-            for metric in ["semantic_similarity", "answer_relevancy", "answer_correctness", 
-                          "context_precision", "context_recall", "faithfulness"]:
-                if metric in scores and not pd.isna(scores[metric]):
-                    valid_scores[metric] = float(scores[metric])
-                else:
-                    valid_scores[metric] = 0.5  # Use 0.5 as a neutral fallback score
-            
-            return {
-                "status": "success", 
-                "scores": {
-                    "similarity": valid_scores.get("semantic_similarity", 0.5), 
-                    "relevance": valid_scores.get("answer_relevancy", 0.5), 
-                    "correctness": valid_scores.get("answer_correctness", 0.5),
-                    "context_precision": valid_scores.get("context_precision", 0.5),
-                    "context_recall": valid_scores.get("context_recall", 0.5),
-                    "response_relevancy": valid_scores.get("answer_relevancy", 0.5),
-                    "faithfulness": valid_scores.get("faithfulness", 0.5)
-                },
-                "retrieved_context": retrieved_context
-            }
+            nan_metrics = [col for col in scores.index if pd.isna(scores[col])]
+            error_msg = f"RAGAS evaluation returned NaN scores for: {', '.join(nan_metrics)}"
+            logging.error(error_msg)
+            raise ValueError(error_msg)
         
         logging.info("RAGAS evaluation completed successfully")
         return {
@@ -341,26 +290,11 @@ def evaluate_with_ragas(question, expected_response, actual_response):
                 "context_recall": scores.get('context_recall', 0),
                 "response_relevancy": scores.get('answer_relevancy', 0),
                 "faithfulness": scores.get('faithfulness', 0)
-            },
-            "retrieved_context": retrieved_context
+            }
         }
     except Exception as e:
         logging.error(f"Error in RAGAS evaluation: {str(e)}")
-        # Return fallback scores instead of an error status to ensure the pipeline continues
-        return {
-            "status": "success",
-            "scores": {
-                "similarity": 0.5,
-                "relevance": 0.5,
-                "correctness": 0.5,
-                "context_precision": 0.5,
-                "context_recall": 0.5,
-                "response_relevancy": 0.5,
-                "faithfulness": 0.5
-            },
-            "error": str(e),
-            "retrieved_context": retrieved_context
-        }
+        raise
     
 def read_chunk_from_s3(s3_client, bucket_name, key):
     try:
