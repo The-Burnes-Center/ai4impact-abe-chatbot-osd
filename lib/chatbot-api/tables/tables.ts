@@ -5,6 +5,8 @@ import { Attribute, AttributeType, Table, ProjectionType } from 'aws-cdk-lib/aws
 export class TableStack extends Stack {
   public readonly historyTable : Table;
   public readonly feedbackTable : Table;
+  public readonly evalResultsTable : Table;
+  public readonly evalSummaryTable : Table;
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
@@ -44,6 +46,26 @@ export class TableStack extends Stack {
       projectionType: ProjectionType.ALL,
     });
 
-    this.feedbackTable = userFeedbackTable;    
+    this.feedbackTable = userFeedbackTable;
+    
+    const evalSummariesTable = new Table(scope, 'EvaluationSummariesTable', {
+      partitionKey: { name: 'PartitionKey', type: AttributeType.STRING },
+      sortKey: { name: 'Timestamp', type: AttributeType.STRING },
+    });
+    this.evalSummaryTable = evalSummariesTable;
+
+    const evalResultsTable = new Table(scope, 'EvaluationResultsTable', {
+      partitionKey: { name: 'EvaluationId', type: AttributeType.STRING },
+      sortKey: { name: 'QuestionId', type: AttributeType.STRING },
+    });
+    // add secondary index to sort EvaluationResultsTable by Question ID
+    evalResultsTable.addGlobalSecondaryIndex({
+      indexName: 'QuestionIndex',
+      partitionKey: { name: 'EvaluationId', type: AttributeType.STRING },
+      sortKey: { name: 'QuestionId', type: AttributeType.STRING },
+      projectionType: ProjectionType.ALL,
+    });
+    this.evalResultsTable = evalResultsTable;
+
   }
 }

@@ -1,0 +1,12 @@
+{
+  "name": "generate-response",
+  "version": "1.0.0",
+  "description": "Lambda function for generating chatbot responses via Bedrock",
+  "main": "index.mjs",
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/client-lambda": "^3.0.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.0.0",
+    "@aws-sdk/client-bedrock-agent-runtime": "^3.0.0"
+  }
+} 

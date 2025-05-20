@@ -1,0 +1,8 @@
+langchain-aws
+langchain-community
+langchain
+ragas
+datasets
+pandas
+boto3
+nltk

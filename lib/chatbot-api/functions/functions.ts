@@ -9,6 +9,7 @@ import { Table } from 'aws-cdk-lib/aws-dynamodb';
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as bedrock from "aws-cdk-lib/aws-bedrock";
 import { S3EventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
+import { StepFunctionsStack } from './step-functions/step-functions';
 
 interface LambdaFunctionStackProps {  
   readonly wsApiEndpoint : string;  
@@ -18,9 +19,11 @@ interface LambdaFunctionStackProps {
   readonly knowledgeBucket : s3.Bucket;
   readonly knowledgeBase : bedrock.CfnKnowledgeBase;
   readonly knowledgeBaseSource: bedrock.CfnDataSource;
+  readonly evalSummariesTable : Table;
+  readonly evalResutlsTable : Table;
+  readonly evalTestCasesBucket : s3.Bucket;
+  readonly evalResultsBucket : s3.Bucket;
 }
-
-
 
 export class LambdaFunctionStack extends cdk.Stack {  
   public readonly chatFunction : lambda.Function;
@@ -31,6 +34,11 @@ export class LambdaFunctionStack extends cdk.Stack {
   public readonly uploadS3Function : lambda.Function;
   public readonly syncKBFunction : lambda.Function;
   public readonly metadataHandlerFunction: lambda.Function;
+  public readonly getS3TestCasesFunction : lambda.Function;
+  public readonly stepFunctionsStack : StepFunctionsStack;
+  public readonly uploadS3TestCasesFunction : lambda.Function;
+  public readonly handleEvalResultsFunction : lambda.Function;
+
 
   constructor(scope: Construct, id: string, props: LambdaFunctionStackProps) {
     super(scope, id);    
@@ -280,5 +288,84 @@ websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
     metadataRetrievalFunction.functionArn,
   ],
 }));
-  }
+
+const getS3TestCasesFunction = new lambda.Function(scope, 'GetS3TestCasesFilesHandlerFunction', {
+  runtime: lambda.Runtime.NODEJS_20_X,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/S3-get-test-cases')),
+  handler: 'index.handler',
+  environment: {
+    "BUCKET": props.evalTestCasesBucket.bucketName,
+  },
+  timeout: cdk.Duration.seconds(30)
+});
+
+getS3TestCasesFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: [
+    's3:ListBucket',
+    's3:GetObject'
+  ],
+  resources: [props.evalTestCasesBucket.bucketArn, props.evalTestCasesBucket.bucketArn + "/*"]
+}));
+this.getS3TestCasesFunction = getS3TestCasesFunction;
+
+const uploadS3TestCasesFunction = new lambda.Function(scope, 'UploadS3TestCasesFilesHandlerFunction', {
+  runtime: lambda.Runtime.NODEJS_20_X, // Choose any supported Node.js runtime
+  code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/S3-upload')), // Points to the lambda directory
+  handler: 'index.handler', // Points to the 'hello' file in the lambda directory
+  environment: {
+    "BUCKET" : props.evalTestCasesBucket.bucketName,        
+  },
+  timeout: cdk.Duration.seconds(30)
+});
+
+uploadS3TestCasesFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: [
+    's3:*'
+  ],
+  resources: [props.evalTestCasesBucket.bucketArn,props.evalTestCasesBucket.bucketArn+"/*"]
+}));
+this.uploadS3TestCasesFunction = uploadS3TestCasesFunction;
+
+
+const evalResultsAPIHandlerFunction = new lambda.Function(scope, 'EvalResultsHandlerFunction', {
+  runtime: lambda.Runtime.PYTHON_3_12, // Choose any supported Node.js runtime
+  code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/eval-results-handler')), // Points to the lambda directory
+  handler: 'lambda_function.lambda_handler', // Points to the 'hello' file in the lambda directory
+  environment: {
+    // Using the full table names: 
+    // GenAiOsdChatStack-ChatbotAPIEvaluationResultsTableE72FCF7C-136Z3LGPGTSF1
+    // GenAiOsdChatStack-ChatbotAPIEvaluationSummariesTableE9B95A54-1S7WAPF93R60M
+    "EVALUATION_RESULTS_TABLE" : props.evalResutlsTable.tableName,
+    "EVALUATION_SUMMARIES_TABLE" : props.evalSummariesTable.tableName
+  },
+  timeout: cdk.Duration.seconds(30)
+});
+evalResultsAPIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({ 
+  effect: iam.Effect.ALLOW,
+  actions: [
+    'dynamodb:GetItem',
+    'dynamodb:PutItem',
+    'dynamodb:UpdateItem',
+    'dynamodb:DeleteItem',
+    'dynamodb:Query',
+    'dynamodb:Scan'
+  ],
+  resources: [props.evalResutlsTable.tableArn, props.evalResutlsTable.tableArn + "/index/*", props.evalSummariesTable.tableArn, props.evalSummariesTable.tableArn + "/index/*"]
+}));
+
+this.handleEvalResultsFunction = evalResultsAPIHandlerFunction;
+props.evalResutlsTable.grantReadWriteData(evalResultsAPIHandlerFunction);
+props.evalSummariesTable.grantReadWriteData(evalResultsAPIHandlerFunction);
+
+this.stepFunctionsStack = new StepFunctionsStack(scope, 'StepFunctionsStack', {
+  knowledgeBase: props.knowledgeBase,
+  evalSummariesTable: props.evalSummariesTable,
+  evalResutlsTable: props.evalResutlsTable,
+  evalTestCasesBucket: props.evalTestCasesBucket,
+  evalResultsBucket: props.evalResultsBucket,
+  wsEndpoint: props.wsApiEndpoint
+});
+}
 }
