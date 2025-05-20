@@ -27,4 +27,6 @@ export interface NavigationPanelState {
 export type LoadingStatus = "pending" | "loading" | "finished" | "error";
 export type AdminDataType =
   | "file"
-  | "feedback";
+  | "feedback"
+  | "evaluationSummary"
+  | "detailedEvaluation";

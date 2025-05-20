@@ -1,17 +1,11 @@
-
 import * as cdk from "aws-cdk-lib";
 import * as s3 from 'aws-cdk-lib/aws-s3';
-
-
 import { AuthorizationStack } from '../authorization'
-
 import { WebsocketBackendAPI } from "./gateway/websocket-api"
 import { RestBackendAPI } from "./gateway/rest-api"
 import { LambdaFunctionStack } from "./functions/functions"
 import { TableStack } from "./tables/tables"
 import { S3BucketStack } from "./buckets/buckets"
-
-
 import { WebSocketLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { WebSocketLambdaAuthorizer, HttpUserPoolAuthorizer, HttpJwtAuthorizer  } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
@@ -19,6 +13,7 @@ import { aws_apigatewayv2 as apigwv2 } from "aws-cdk-lib";
 import { Construct } from "constructs";
 import { OpenSearchStack } from "./opensearch/opensearch";
 import { KnowledgeBaseStack } from "./knowledge-base/knowledge-base"
+import * as lambda from "aws-cdk-lib/aws-lambda";
 
 // import { NagSuppressions } from "cdk-nag";
 
@@ -36,6 +31,31 @@ export class ChatBotApi extends Construct {
 
   constructor(scope: Construct, id: string, props: ChatBotApiProps) {
     super(scope, id);
+    
+    // Create dedicated Lambda function to handle OPTIONS requests for CORS
+    const corsHandler = new lambda.Function(this, 'OptionsHandler', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromInline(`
+        exports.handler = async (event) => {
+          // Get the origin from the request
+          const origin = event.headers?.origin || event.headers?.Origin || 'https://dcf43zj2k8alr.cloudfront.net';
+          
+          return {
+            statusCode: 200,
+            headers: {
+              "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+              "Access-Control-Allow-Methods": "OPTIONS,POST,GET",
+              "Access-Control-Allow-Origin": origin,
+              "Access-Control-Allow-Credentials": "true"
+            },
+            body: JSON.stringify({}),
+          };
+        };
+      `)
+    });
+    
+    const corsHandlerIntegration = new HttpLambdaIntegration('CorsHandlerIntegration', corsHandler);
 
     const tables = new TableStack(this, "TableStack");
     const buckets = new S3BucketStack(this, "BucketStack");
@@ -58,7 +78,10 @@ export class ChatBotApi extends Construct {
         knowledgeBucket: buckets.knowledgeBucket,
         knowledgeBase: knowledgeBase.knowledgeBase,
         knowledgeBaseSource : knowledgeBase.dataSource,
-
+        evalSummariesTable : tables.evalSummaryTable,
+        evalResutlsTable : tables.evalResultsTable,
+        evalTestCasesBucket : buckets.evalTestCasesBucket,
+        evalResultsBucket : buckets.evalResultsBucket,
       })
 
     const wsAuthorizer = new WebSocketLambdaAuthorizer('WebSocketAuthorizer', props.authentication.lambdaAuthorizer, {identitySource: ['route.request.querystring.Authorization']});
@@ -121,6 +144,12 @@ export class ChatBotApi extends Construct {
     const s3GetAPIIntegration = new HttpLambdaIntegration('S3GetAPIIntegration', lambdaFunctions.getS3Function);
     restBackend.restAPI.addRoutes({
       path: "/s3-bucket-data",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    
+    restBackend.restAPI.addRoutes({
+      path: "/s3-bucket-data",
       methods: [apigwv2.HttpMethod.POST],
       integration: s3GetAPIIntegration,
       authorizer: httpAuthorizer,
@@ -129,12 +158,24 @@ export class ChatBotApi extends Construct {
     const s3DeleteAPIIntegration = new HttpLambdaIntegration('S3DeleteAPIIntegration', lambdaFunctions.deleteS3Function);
     restBackend.restAPI.addRoutes({
       path: "/delete-s3-file",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    
+    restBackend.restAPI.addRoutes({
+      path: "/delete-s3-file",
       methods: [apigwv2.HttpMethod.POST],
       integration: s3DeleteAPIIntegration,
       authorizer: httpAuthorizer,
     })
 
     const s3UploadAPIIntegration = new HttpLambdaIntegration('S3UploadAPIIntegration', lambdaFunctions.uploadS3Function);
+    restBackend.restAPI.addRoutes({
+      path: "/signed-url",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    
     restBackend.restAPI.addRoutes({
       path: "/signed-url",
       methods: [apigwv2.HttpMethod.POST],
@@ -248,5 +289,69 @@ export class ChatBotApi extends Construct {
     //       "Access to all log groups required for CloudWatch log group creation.",
     //   },
     // ]);
+  
+    const evalResultsHandlerIntegration = new HttpLambdaIntegration(
+      'EvalResultsHandlerIntegration',
+      lambdaFunctions.handleEvalResultsFunction
+    );
+    restBackend.restAPI.addRoutes({
+      path: "/eval-results-handler",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+
+    restBackend.restAPI.addRoutes({
+      path: "/eval-results-handler",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: evalResultsHandlerIntegration,
+      authorizer: httpAuthorizer,
+    });
+
+    const evalRunHandlerIntegration = new HttpLambdaIntegration(
+      'EvalRunHandlerIntegration',
+      lambdaFunctions.stepFunctionsStack.startLlmEvalStateMachineFunction
+    );
+    restBackend.restAPI.addRoutes({
+      path: "/eval-run-handler",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+
+    restBackend.restAPI.addRoutes({
+      path: "/eval-run-handler",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: evalRunHandlerIntegration,
+      authorizer: httpAuthorizer,
+    }); 
+
+    const s3UploadTestCasesAPIIntegration = new HttpLambdaIntegration('S3UploadTestCasesAPIIntegration', lambdaFunctions.uploadS3TestCasesFunction);
+    restBackend.restAPI.addRoutes({
+      path: "/signed-url-test-cases",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    
+    restBackend.restAPI.addRoutes({
+      path: "/signed-url-test-cases",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: s3UploadTestCasesAPIIntegration,
+      authorizer: httpAuthorizer,
+    })
+
+    const s3GetTestCasesAPIIntegration = new HttpLambdaIntegration('S3GetTestCasesAPIIntegration', lambdaFunctions.getS3TestCasesFunction);
+    
+    // Add proper CORS response for OPTIONS preflight request
+    restBackend.restAPI.addRoutes({
+      path: "/s3-test-cases-bucket-data",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+
+    restBackend.restAPI.addRoutes({
+      path: "/s3-test-cases-bucket-data",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: s3GetTestCasesAPIIntegration,
+      authorizer: httpAuthorizer,
+    })
   }
 }

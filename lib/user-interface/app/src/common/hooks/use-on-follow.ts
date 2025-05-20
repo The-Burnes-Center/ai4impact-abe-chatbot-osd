@@ -19,6 +19,19 @@ export default function useOnFollow() {
       }
 
       event.preventDefault();
+      
+      // Special handling for hash navigation to prevent duplicate paths
+      const href = event.detail.href;
+      if (href && href.includes('#')) {
+        const [path, hash] = href.split('#');
+        if (window.location.pathname === path) {
+          // If already on the right path, just update the hash
+          navigate(`${path}#${hash}`, { replace: true });
+          return;
+        }
+      }
+      
+      // Regular navigation
       navigate(event.detail.href);
     },
     [navigate]

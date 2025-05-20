@@ -1,0 +1,5 @@
+websocket-client>=1.6.0
+numpy<2.0.0 --only-binary=numpy
+scikit-learn<1.4.0 --only-binary=scikit-learn
+nltk>=3.8.0
+requests>=2.31.0 
