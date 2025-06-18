@@ -53,9 +53,8 @@ export class StepFunctionsStack extends Construct {
                 's3:PutObject'
             ],
             resources: [
-                props.evalTestCasesBucket.bucketArn, 
-                props.evalTestCasesBucket.bucketArn + "/*", 
-                props.evalTestCasesBucket.arnForObjects('*'),
+                props.evalTestCasesBucket.bucketArn,              // Bucket-level access
+                props.evalTestCasesBucket.bucketArn + "/*"        // Object-level access
             ]
         }));
         this.splitEvalTestCasesFunction = splitEvalTestCasesFunction;
@@ -91,14 +90,13 @@ export class StepFunctionsStack extends Construct {
             actions: [
                 's3:GetObject',
                 's3:PutObject',
+                's3:ListBucket'
             ],
             resources: [
-                props.evalTestCasesBucket.bucketArn, 
-                props.evalTestCasesBucket.bucketArn + "/*", 
-                props.evalTestCasesBucket.arnForObjects('*'),
-                props.evalResultsBucket.bucketArn,
-                props.evalResultsBucket.bucketArn + "/*",
-                props.evalResultsBucket.arnForObjects('*')
+                props.evalTestCasesBucket.bucketArn,              // Bucket-level access
+                props.evalTestCasesBucket.bucketArn + "/*",       // Object-level access
+                props.evalResultsBucket.bucketArn,               // Bucket-level access
+                props.evalResultsBucket.bucketArn + "/*"         // Object-level access
             ]
         }));
         props.evalResutlsTable.grantReadWriteData(llmEvalResultsHandlerFunction);
@@ -170,14 +168,13 @@ export class StepFunctionsStack extends Construct {
             actions: [
                 's3:GetObject',
                 's3:PutObject',
+                's3:ListBucket'
             ],
             resources: [
-                props.evalTestCasesBucket.bucketArn, 
-                props.evalTestCasesBucket.bucketArn + "/*", 
-                props.evalTestCasesBucket.arnForObjects('*'),
-                props.evalResultsBucket.bucketArn,
-                props.evalResultsBucket.bucketArn + "/*",
-                props.evalResultsBucket.arnForObjects('*')
+                props.evalTestCasesBucket.bucketArn,              // Bucket-level access
+                props.evalTestCasesBucket.bucketArn + "/*",       // Object-level access
+                props.evalResultsBucket.bucketArn,               // Bucket-level access
+                props.evalResultsBucket.bucketArn + "/*"         // Object-level access
             ]
         }));
         generateResponseFunction.grantInvoke(llmEvalFunction);
@@ -204,14 +201,13 @@ export class StepFunctionsStack extends Construct {
             actions: [
                 's3:GetObject',
                 's3:PutObject',
+                's3:ListBucket'
             ],
             resources: [
-                props.evalTestCasesBucket.bucketArn, 
-                props.evalTestCasesBucket.bucketArn + "/*", 
-                props.evalTestCasesBucket.arnForObjects('*'),
-                props.evalResultsBucket.bucketArn,
-                props.evalResultsBucket.bucketArn + "/*",
-                props.evalResultsBucket.arnForObjects('*')
+                props.evalTestCasesBucket.bucketArn,              // Bucket-level access
+                props.evalTestCasesBucket.bucketArn + "/*",       // Object-level access
+                props.evalResultsBucket.bucketArn,               // Bucket-level access
+                props.evalResultsBucket.bucketArn + "/*"         // Object-level access
             ]
         }));
         aggregateEvalResultsFunction.addToRolePolicy(new iam.PolicyStatement({
@@ -254,12 +250,10 @@ export class StepFunctionsStack extends Construct {
                 's3:DeleteObjects'
             ],
             resources: [
-                props.evalTestCasesBucket.bucketArn, 
-                props.evalTestCasesBucket.bucketArn + "/*", 
-                props.evalTestCasesBucket.arnForObjects('*'),
-                props.evalResultsBucket.bucketArn,
-                props.evalResultsBucket.bucketArn + "/*",
-                props.evalResultsBucket.arnForObjects('*')
+                props.evalTestCasesBucket.bucketArn,              // Bucket-level access
+                props.evalTestCasesBucket.bucketArn + "/*",       // Object-level access
+                props.evalResultsBucket.bucketArn,               // Bucket-level access
+                props.evalResultsBucket.bucketArn + "/*"         // Object-level access
             ]
         }));
         this.llmEvalCleanupFunction = llmEvalCleanupFunction;

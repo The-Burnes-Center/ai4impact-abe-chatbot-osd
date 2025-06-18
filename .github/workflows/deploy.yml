@@ -1,5 +1,6 @@
 name: Deploy Chatbot
 on:
+  workflow_dispatch:
   push:
     branches:
       - main  # or ‘master’ if you’re using the master branch

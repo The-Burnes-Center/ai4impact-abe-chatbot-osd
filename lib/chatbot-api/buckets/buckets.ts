@@ -24,21 +24,26 @@ export class S3BucketStack extends cdk.Stack {
         allowedHeaders: ["*"]
       }],
 
-      blockPublicAccess: {
-        blockPublicPolicy: false,
-        blockPublicAcls: false,
-        ignorePublicAcls: false,
-        restrictPublicBuckets: false
-      }
+      // COMMENTED OUT: Old public access configuration
+      // blockPublicAccess: {
+      //   blockPublicPolicy: false,
+      //   blockPublicAcls: false,
+      //   ignorePublicAcls: false,
+      //   restrictPublicBuckets: false
+      // }
+
+      // NEW: Secure private access configuration
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL
 
     });
 
-    this.knowledgeBucket.addToResourcePolicy(new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        principals: [new iam.AnyPrincipal()],
-        actions: ['s3:GetObject'],
-        resources: [`${this.knowledgeBucket.bucketArn}/*`]
-    }));
+    // COMMENTED OUT: Old public resource policy
+    // this.knowledgeBucket.addToResourcePolicy(new iam.PolicyStatement({
+    //     effect: iam.Effect.ALLOW,
+    //     principals: [new iam.AnyPrincipal()],
+    //     actions: ['s3:GetObject'],
+    //     resources: [`${this.knowledgeBucket.bucketArn}/*`]
+    // }));
 
 //  // Output the bucket ARN to be used in other stacks
 //     new cdk.CfnOutput(scope, 'KnowledgeBucketArn', {
@@ -56,12 +61,17 @@ export class S3BucketStack extends cdk.Stack {
         allowedOrigins: ['*'],
         allowedHeaders: ["*"]
       }],
-       blockPublicAccess: {
-        blockPublicPolicy: false,
-        blockPublicAcls: false,
-        ignorePublicAcls: false,
-        restrictPublicBuckets: false
-      }
+
+      // COMMENTED OUT: Old public access configuration
+      // blockPublicAccess: {
+      //   blockPublicPolicy: false,
+      //   blockPublicAcls: false,
+      //   ignorePublicAcls: false,
+      //   restrictPublicBuckets: false
+      // }
+
+      // NEW: Secure private access configuration
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL
     });
     this.evalResultsBucket = new s3.Bucket(scope, 'EvalResultsBucket', {
       versioned: true,
