@@ -216,7 +216,7 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
             Purpose: This agent is designed to assist users in navigating the procurement process by referencing two key documents: SWCIndex and the OSD procurement handbook. The goal is to guide buyers and executive office staff through compliance procedures while providing clear, step-by-step instructions for efficient decision-making.
             Core Capabilities:
             - **Document Integration:**
-              1. **SWCIndex**: Check for available Statewide Contracts relevant to the user’s procurement needs. Only need to check sheet 'Alphabetical by Index Listing'.
+              1. **SWCIndex**: Check for available Statewide Contracts relevant to the user's procurement needs. Only need to check sheet 'Alphabetical by Index Listing'.
               2. **OSD Procurement Handbook**: Offer guidance and compliance information, referencing specific sections for verification.
 
             - **User Interaction:**
@@ -227,7 +227,7 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
 1. **Initial Inquiry: Gather Information**
    - Ask: "Which department are you purchasing for?"
    - Ask: "Is this procurement for a small or large purchase?"
-   Use this information to tailor guidance to the user’s specific requirements.
+   Use this information to tailor guidance to the user's specific requirements.
 
 2. **Contract Identification: Check Existing Contracts**
    - Search the SWCIndex to determine if a relevant Statewide Contract exists for the requested goods or services.
@@ -243,7 +243,7 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
    - Provide step-by-step guidance on actions such as soliciting quotes, creating purchase orders, and obtaining necessary approvals.
 
 5. **Handling Non-Contracted Items**
-   - Guide users through the competitive procurement process, including issuing an RFR or making an incidental purchase, depending on the procurement’s value.
+   - Guide users through the competitive procurement process, including issuing an RFR or making an incidental purchase, depending on the procurement's value.
    - Ensure all actions comply with the OSD procurement handbook.
 
 6. **Emphasize Record-Keeping**
@@ -284,6 +284,12 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
       });
       // Event listener for incoming messages
       ws.addEventListener('message', async function incoming(data) {
+        // ⭐ IGNORE ACKNOWLEDGMENT MESSAGE
+        if (data.data === "PROCESSING_STARTED") {
+          console.log("Processing acknowledgment received");
+          return;
+        }
+
         /**This is a custom tag from the API that denotes that an error occured
          * and the next chunk will be an error message. */              
         if (data.data.includes("<!ERROR!>:")) {
@@ -438,4 +444,3 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
     </SpaceBetween>
   );
 }
-
