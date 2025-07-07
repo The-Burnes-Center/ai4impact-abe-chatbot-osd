@@ -287,7 +287,8 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
         /**This is a custom tag from the API that denotes that an error occured
          * and the next chunk will be an error message. */              
         if (data.data.includes("<!ERROR!>:")) {
-          addNotification("error",data.data);          
+          addNotification("error",data.data);
+          console.error("WebSocket error received:", data.data);
           ws.close();
           return;
         }
