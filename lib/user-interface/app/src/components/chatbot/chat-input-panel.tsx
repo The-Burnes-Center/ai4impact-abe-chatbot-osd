@@ -284,6 +284,20 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
       });
       // Event listener for incoming messages
       ws.addEventListener('message', async function incoming(data) {
+        // First, try to parse as JSON and check for the specific timeout error
+        try {
+          const parsed = JSON.parse(data.data);
+          if (parsed.message === "Endpoint request timed out" && 
+              parsed.connectionId && 
+              parsed.requestId) {
+            // This is the harmless API Gateway timeout error - ignore it completely
+            console.log("Filtered out API Gateway timeout error");
+            return;
+          }
+        } catch (e) {
+          // Not JSON or different structure, continue with normal processing
+        }
+
         /**This is a custom tag from the API that denotes that an error occured
          * and the next chunk will be an error message. */              
         if (data.data.includes("<!ERROR!>:")) {
