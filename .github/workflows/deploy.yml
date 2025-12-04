@@ -1,48 +1,51 @@
-name: Deploy Chatbot
+name: Deploy to Non Prod Environment
 on:
   workflow_dispatch:
   push:
     branches:
-      - main  # or ‘master’ if you’re using the master branch
+      - main
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      
     steps:
-    # Step 1: Check out the repository’s code
+    
     - name: Checkout code
       uses: actions/checkout@v4
-    # Step 2: Set up Node.js with the version required by your project
+    
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20'  # Use Node.js version 20.x, which is compatible with “@types/node”: “20.12.7"
-    # Step 3: Install backend dependencies (from the root folder)
+        node-version: '20'  
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: us-east-1
+    
     - name: Install backend dependencies
-      run: npm install  # No need to cd into highway-dotbot
-    # Step 4: Install frontend dependencies (in ‘lib/user-interface/app’)
+      run: npm install
+    
     - name: Install frontend dependencies
       run: |
         cd lib/user-interface/app
         npm install
-    # Step 5: Configure AWS credentials
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
-    # Step 6: Bootstrap the AWS environment (from the root folder)
+    
     - name: Bootstrap AWS environment
       run: npx cdk bootstrap
-    # Step 7: Deploy the CDK stack (from the root folder)
+
     - name: Deploy CDK stack
-      run: npx cdk deploy GenAiOsdChatStack --require-approval never  # Replace “My stack name” with your actual stack name
-    # Step 8: Fetch CloudFormation outputs and save to a file
+      run: npx cdk deploy ABEStackNonProd --require-approval never
+    
     - name: Fetch CloudFormation Outputs
       run: |
-        aws cloudformation describe-stacks --stack-name GenAiOsdChatStack --query "Stacks[0].Outputs" > stack-outputs.json
-        cat stack-outputs.json  # Just to verify in logs if needed
-    # Step 9: Upload the output file as an artifact (optional)
+        aws cloudformation describe-stacks --stack-name ABEStackNonProd --query "Stacks[0].Outputs" > stack-outputs.json
+        cat stack-outputs.json
+    
     - name: Upload Outputs as Artifact
       uses: actions/upload-artifact@v4
       with:
