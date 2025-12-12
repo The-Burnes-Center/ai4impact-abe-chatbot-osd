@@ -247,7 +247,7 @@ export class LambdaFunctionStack extends cdk.Stack {
       resources: [
         props.knowledgeBucket.bucketArn,               // Grants access to the bucket itself (for actions like ListBucket)
         props.knowledgeBucket.bucketArn + "/*" ,        // Grants access to all objects within the bucket
-        'arn:aws:bedrock:us-east-1::foundation-model/us.anthropic.claude-sonnet-4-20250514-v1:0',  // Add the Bedrock model resource explicitly
+        'arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0',  // Add the Bedrock model resource explicitly
         props.knowledgeBase.attrKnowledgeBaseArn,
 
       ]
