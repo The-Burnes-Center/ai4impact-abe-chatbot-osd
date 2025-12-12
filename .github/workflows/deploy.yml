@@ -18,21 +18,21 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '20'  # Use Node.js version 20.x, which is compatible with “@types/node”: “20.12.7"
-    # Step 3: Install backend dependencies (from the root folder)
+    # Step 3: Configure AWS credentials
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: us-east-1
+        role-session-name: ${{ github.actor }}
+    # Step 4: Install backend dependencies (from the root folder)
     - name: Install backend dependencies
       run: npm install  # No need to cd into highway-dotbot
-    # Step 4: Install frontend dependencies (in ‘lib/user-interface/app’)
+    # Step 5: Install frontend dependencies (in ‘lib/user-interface/app’)
     - name: Install frontend dependencies
       run: |
         cd lib/user-interface/app
         npm install
-    # Step 5: Configure AWS credentials
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v3
-      with:
-        role-to-assume: arn:aws:iam::158878148642:role/eoanf-osd-abe-github-deploy-np-role
-        aws-region: us-east-1
-        role-session-name: ${{ github.actor }}
     # Step 6: Bootstrap the AWS environment (from the root folder)
     - name: Bootstrap AWS environment
       run: npx cdk bootstrap
