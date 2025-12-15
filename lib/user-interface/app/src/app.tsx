@@ -5,6 +5,7 @@ import GlobalHeader from "./components/global-header";
 import Playground from "./pages/chatbot/playground/playground";
 import SessionPage from "./pages/chatbot/sessions/sessions";
 import DataPage from "./pages/admin/data-view-page";
+import MetricsPage from "./pages/admin/metrics-page";
 import UserFeedbackPage from "./pages/admin/user-feedback-page";
 import UserFeedbackDetailPage from "./pages/admin/feedback-details";
 import AboutChatbot from "./pages/help/about-chatbot";
@@ -51,6 +52,7 @@ function App() {
             {/* Admin Routes */}
             <Route path="/admin">
               <Route path="data" element={<DataPage />} />
+              <Route path="metrics" element={<MetricsPage />} />
               <Route path="user-feedback" element={<UserFeedbackPage />} />
               <Route path="user-feedback/:feedbackId" element={<UserFeedbackDetailPage />} />
               <Route path="llm-evaluation" element={<Outlet />}>
