@@ -8,7 +8,7 @@ import {
   Modal,
   Spinner,
 } from "@cloudscape-design/components";
-import { useCallback, useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState, useRef } from "react";
 import { AdminDataType } from "../../common/types";
 import { ApiClient } from "../../common/api-client/api-client";
 import { AppContext } from "../../common/app-context";
@@ -35,6 +35,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
   const [selectedItems, setSelectedItems] = useState<any[]>([]);
   const [showModalDelete, setShowModalDelete] = useState(false);
   const { addNotification, removeNotification } = useNotifications();
+  const wasSyncingRef = useRef(false);
 
   /** Pagination, but this is currently not working.
    * You will likely need to take the items object from useCollection in the
@@ -203,10 +204,19 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       try {
         const result = await apiClient.knowledgeManagement.kendraIsSyncing();
         console.log(result);
+        const isSyncing = result != "DONE SYNCING";
+        
         /** If the status is anything other than DONE SYNCING, then just
          * keep the button disabled as if a sync is still running
          */
-        setSyncing(result != "DONE SYNCING");
+        setSyncing(isSyncing);
+        
+        // If sync just completed (was syncing, now done), refresh the sync time
+        if (wasSyncingRef.current && !isSyncing) {
+          await props.statusRefreshFunction();
+        }
+        
+        wasSyncingRef.current = isSyncing;
       } catch (error) {
         addNotification("error", "Error checking sync status, please try again later.")
         console.error(error);
@@ -217,7 +227,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     getStatus();
 
     return () => clearInterval(interval);
-  }, []);
+  }, [appContext, props.statusRefreshFunction]);
 
   /** Function to run a sync */
   const syncKendra = async () => {

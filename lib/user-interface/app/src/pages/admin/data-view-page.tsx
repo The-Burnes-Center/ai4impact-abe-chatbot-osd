@@ -63,6 +63,13 @@ export default function DataPage() {
     })();
   }, []);
 
+  /** Load sync time when admin is confirmed and app context is available */
+  useEffect(() => {
+    if (admin && appContext) {
+      refreshSyncTime();
+    }
+  }, [admin, appContext]);
+
   /** If the admin status check fails, just show an access denied page*/
   if (!admin) {
     return (
