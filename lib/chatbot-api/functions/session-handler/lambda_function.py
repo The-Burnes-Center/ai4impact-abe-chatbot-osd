@@ -177,13 +177,13 @@ def delete_user_sessions(user_id):
         return [{"error": str(error)}]
         
         
-def list_sessions_by_user_id(user_id, limit = 15):
+def list_sessions_by_user_id(user_id, limit = 5):
     items = []  # Initialize an empty list to store the fetched session items
 
     try:
         last_evaluated_key = None  # Initialize the key to control the pagination loop
 
-        # Keep fetching until we have 15 items or there are no more items to fetch
+        # Keep fetching until we have 5 items or there are no more items to fetch
         while len(items) < limit:
             response = table.query(
                 IndexName='TimeIndex',  # Specify the secondary index to perform the query
