@@ -57,3 +57,5 @@ Contributions are welcome! Please follow these steps:
 ## Developers
   - [Prasoon Raj](https://www.linkedin.com/in/prasoon-raj-902/)
   - Rui Ge
+  - Ritik Bompilwar
+  - Divya Hegde

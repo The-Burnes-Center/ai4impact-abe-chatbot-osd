@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main  # or ‘master’ if you’re using the master branch
+  workflow_dispatch:
 permissions:
   id-token: "write"   # This is required for requesting the JWT
   contents: "read"    # This is required for actions/checkout
@@ -38,11 +39,11 @@ jobs:
       run: npx cdk bootstrap
     # Step 7: Deploy the CDK stack (from the root folder)
     - name: Deploy CDK stack
-      run: npx cdk deploy ABEStackNonProd --require-approval never  # Replace “My stack name” with your actual stack name
+      run: npx cdk deploy ABEStackDev --require-approval never  # Replace “My stack name” with your actual stack name
     # Step 8: Fetch CloudFormation outputs and save to a file
     - name: Fetch CloudFormation Outputs
       run: |
-        aws cloudformation describe-stacks --stack-name ABEStackNonProd --query "Stacks[0].Outputs" > stack-outputs.json
+        aws cloudformation describe-stacks --stack-name ABEStackDev --query "Stacks[0].Outputs" > stack-outputs.json
         cat stack-outputs.json  # Just to verify in logs if needed
     # Step 9: Upload the output file as an artifact (optional)
     - name: Upload Outputs as Artifact
