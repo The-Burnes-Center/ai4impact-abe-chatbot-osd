@@ -353,5 +353,36 @@ export class ChatBotApi extends Construct {
       integration: s3GetTestCasesAPIIntegration,
       authorizer: httpAuthorizer,
     })
+
+    // Metrics API routes
+    const metricsAPIIntegration = new HttpLambdaIntegration('MetricsAPIIntegration', lambdaFunctions.metricsFunction);
+    
+    // Daily logins routes
+    restBackend.restAPI.addRoutes({
+      path: "/daily-logins",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    
+    restBackend.restAPI.addRoutes({
+      path: "/daily-logins",
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST],
+      integration: metricsAPIIntegration,
+      authorizer: httpAuthorizer,
+    });
+
+    // Chatbot use routes
+    restBackend.restAPI.addRoutes({
+      path: "/chatbot-use",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    
+    restBackend.restAPI.addRoutes({
+      path: "/chatbot-use",
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST],
+      integration: metricsAPIIntegration,
+      authorizer: httpAuthorizer,
+    });
   }
 }

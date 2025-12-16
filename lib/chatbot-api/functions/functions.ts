@@ -38,6 +38,7 @@ export class LambdaFunctionStack extends cdk.Stack {
   public readonly stepFunctionsStack : StepFunctionsStack;
   public readonly uploadS3TestCasesFunction : lambda.Function;
   public readonly handleEvalResultsFunction : lambda.Function;
+  public readonly metricsFunction : lambda.Function;
 
 
   constructor(scope: Construct, id: string, props: LambdaFunctionStackProps) {
@@ -358,6 +359,27 @@ evalResultsAPIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
 this.handleEvalResultsFunction = evalResultsAPIHandlerFunction;
 props.evalResutlsTable.grantReadWriteData(evalResultsAPIHandlerFunction);
 props.evalSummariesTable.grantReadWriteData(evalResultsAPIHandlerFunction);
+
+// Metrics handler function using CloudWatch Metrics
+const metricsAPIHandlerFunction = new lambda.Function(scope, 'MetricsHandlerFunction', {
+  runtime: lambda.Runtime.PYTHON_3_12,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'metrics-handler')),
+  handler: 'lambda_function.lambda_handler',
+  timeout: cdk.Duration.seconds(30)
+});
+
+// Grant CloudWatch Metrics permissions
+metricsAPIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: [
+    'cloudwatch:PutMetricData',
+    'cloudwatch:GetMetricStatistics',
+    'cloudwatch:GetMetricData'
+  ],
+  resources: ['*']
+}));
+
+this.metricsFunction = metricsAPIHandlerFunction;
 
 this.stepFunctionsStack = new StepFunctionsStack(scope, 'StepFunctionsStack', {
   knowledgeBase: props.knowledgeBase,
