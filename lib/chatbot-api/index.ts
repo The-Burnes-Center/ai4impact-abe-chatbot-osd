@@ -324,6 +324,23 @@ export class ChatBotApi extends Construct {
       authorizer: httpAuthorizer,
     }); 
 
+    const metricsHandlerIntegration = new HttpLambdaIntegration(
+      'MetricsHandlerIntegration',
+      lambdaFunctions.metricsHandlerFunction
+    );
+    restBackend.restAPI.addRoutes({
+      path: "/metrics",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+
+    restBackend.restAPI.addRoutes({
+      path: "/metrics",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: metricsHandlerIntegration,
+      authorizer: httpAuthorizer,
+    });
+
     const s3UploadTestCasesAPIIntegration = new HttpLambdaIntegration('S3UploadTestCasesAPIIntegration', lambdaFunctions.uploadS3TestCasesFunction);
     restBackend.restAPI.addRoutes({
       path: "/signed-url-test-cases",
