@@ -7,6 +7,7 @@ import SessionPage from "./pages/chatbot/sessions/sessions";
 import DataPage from "./pages/admin/data-view-page";
 import UserFeedbackPage from "./pages/admin/user-feedback-page";
 import UserFeedbackDetailPage from "./pages/admin/feedback-details";
+import MetricsPage from "./pages/admin/metrics-page";
 import AboutChatbot from "./pages/help/about-chatbot";
 import Support from "./pages/help/support";
 import HowToUse from "./pages/help/how-to-use";
@@ -53,6 +54,7 @@ function App() {
               <Route path="data" element={<DataPage />} />
               <Route path="user-feedback" element={<UserFeedbackPage />} />
               <Route path="user-feedback/:feedbackId" element={<UserFeedbackDetailPage />} />
+              <Route path="metrics" element={<MetricsPage />} />
               <Route path="llm-evaluation" element={<Outlet />}>
                 <Route index element={<LlmEvaluationPage />} />
                 {/* Support both URL formats for backward compatibility */}

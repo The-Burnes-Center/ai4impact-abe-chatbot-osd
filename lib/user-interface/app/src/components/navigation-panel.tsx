@@ -113,6 +113,7 @@ export default function NavigationPanel() {
             items: [
               { type: "link", text: "Data", href: "/admin/data" },
               { type: "link", text: "User Feedback", href: "/admin/user-feedback" },
+              { type: "link", text: "Metrics", href: "/admin/metrics" },
               { type: "link", text: "LLM Evaluation", href: "/admin/llm-evaluation" }
             ],
           },)
@@ -125,6 +126,7 @@ export default function NavigationPanel() {
             items: [
               { type: "link", text: "Data", href: "/admin/data" },
               { type: "link", text: "User Feedback", href: "/admin/user-feedback" },
+              { type: "link", text: "Metrics", href: "/admin/metrics" },
               { type: "link", text: "LLM Evaluation", href: "/admin/llm-evaluation" }
             ],
           },)

@@ -38,6 +38,7 @@ export class LambdaFunctionStack extends cdk.Stack {
   public readonly stepFunctionsStack : StepFunctionsStack;
   public readonly uploadS3TestCasesFunction : lambda.Function;
   public readonly handleEvalResultsFunction : lambda.Function;
+  public readonly metricsHandlerFunction : lambda.Function;
 
 
   constructor(scope: Construct, id: string, props: LambdaFunctionStackProps) {
@@ -358,6 +359,26 @@ evalResultsAPIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
 this.handleEvalResultsFunction = evalResultsAPIHandlerFunction;
 props.evalResutlsTable.grantReadWriteData(evalResultsAPIHandlerFunction);
 props.evalSummariesTable.grantReadWriteData(evalResultsAPIHandlerFunction);
+
+const metricsHandlerFunction = new lambda.Function(scope, 'MetricsHandlerFunction', {
+  runtime: lambda.Runtime.PYTHON_3_12,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'metrics-handler')),
+  handler: 'lambda_function.lambda_handler',
+  environment: {
+    "DDB_TABLE_NAME": props.sessionTable.tableName,
+  },
+  timeout: cdk.Duration.seconds(60) // Increased timeout for scanning large tables
+});
+
+metricsHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: [
+    'dynamodb:Scan'
+  ],
+  resources: [props.sessionTable.tableArn, props.sessionTable.tableArn + "/index/*"]
+}));
+
+this.metricsHandlerFunction = metricsHandlerFunction;
 
 this.stepFunctionsStack = new StepFunctionsStack(scope, 'StepFunctionsStack', {
   knowledgeBase: props.knowledgeBase,

@@ -245,4 +245,26 @@ export class MetricClient {
     return uses['Items'].length / users;
   }
 
+  async getMetrics() {
+    try {
+      const auth = await Utils.authenticate();
+      const response = await fetch(this.API + '/metrics', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': auth,
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch metrics: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (err) {
+      console.log("Error retrieving metrics:", err);
+      throw err;
+    }
+  }
+
 }
