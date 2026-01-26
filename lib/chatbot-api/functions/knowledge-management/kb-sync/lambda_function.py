@@ -1,6 +1,11 @@
 import json
 import boto3
 import os
+import logging
+
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 # Retrieve environment variables for Knowledge Base index and source index
 kb_index = os.environ['KB_ID']
@@ -16,6 +21,8 @@ def check_running():
     Returns:
         bool: True if there are any ongoing sync or sync-indexing jobs, False otherwise.
     """
+    logger.info(f"Checking for running sync jobs. KB_ID: {kb_index}, Source: {source_index}")
+    
     # List ongoing sync jobs with status 'SYNCING'
     syncing = client.list_ingestion_jobs(
         dataSourceId=source_index,
@@ -45,29 +52,54 @@ def check_running():
     # Combine the history of both job types
     hist = starting['ingestionJobSummaries'] + syncing['ingestionJobSummaries']
     
+    logger.info(f"Found {len(hist)} running sync job(s)")
+    
     # Check if there are any jobs in the history
     if len(hist) > 0:
         return True
+    return False
 
 def get_last_sync():    
-    syncs = client.list_ingestion_jobs(
-        dataSourceId=source_index,
-        knowledgeBaseId=kb_index,
-        filters=[{
-            'attribute': 'STATUS',
-            'operator': 'EQ',
-            'values': [
-                'COMPLETE',
-            ]
-        }]
-    )
-    hist = syncs["ingestionJobSummaries"]
-    time = hist[0]["updatedAt"].strftime('%B %d, %Y, %I:%M%p UTC')
-    return {
+    logger.info(f"Getting last sync time. KB_ID: {kb_index}, Source: {source_index}")
+    
+    try:
+        syncs = client.list_ingestion_jobs(
+            dataSourceId=source_index,
+            knowledgeBaseId=kb_index,
+            filters=[{
+                'attribute': 'STATUS',
+                'operator': 'EQ',
+                'values': [
+                    'COMPLETE',
+                ]
+            }]
+        )
+        hist = syncs["ingestionJobSummaries"]
+        
+        if len(hist) == 0:
+            logger.warning("No completed sync jobs found")
+            return {
                 'statusCode': 200,
                 'headers': {'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps(time)
+                'body': json.dumps('No sync history available')
             }
+        
+        logger.info(f"Found {len(hist)} completed sync job(s). Using most recent.")
+        time = hist[0]["updatedAt"].strftime('%B %d, %Y, %I:%M%p UTC')
+        logger.info(f"Last sync time: {time}")
+        
+        return {
+            'statusCode': 200,
+            'headers': {'Access-Control-Allow-Origin': '*'},
+            'body': json.dumps(time)
+        }
+    except Exception as e:
+        logger.error(f"Error getting last sync: {str(e)}", exc_info=True)
+        return {
+            'statusCode': 500,
+            'headers': {'Access-Control-Allow-Origin': '*'},
+            'body': json.dumps(f'Error retrieving last sync: {str(e)}')
+        }
 
 
 def lambda_handler(event, context):
@@ -84,20 +116,23 @@ def lambda_handler(event, context):
     
     # Retrieve the resource path from the event dictionary
     resource_path = event.get('rawPath', '')
+    logger.info(f"Received request for path: {resource_path}")
     
     # Check admin access    
     try:
         claims = event["requestContext"]["authorizer"]["jwt"]["claims"]
         roles = json.loads(claims['custom:role'])
         if any('Admin' in role for role in roles):
-            print("admin granted!")
+            logger.info("Admin access granted")
         else:
+            logger.warning("Access denied: User does not have Admin role")
             return {
                 'statusCode': 403,
                 'headers': {'Access-Control-Allow-Origin': '*'},
                 'body': json.dumps('User is not authorized to perform this action')
             }
-    except:
+    except Exception as e:
+        logger.error(f"Error checking admin access: {str(e)}", exc_info=True)
         return {
                 'statusCode': 500,
                 'headers': {'Access-Control-Allow-Origin': '*'},
@@ -106,23 +141,29 @@ def lambda_handler(event, context):
         
     # Check if the request is for syncing Knowledge Base
     if "sync-kb" in resource_path:
+        logger.info("Processing sync-kb request")
         if check_running():
-            print("1")
-
+            logger.info("Sync already in progress, returning STILL SYNCING")
             return {
                 'statusCode': 200,
                 'headers': {'Access-Control-Allow-Origin': '*'},
                 'body': json.dumps('STILL SYNCING')
             }
-        
-        
         else:
-            # Check if the request is for syncing Knowledge Base    
-            print("2")
-            client.start_ingestion_job(
+            logger.info("No sync in progress, starting new sync job")
+            try:
+                response = client.start_ingestion_job(
                     dataSourceId=source_index,
                     knowledgeBaseId=kb_index
-            )
+                )
+                logger.info(f"Sync job started successfully. Job ID: {response.get('ingestionJob', {}).get('ingestionJobId', 'N/A')}")
+            except Exception as e:
+                logger.error(f"Error starting sync job: {str(e)}", exc_info=True)
+                return {
+                    'statusCode': 500,
+                    'headers': {'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps(f'Error starting sync: {str(e)}')
+                }
         
             return {
                 'statusCode': 200,
@@ -134,11 +175,22 @@ def lambda_handler(event, context):
    
     # Check if the request is for checking the sync status        
     elif "still-syncing" in resource_path:
-        status_msg = 'STILL SYNCING' if check_running() else 'DONE SYNCING'
+        logger.info("Processing still-syncing status check")
+        is_running = check_running()
+        status_msg = 'STILL SYNCING' if is_running else 'DONE SYNCING'
+        logger.info(f"Sync status: {status_msg}")
         return {
             'statusCode': 200,
             'headers': {'Access-Control-Allow-Origin': '*'},
             'body': json.dumps(status_msg)
             }
     elif "last-sync" in resource_path:
+        logger.info("Processing last-sync request")
         return get_last_sync()
+    else:
+        logger.warning(f"Unknown resource path: {resource_path}")
+        return {
+            'statusCode': 404,
+            'headers': {'Access-Control-Allow-Origin': '*'},
+            'body': json.dumps('Endpoint not found')
+        }
