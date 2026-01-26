@@ -29,10 +29,13 @@ export default function DataPage() {
   /** Function to get the last synced time */
   const refreshSyncTime = async () => {
     try {
-      const lastSync = await apiClient.knowledgeManagement.lastKendraSync();    
+      console.log("🔄 refreshSyncTime() called - fetching last sync time from API...");
+      const lastSync = await apiClient.knowledgeManagement.lastKendraSync();
+      console.log("📅 Received last sync time from API:", lastSync);
       setLastSyncTime(lastSync);
+      console.log("✅ Updated lastSyncTime state to:", lastSync);
     } catch (e) {
-      console.log(e);
+      console.error("❌ Error in refreshSyncTime():", e);
     }
   }
 

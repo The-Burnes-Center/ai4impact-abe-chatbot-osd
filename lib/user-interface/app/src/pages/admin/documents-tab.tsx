@@ -8,7 +8,7 @@ import {
   Modal,
   Spinner,
 } from "@cloudscape-design/components";
-import { useCallback, useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState, useRef } from "react";
 import { AdminDataType } from "../../common/types";
 import { ApiClient } from "../../common/api-client/api-client";
 import { AppContext } from "../../common/app-context";
@@ -35,6 +35,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
   const [selectedItems, setSelectedItems] = useState<any[]>([]);
   const [showModalDelete, setShowModalDelete] = useState(false);
   const { addNotification, removeNotification } = useNotifications();
+  const previousSyncStatusRef = useRef<boolean>(false);
 
   /** Pagination, but this is currently not working.
    * You will likely need to take the items object from useCollection in the
@@ -192,32 +193,74 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     setLoading(false);
   };
 
-  /** Start a 10-second interval on which to check sync status and disable the button if 
-   * syncing is not completed
+  /** Start a polling interval to check sync status and disable the button if 
+   * syncing is not completed. Also refreshes the last sync time when sync completes.
+   * Uses a dynamic interval that polls more frequently (5s) when syncing is active.
    */
   useEffect(() => {
     if (!appContext) return;
     const apiClient = new ApiClient(appContext);
+    let intervalId: NodeJS.Timeout | null = null;
 
     const getStatus = async () => {
       try {
         const result = await apiClient.knowledgeManagement.kendraIsSyncing();
-        console.log(result);
-        /** If the status is anything other than DONE SYNCING, then just
-         * keep the button disabled as if a sync is still running
-         */
-        setSyncing(result != "DONE SYNCING");
+        console.log("Sync status check:", result);
+        const isCurrentlySyncing = result != "DONE SYNCING";
+        const wasSyncing = previousSyncStatusRef.current;
+        
+        console.log(`Sync status: wasSyncing=${wasSyncing}, isCurrentlySyncing=${isCurrentlySyncing}`);
+        
+        /** Always update the syncing state based on current status */
+        setSyncing(isCurrentlySyncing);
+        
+        /** If sync just completed (transitioned from syncing to done), refresh the last sync time */
+        if (wasSyncing && !isCurrentlySyncing) {
+          console.log("✅ Sync completed! Transition detected: wasSyncing=true -> isCurrentlySyncing=false");
+          console.log("Calling statusRefreshFunction() to update last sync time...");
+          try {
+            // Add a small delay to ensure backend has updated the sync job status
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            await props.statusRefreshFunction();
+            console.log("✅ statusRefreshFunction() completed");
+          } catch (error) {
+            console.error("❌ Error calling statusRefreshFunction():", error);
+          }
+        } else if (wasSyncing && isCurrentlySyncing) {
+          console.log("⏳ Still syncing...");
+        } else if (!wasSyncing && !isCurrentlySyncing) {
+          console.log("✅ No sync in progress");
+        }
+        
+        // Update the ref AFTER checking for transition
+        previousSyncStatusRef.current = isCurrentlySyncing;
+        
+        // Adjust polling frequency based on sync status
+        if (intervalId) {
+          clearInterval(intervalId);
+        }
+        // Poll every 5 seconds when syncing, 10 seconds when idle
+        const pollInterval = isCurrentlySyncing ? 5000 : 10000;
+        console.log(`Setting poll interval to ${pollInterval}ms (syncing: ${isCurrentlySyncing})`);
+        intervalId = setInterval(getStatus, pollInterval);
       } catch (error) {
         addNotification("error", "Error checking sync status, please try again later.")
-        console.error(error);
+        console.error("Error checking sync status:", error);
+        // On error, keep current polling interval
       }
     };
 
-    const interval = setInterval(getStatus, 10000);
-    getStatus();
+    // Initial check - set the ref based on current status
+    getStatus().then(() => {
+      // After first check, the ref will be set correctly
+    });
 
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [appContext, props]);
 
   /** Function to run a sync */
   const syncKendra = async () => {
@@ -225,18 +268,41 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       // setSyncing(false)
       return;
     }
+    console.log("Starting sync...");
     setSyncing(true);
+    previousSyncStatusRef.current = true; // Track that sync has started
+    console.log("Set previousSyncStatusRef.current to true");
     try {
       const state = await apiClient.knowledgeManagement.syncKendra();
-      console.log(state);
+      console.log("Sync started, response:", state);
       if (state != "STARTED SYNCING") {
         addNotification("error", "Error running sync, please try again later.")
         setSyncing(false)
+        previousSyncStatusRef.current = false;
+        return;
       }
+      // Sync started successfully - polling will detect when it completes
+      // Force an immediate status check after a short delay to catch quick syncs
+      setTimeout(async () => {
+        try {
+          const result = await apiClient.knowledgeManagement.kendraIsSyncing();
+          const isCurrentlySyncing = result != "DONE SYNCING";
+          console.log("Immediate status check (2s after start):", result, "isSyncing:", isCurrentlySyncing);
+          setSyncing(isCurrentlySyncing);
+          previousSyncStatusRef.current = isCurrentlySyncing;
+          if (!isCurrentlySyncing) {
+            console.log("Sync completed quickly, refreshing last sync time");
+            await props.statusRefreshFunction();
+          }
+        } catch (error) {
+          console.error("Error in immediate status check:", error);
+        }
+      }, 2000); // Check after 2 seconds
     } catch (error) {
       console.log(error);
       addNotification("error", "Error running sync, please try again later.")
       setSyncing(false)
+      previousSyncStatusRef.current = false;
     }
   }
 

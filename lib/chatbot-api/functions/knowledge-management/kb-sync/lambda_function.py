@@ -84,9 +84,16 @@ def get_last_sync():
                 'body': json.dumps('No sync history available')
             }
         
-        logger.info(f"Found {len(hist)} completed sync job(s). Using most recent.")
-        time = hist[0]["updatedAt"].strftime('%B %d, %Y, %I:%M%p UTC')
-        logger.info(f"Last sync time: {time}")
+        # Sort by updatedAt descending to get the most recent sync job
+        # The API might not return results in chronological order
+        hist_sorted = sorted(hist, key=lambda x: x["updatedAt"], reverse=True)
+        most_recent = hist_sorted[0]
+        
+        logger.info(f"Found {len(hist)} completed sync job(s). Most recent: {most_recent.get('ingestionJobId', 'N/A')}")
+        logger.info(f"Most recent sync updatedAt: {most_recent['updatedAt']}")
+        
+        time = most_recent["updatedAt"].strftime('%B %d, %Y, %I:%M%p UTC')
+        logger.info(f"Last sync time formatted: {time}")
         
         return {
             'statusCode': 200,
