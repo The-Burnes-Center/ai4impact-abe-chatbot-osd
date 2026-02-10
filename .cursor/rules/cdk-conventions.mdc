@@ -1,0 +1,47 @@
+---
+description: CDK infrastructure conventions and patterns for ABE chatbot
+globs: "**/*.ts"
+alwaysApply: false
+---
+
+# CDK Conventions
+
+## Construct Patterns
+
+- Constructs in `lib/chatbot-api/` should extend `Construct`, **not** `cdk.Stack` (they are nested inside the root stack, not standalone stacks)
+- Create resources on `this`, not `scope` -- the construct tree must be correct for CDK Nag and CloudFormation scoping
+- The root stack is `GenAiMvpStack` in `lib/gen-ai-mvp-stack.ts`
+
+```typescript
+// GOOD
+export class MyConstruct extends Construct {
+  constructor(scope: Construct, id: string) {
+    super(scope, id);
+    new dynamodb.Table(this, 'Table', { ... }); // 'this' not 'scope'
+  }
+}
+
+// BAD -- don't extend Stack for sub-constructs
+export class MyConstruct extends cdk.Stack { ... }
+```
+
+## CDK Nag
+
+- `cdk-nag` is installed. Enable it via `Aspects.of(app).add(new AwsSolutionsChecks())` in `bin/gen-ai-mvp.ts`
+- When adding `NagSuppressions`, always include a clear `reason` string explaining why the suppression is justified
+- Run `cdk synth` to see Nag warnings/errors before deploying
+
+## Resource Defaults
+
+When creating new resources, apply these baseline settings:
+
+- **DynamoDB**: `pointInTimeRecovery: true`, `billingMode: PAY_PER_REQUEST`, `encryption: AWS_MANAGED`, explicit `removalPolicy`
+- **S3**: `blockPublicAccess: BLOCK_ALL`, `enforceSSL: true`, `encryption: S3_MANAGED` minimum
+- **Lambda**: `architecture: ARM_64`, `tracing: ACTIVE`, `logRetention: ONE_MONTH`, explicit `timeout`
+- **IAM**: Least-privilege actions only -- never use `*` actions (e.g., `s3:*`, `bedrock:*`). Scope resources to specific ARNs where possible.
+
+## Environment
+
+- Region: `us-east-1`
+- Stack name: `ABEStackNonProd` (from `lib/constants.ts`)
+- CDK CLI version: `2.140.0`

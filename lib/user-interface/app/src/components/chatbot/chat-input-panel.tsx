@@ -179,9 +179,6 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
       if (messageHistoryRef.current.length < 3) {
         firstTime = true;
       }
-      // old non-auth url -> const wsUrl = 'wss://ngdpdxffy0.execute-api.us-east-1.amazonaws.com/test/'; 
-      // old shared url with auth -> wss://caoyb4x42c.execute-api.us-east-1.amazonaws.com/test/     
-      // first deployment URL 'wss://zrkw21d01g.execute-api.us-east-1.amazonaws.com/prod/';
       const TEST_URL = appContext.wsEndpoint+"/"
 
       // Get a JWT token for the API to authenticate on      
@@ -206,73 +203,13 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
 
       // Event listener for when the connection is open
       ws.addEventListener('open', function open() {
-        console.log('Connected to the WebSocket server');        
+        console.log('Connected to the WebSocket server');
+        // System prompt is server-side only (prompt.mjs) -- never send from frontend
         const message = JSON.stringify({
           "action": "getChatbotResponse",
           "data": {
             userMessage: messageToSend,
             chatHistory: assembleHistory(messageHistoryRef.current.slice(0, -2)),
-            systemPrompt: `
-            Purpose: This agent is designed to assist users in navigating the procurement process by referencing two key documents: SWCIndex and the OSD procurement handbook. The goal is to guide buyers and executive office staff through compliance procedures while providing clear, step-by-step instructions for efficient decision-making.
-            Core Capabilities:
-            - **Document Integration:**
-              1. **SWCIndex**: Check for available Statewide Contracts relevant to the user’s procurement needs. Only need to check sheet 'Alphabetical by Index Listing'.
-              2. **OSD Procurement Handbook**: Offer guidance and compliance information, referencing specific sections for verification.
-
-            - **User Interaction:**
-              Engage with users to gather essential procurement details and provide professional, actionable guidance tailored to their specific situation.
-
-**Steps for the Agent to Follow in case user wants to buy goods/services:**
-
-1. **Initial Inquiry: Gather Information**
-   - Ask: "Which department are you purchasing for?"
-   - Ask: "Is this procurement for a small or large purchase?"
-   Use this information to tailor guidance to the user’s specific requirements.
-
-2. **Contract Identification: Check Existing Contracts**
-   - Search the SWCIndex to determine if a relevant Statewide Contract exists for the requested goods or services.
-   - If a contract exists: Provide the contract number, vendor details, and next steps.
-   - If no contract is found: Guide the user on the appropriate procurement process, such as issuing an RFR or making an incidental purchase.
-
-3. **Provide Contract Details**
-   - Share the contract number and vendor details.
-   - Guide users to the Contract User Guide in COMMBUYS for instructions on how to proceed.
-
-4. **Guide on Using Contracts**
-   - Instruct users to follow contract-specific procedures by reviewing the Contract User Guide.
-   - Provide step-by-step guidance on actions such as soliciting quotes, creating purchase orders, and obtaining necessary approvals.
-
-5. **Handling Non-Contracted Items**
-   - Guide users through the competitive procurement process, including issuing an RFR or making an incidental purchase, depending on the procurement’s value.
-   - Ensure all actions comply with the OSD procurement handbook.
-
-6. **Emphasize Record-Keeping**
-   - Remind users to maintain documentation (quotes, purchase orders, vendor communications) according to the OSD procurement handbook.
-   - Reference specific handbook sections for compliance verification.
-
-7. **Regular Use and Updates**
-   - Provide ongoing assistance for day-to-day procurement activities and update users on any changes to processes or contracts.
-
-8. **Redirect to Authorities When Needed**
-   - If a process is unclear, redirect users to the appropriate procurement authority, providing contact information and guidance on how to reach them.
-
-**Deployment Notes:**
-- **Model Training:** Train the agent using the language and procedures outlined in the OSD procurement handbook and SWCIndex.
-- **User Interface:** Design the UI to capture procurement details and dynamically reference the correct sections of the handbook and relevant contracts.
-
-**Example Interaction when user wants to purchase goods/services:**
-- **User:** "I need to purchase uniforms for my department."
-- **Agent:** "Which department are you purchasing for?"
-- **User:** "The Health Department."
-- **Agent:** "Is this a small or large procurement?"
-- **User:** "Large procurement."
-- **Agent:** "Let me check for available Statewide Contracts. Yes, Contract Number SWC-12345 is available for uniforms. Access it on COMMBUYS, and review the User Guide for the next steps."
-
-**Example Interaction when user wants guidance:**
-- **User:** "Which platform should I use to place bids?"
-- **Agent:** "You can use COMMBUYS for the purpose of placing bids. Although you may want to reference specific contract user guides to cross verify in case of any exception."
-`,
-            projectId: 'rsrs111111',
             user_id: username,
             session_id: props.session.id,
             retrievalSource: selectedDataSource.value
@@ -363,7 +300,7 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
 
     } catch (error) {      
       console.error('Error sending message:', error);
-      alert('Sorry, something has gone horribly wrong! Please try again or refresh the page.');
+      addNotification("error", "Sorry, something went wrong. Please try again or refresh the page.");
       props.setRunning(false);
     }     
   };
@@ -452,4 +389,3 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
     </SpaceBetween>
   );
 }
-

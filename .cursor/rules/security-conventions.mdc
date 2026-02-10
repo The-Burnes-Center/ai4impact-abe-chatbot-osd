@@ -1,0 +1,39 @@
+---
+description: Security conventions for ABE chatbot -- secrets, IAM, input validation, error handling
+alwaysApply: true
+---
+
+# Security Conventions
+
+## Secrets Management
+
+- **Never** hardcode credentials, API keys, passwords, or guardrail IDs in source code
+- Store secrets in **AWS Secrets Manager** and retrieve at runtime via `secretsmanager:GetSecretValue`
+- Configuration values (model IDs, region, thresholds) go in **environment variables** set via CDK, not hardcoded in Lambda code
+- The system prompt must only exist **server-side** -- never embed it in frontend code
+
+## IAM Policies
+
+- Always use **least-privilege** -- specify exact actions (e.g., `s3:GetObject`, `s3:PutObject`), never wildcards (`s3:*`)
+- Scope resource ARNs as tightly as possible (specific bucket, specific table, specific model ARN)
+- For Bedrock: use `bedrock:InvokeModel` scoped to specific model ARNs, not `bedrock:*` on `*`
+
+## Input Validation
+
+- Validate and sanitize all user input before passing to AWS APIs (S3 keys, DynamoDB keys, etc.)
+- S3 key operations: enforce an allowlist prefix, reject path traversal (`../`), sanitize filenames
+- CSV exports: escape values starting with `=`, `+`, `-`, `@` to prevent formula injection
+
+## Error Handling
+
+- **Python**: Use `except Exception as e:`, never bare `except:` -- bare except silently swallows errors
+- **Node.js**: Always wrap `JSON.parse()` in try/catch
+- **Never** expose stack traces, internal errors, or raw error objects to the client
+- Return user-friendly error messages; log the full error server-side
+- Use `&&` for logical AND, never `&` (bitwise) for boolean conditions in JavaScript
+
+## Frontend Security
+
+- Never convert `s3://` URIs to public `https://s3.amazonaws.com/` URLs -- always use server-generated pre-signed URLs
+- Never use `alert()` for error display -- use inline UI messages
+- Remove all `console.log` in production builds

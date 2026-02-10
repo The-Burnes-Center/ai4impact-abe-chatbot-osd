@@ -30,13 +30,10 @@ def lambda_handler(event, context):
         else:
             print("Caught error: attempted unauthorized admin access")
             admin = False
-    except:
-        print("Caught error: admin access and user roles are not present")
-        # return {
-        #         'statusCode': 500,
-        #         'headers': {'Access-Control-Allow-Origin': '*'},
-        #         'body': json.dumps('Unable to check user role, please ensure you have Cognito configured correctly with a custom:role attribute.')
-        #     }
+    except Exception as e:
+        print(f"Caught error: admin access and user roles are not present: {e}")
+        # On auth parse failure, explicitly deny admin access (never silently continue)
+        admin = False
     http_method = event.get('routeKey')
     if 'POST' in http_method:
         if event.get('rawPath') == '/user-feedback/download-feedback' and admin:

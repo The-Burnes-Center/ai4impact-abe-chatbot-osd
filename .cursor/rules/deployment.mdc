@@ -1,0 +1,74 @@
+---
+description: Deployment workflow for ABE chatbot -- GitHub CI/CD and manual AWS CLI deploys
+alwaysApply: true
+---
+
+# Deployment
+
+## GitHub CI/CD (Primary)
+
+Pushing to the `main` branch automatically triggers a full deployment via `.github/workflows/deploy.yml`. The pipeline:
+
+1. Checks out code
+2. Installs root (`npm install`) and frontend (`cd lib/user-interface/app && npm install`) dependencies
+3. Bootstraps CDK (`npx cdk bootstrap`)
+4. Deploys the stack (`npx cdk deploy ABEStackNonProd --require-approval never`)
+5. Exports CloudFormation outputs
+
+**Any push or merge to `main` is a production deploy.** Do not push untested changes directly to `main`.
+
+## Manual Deploy via AWS CLI
+
+To test and deploy locally before pushing:
+
+```bash
+# 1. Set the profile (REQUIRED -- see aws-profile rule)
+export AWS_PROFILE=158878148642_eoanf-osd-ai-admins
+
+# 2. Install dependencies
+npm install
+cd lib/user-interface/app && npm install && cd ../../..
+
+# 3. Synthesize to check for errors (no deploy)
+npx cdk synth ABEStackNonProd
+
+# 4. Diff to preview changes
+npx cdk diff ABEStackNonProd
+
+# 5. Deploy
+npx cdk deploy ABEStackNonProd
+```
+
+## Commit Messages
+
+- Only state **what was implemented or changed** -- nothing else
+- Keep it professional and concise
+- No explanations of *why*, no context, no commentary -- just the changes
+- Use imperative mood (e.g., "Fix source links", not "Fixed source links")
+- Group related changes with bullet points if multiple things changed
+
+```
+# Good
+Fix tool-use JSON parsing and source link pre-signed URLs
+
+- Add null guard on parseChunk to prevent undefined concat
+- Move fetch_metadata handler into usingTool block
+- Add s3:GetObject to chat Lambda for knowledge bucket
+- Open markdown hyperlinks in new tab
+
+# Bad
+Phase 1: Critical security fixes, bug fixes, and Cursor rules
+
+This commit addresses multiple security vulnerabilities identified
+during the audit including wildcard IAM policies...
+```
+
+## Rules
+
+- **Always** run `cdk synth` before pushing to `main` to catch CDK errors early
+- **Always** run `cdk diff` before deploying to review infrastructure changes
+- The CDK stack name is **`ABEStackNonProd`** (defined in `lib/constants.ts`)
+- The CDK app entry point is `bin/gen-ai-mvp.ts`
+- Frontend must be installed separately: `cd lib/user-interface/app && npm install`
+- Never deploy without the correct AWS profile set (see aws-profile rule)
+- If credentials expire during deploy, stop and ask the user to refresh SSO credentials

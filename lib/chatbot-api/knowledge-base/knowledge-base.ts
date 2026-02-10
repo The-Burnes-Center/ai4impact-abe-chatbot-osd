@@ -42,7 +42,8 @@ export class KnowledgeBaseStack extends cdk.Stack {
     props.openSearch.knowledgeBaseRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
-        's3:*'
+        's3:GetObject',
+        's3:ListBucket',
       ],
       resources: [props.s3bucket.bucketArn, props.s3bucket.bucketArn + "/*"]
     }));

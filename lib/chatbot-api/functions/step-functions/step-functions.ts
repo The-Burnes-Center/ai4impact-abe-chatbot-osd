@@ -118,9 +118,11 @@ export class StepFunctionsStack extends Construct {
             actions: [
               'bedrock:InvokeModelWithResponseStream',
               'bedrock:InvokeModel',
-              
             ],
-            resources: ["*"]
+            resources: [
+              `arn:aws:bedrock:*::foundation-model/anthropic.*`,
+              `arn:aws:bedrock:*:${cdk.Stack.of(this).account}:inference-profile/*`,
+            ]
         }));
         generateResponseFunction.addToRolePolicy(new iam.PolicyStatement({
             effect: iam.Effect.ALLOW,
@@ -161,7 +163,11 @@ export class StepFunctionsStack extends Construct {
               'bedrock:InvokeModelWithResponseStream',
               'bedrock:InvokeModel'
             ],
-            resources: ['*']
+            resources: [
+              `arn:aws:bedrock:*::foundation-model/anthropic.*`,
+              `arn:aws:bedrock:*::foundation-model/amazon.titan-embed-*`,
+              `arn:aws:bedrock:*:${cdk.Stack.of(this).account}:inference-profile/*`,
+            ]
         }));
         llmEvalFunction.addToRolePolicy(new iam.PolicyStatement({
             effect: iam.Effect.ALLOW,
@@ -188,6 +194,9 @@ export class StepFunctionsStack extends Construct {
                 "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,
                 "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName,
                 "WEBSOCKET_ENDPOINT": props.wsEndpoint || "",
+                // TODO [Phase 2]: Move Cognito credentials to AWS Secrets Manager
+                // These are currently passed from CI/CD env vars as plaintext Lambda env vars.
+                // Phase 2 eval pipeline fix will migrate to secretsmanager:GetSecretValue at runtime.
                 "COGNITO_USER_POOL_ID": process.env.COGNITO_USER_POOL_ID || "",
                 "COGNITO_CLIENT_ID": process.env.COGNITO_CLIENT_ID || "",
                 "COGNITO_USERNAME": process.env.COGNITO_USERNAME || "",

@@ -126,7 +126,7 @@ export class OpenSearchStack extends cdk.Stack {
     indexFunctionRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
-        'aoss:*'
+        'aoss:APIAccessAll'
       ],
       resources: [`arn:aws:aoss:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:collection/${openSearchCollection.attrId}`]
     }));

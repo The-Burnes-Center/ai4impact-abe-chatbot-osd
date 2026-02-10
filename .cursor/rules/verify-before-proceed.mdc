@@ -1,0 +1,62 @@
+---
+description: Every fix must be verified (programmatically or by human) before moving on. Research APIs/docs thoroughly. Never skip testing.
+alwaysApply: true
+---
+
+# Verify Every Fix Before Proceeding
+
+When fixing a bug or implementing a feature from the modernization plan, **every change must be verified before moving to the next task**. No exceptions.
+
+## Verification Flow
+
+1. **Research first** -- Before writing any fix, search the web for current API docs, SDK references, and known issues. Use exact version numbers. Do not rely on stale training data for AWS SDK, CDK, Bedrock, or any dependency.
+2. **Implement the fix**
+3. **Verify the fix** -- either programmatically or with human help (see below)
+4. **Only after verification passes**, mark the task complete and move on
+
+## Programmatic Verification (Prefer This)
+
+For every fix, attempt to verify programmatically first:
+
+- **CDK / Infrastructure changes**: Run `cdk synth` and `cdk diff` to confirm the template is valid and changes match expectations
+- **TypeScript changes**: Run `npx tsc --noEmit` for both CDK (`./`) and frontend (`lib/user-interface/app/`)
+- **Frontend changes**: Run `npx vite build` in `lib/user-interface/app/` to catch build errors
+- **Python Lambda changes**: Run `python -c "import py_compile; py_compile.compile('path/to/file.py', doraise=True)"` to syntax-check
+- **IAM policy changes**: Review the `cdk diff` output line-by-line to confirm only intended actions/resources changed
+- **Linting**: Run `ReadLints` on every edited file after changes
+
+## Human Verification (When Programmatic Is Not Enough)
+
+Some fixes require a human to verify in a live environment. When this is the case:
+
+- **State clearly and exactly once**: "I need you to verify X by doing Y in the live environment"
+- **Be specific**: Give exact steps (e.g., "Open the chatbot at https://d9sp8dj4m42ru.cloudfront.net, send the message 'i want to buy carpet', then ask 'from whom should i buy' and confirm the response does not crash")
+- **Define the expected outcome**: What should the user see if the fix works? What would failure look like?
+- **Wait for confirmation** before proceeding -- do not assume it passed
+- **If the user reports failure**, debug immediately before moving on
+
+### Examples Requiring Human Verification
+
+- WebSocket chat behavior (tool-use, streaming, error messages)
+- Source link clicks (pre-signed URL expiry, Access Denied fixes)
+- Frontend UI changes (error notifications, removed alerts, layout)
+- Bedrock guardrails actually filtering content
+- End-to-end flows crossing multiple services
+
+## Research Requirements
+
+- **Always search the web** for current documentation when working with:
+  - AWS SDK / CDK constructs (APIs change frequently)
+  - Bedrock model IDs, API parameters, guardrail configuration
+  - Any npm/pip dependency version or API
+- **Use exact version numbers** in searches (e.g., "aws-cdk-lib 2.x S3 bucket enforceSSL 2026")
+- **Read the actual API docs**, not just examples -- confirm parameter names, types, and required fields
+- **If a web search returns conflicting info**, read the primary source (official AWS docs, GitHub repo README) and note the version
+
+## Rules
+
+- **Never skip verification** -- even for "obviously correct" one-line fixes
+- **Never assume a fix works** just because it compiles or synthesizes -- runtime behavior can differ
+- **Never move to the next task** with a failing or unverified previous task
+- **If verification is blocked** (e.g., expired credentials, missing access), stop and tell the user what is needed
+- **Log what was verified and how** in the task completion notes

@@ -9,3 +9,6 @@ aws-exports.json
 # CDK asset staging directory
 .cdk.staging
 cdk.out
+
+# Local AWS profile config (contains account-specific profile names)
+.cursor/rules/aws-profile.mdc

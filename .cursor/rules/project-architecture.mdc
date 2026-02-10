@@ -1,0 +1,46 @@
+---
+description: ABE chatbot project structure, key paths, and naming conventions
+alwaysApply: true
+---
+
+# ABE Chatbot -- Project Architecture
+
+## Stack
+
+- **CDK (TypeScript)** -- Infrastructure as Code in `lib/` and `bin/gen-ai-mvp.ts`
+- **Backend** -- Python Lambdas + Node.js (ESM `.mjs`) WebSocket handler
+- **Frontend** -- React + TypeScript + Vite in `lib/user-interface/app/`
+- **AWS Services** -- Bedrock (Claude 3 Sonnet), OpenSearch Serverless, DynamoDB, S3, Cognito, API Gateway (REST + WebSocket), Step Functions, CloudFront
+
+## Key Paths
+
+| Path | Description |
+|------|-------------|
+| `bin/gen-ai-mvp.ts` | CDK app entry point |
+| `lib/constants.ts` | Stack name (`ABEStackNonProd`), Cognito config |
+| `lib/gen-ai-mvp-stack.ts` | Root CDK stack |
+| `lib/chatbot-api/` | All backend CDK constructs |
+| `lib/chatbot-api/functions/functions.ts` | Lambda function definitions (CDK) |
+| `lib/chatbot-api/functions/functions/` | Python Lambda handlers |
+| `lib/chatbot-api/functions/websocket-chat/` | WebSocket chat handler (Node.js ESM) |
+| `lib/chatbot-api/functions/websocket-chat/models/` | LLM model adapters (Claude, Mistral, Llama) |
+| `lib/chatbot-api/functions/websocket-chat/prompt.mjs` | System prompt |
+| `lib/chatbot-api/gateway/` | API Gateway (REST + WebSocket) CDK |
+| `lib/chatbot-api/tables/tables.ts` | DynamoDB tables CDK |
+| `lib/chatbot-api/buckets/buckets.ts` | S3 buckets CDK |
+| `lib/chatbot-api/opensearch/opensearch.ts` | OpenSearch Serverless CDK |
+| `lib/chatbot-api/knowledge-base/knowledge-base.ts` | Bedrock Knowledge Base CDK |
+| `lib/chatbot-api/functions/step-functions/` | Step Functions + eval pipeline |
+| `lib/user-interface/app/` | React frontend (Vite) |
+| `lib/user-interface/app/src/components/chatbot/` | Chat UI components |
+| `lib/user-interface/app/src/pages/admin/` | Admin dashboard pages |
+| `lib/user-interface/generate-app.ts` | CloudFront distribution CDK |
+| `.github/workflows/deploy.yml` | CI/CD pipeline |
+
+## Naming Conventions
+
+- CDK constructs: PascalCase (e.g., `ChatbotApiStack`)
+- Python Lambdas: `lambda_function.py` with `lambda_handler` entry point
+- Node.js Lambdas: `.mjs` extension (ESM modules)
+- Frontend components: PascalCase `.tsx` files
+- Frontend utilities: kebab-case `.ts` files

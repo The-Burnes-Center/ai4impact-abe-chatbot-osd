@@ -128,19 +128,19 @@ export default function ChatMessage(props: ChatMessageProps) {
         
               >Sources</ButtonDropdown>               */}
               <ButtonDropdown
-                items={(props.message.metadata.Sources as any[]).map((item) => {
-                  const s3Url = item.uri;
-                  const httpsUrl = s3Url.replace(/^s3:\/\//, "https://s3.amazonaws.com/");
+                items={(props.message.metadata.Sources as any[]).map((item, idx) => {
+                  // Use the pre-signed URL from the backend directly
+                  // Never convert s3:// URIs to public https URLs (bucket is private)
                   return {
-                    id: "id",
+                    id: `source-${idx}`,
                     disabled: false,
                     text: item.title,
-                    href: httpsUrl,
+                    href: item.uri,
                     external: true,
                     externalIconAriaLabel: "(opens in new tab)",
                   };
                 })}
-              />
+              >Sources</ButtonDropdown>
 
               </SpaceBetween>
             )
@@ -208,6 +208,14 @@ export default function ChatMessage(props: ChatMessageProps) {
                   <td {...rest} className={styles.markdownTableCell}>
                     {children}
                   </td>
+                );
+              },
+              a(props) {
+                const { children, href, ...rest } = props;
+                return (
+                  <a {...rest} href={href} target="_blank" rel="noopener noreferrer">
+                    {children}
+                  </a>
                 );
               },
             }}

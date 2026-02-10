@@ -77,7 +77,9 @@ export class LambdaFunctionStack extends cdk.Stack {
           handler: 'index.handler', // Points to the 'hello' file in the lambda directory
           environment : {
             "WEBSOCKET_API_ENDPOINT" : props.wsApiEndpoint.replace("wss","https"),
-            'KB_ID' : props.knowledgeBase.attrKnowledgeBaseId
+            'KB_ID' : props.knowledgeBase.attrKnowledgeBaseId,
+            'GUARDRAIL_ID' : process.env.GUARDRAIL_ID || '',
+            'GUARDRAIL_VERSION' : process.env.GUARDRAIL_VERSION || '1',
           },
           timeout: cdk.Duration.seconds(300)
         });
@@ -86,9 +88,12 @@ export class LambdaFunctionStack extends cdk.Stack {
           actions: [
             'bedrock:InvokeModelWithResponseStream',
             'bedrock:InvokeModel',
-            
           ],
-          resources: ["*"]
+          resources: [
+            `arn:aws:bedrock:*::foundation-model/anthropic.*`,
+            `arn:aws:bedrock:*::foundation-model/mistral.*`,
+            `arn:aws:bedrock:*:${cdk.Stack.of(this).account}:inference-profile/*`,
+          ]
         }));
         websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
           effect: iam.Effect.ALLOW,
@@ -104,6 +109,16 @@ export class LambdaFunctionStack extends cdk.Stack {
             'lambda:InvokeFunction'
           ],
           resources: [this.sessionFunction.functionArn]
+        }));
+
+        // The chat Lambda generates pre-signed S3 URLs for source links.
+        // Pre-signed URLs require the signing IAM role to have s3:GetObject.
+        websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: [
+            's3:GetObject',
+          ],
+          resources: [props.knowledgeBucket.bucketArn + "/*"]
         }));
 
         this.chatFunction = websocketAPIFunction;
@@ -135,7 +150,9 @@ export class LambdaFunctionStack extends cdk.Stack {
     feedbackAPIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
-        's3:*'
+        's3:GetObject',
+        's3:PutObject',
+        's3:ListBucket',
       ],
       resources: [props.feedbackBucket.bucketArn,props.feedbackBucket.bucketArn+"/*"]
     }));
@@ -155,7 +172,9 @@ export class LambdaFunctionStack extends cdk.Stack {
     deleteS3APIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
-        's3:*'
+        's3:DeleteObject',
+        's3:GetObject',
+        's3:ListBucket',
       ],
       resources: [props.knowledgeBucket.bucketArn,props.knowledgeBucket.bucketArn+"/*"]
     }));
@@ -174,7 +193,8 @@ export class LambdaFunctionStack extends cdk.Stack {
     getS3APIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
-        's3:*'
+        's3:GetObject',
+        's3:ListBucket',
       ],
       resources: [props.knowledgeBucket.bucketArn,props.knowledgeBucket.bucketArn+"/*"]
     }));
@@ -195,7 +215,9 @@ export class LambdaFunctionStack extends cdk.Stack {
     kbSyncAPIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
-        'bedrock:*'
+        'bedrock:StartIngestionJob',
+        'bedrock:GetIngestionJob',
+        'bedrock:ListIngestionJobs',
       ],
       resources: [props.knowledgeBase.attrKnowledgeBaseArn]
     }));
@@ -214,7 +236,9 @@ export class LambdaFunctionStack extends cdk.Stack {
     uploadS3APIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
-        's3:*'
+        's3:PutObject',
+        's3:GetObject',
+        's3:ListBucket',
       ],
       resources: [props.knowledgeBucket.bucketArn,props.knowledgeBucket.bucketArn+"/*"]
     }));
@@ -238,19 +262,39 @@ export class LambdaFunctionStack extends cdk.Stack {
 
 
 
+    // S3 permissions for metadata handler
     metadataHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
-        's3:*' ,// Grants full access to all S3 actions (read, write, delete, etc.)
+        's3:GetObject',
+        's3:PutObject',
+        's3:DeleteObject',
+        's3:ListBucket',
+      ],
+      resources: [
+        props.knowledgeBucket.bucketArn,
+        props.knowledgeBucket.bucketArn + "/*",
+      ]
+    }));
+    // Bedrock InvokeModel permission for metadata summarization
+    metadataHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
         'bedrock:InvokeModel',
+      ],
+      resources: [
+        `arn:aws:bedrock:*::foundation-model/anthropic.*`,
+        `arn:aws:bedrock:*:${cdk.Stack.of(this).account}:inference-profile/*`,
+      ]
+    }));
+    // Bedrock Retrieve permission for knowledge base
+    metadataHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
         'bedrock:Retrieve',
       ],
       resources: [
-        props.knowledgeBucket.bucketArn,               // Grants access to the bucket itself (for actions like ListBucket)
-        props.knowledgeBucket.bucketArn + "/*" ,        // Grants access to all objects within the bucket
-        'arn:aws:bedrock:us-east-1::foundation-model/us.anthropic.claude-sonnet-4-20250514-v1:0',  // Add the Bedrock model resource explicitly
         props.knowledgeBase.attrKnowledgeBaseArn,
-
       ]
     }));
 
@@ -275,7 +319,7 @@ const metadataRetrievalFunction = new lambda.Function(scope, 'MetadataRetrievalF
 
 metadataRetrievalFunction.addToRolePolicy(new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
-  actions: ['s3:*'],
+  actions: ['s3:GetObject'],
   resources: [`${props.knowledgeBucket.bucketArn}/metadata.txt`]
 }));
 
@@ -323,7 +367,9 @@ const uploadS3TestCasesFunction = new lambda.Function(scope, 'UploadS3TestCasesF
 uploadS3TestCasesFunction.addToRolePolicy(new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
   actions: [
-    's3:*'
+    's3:PutObject',
+    's3:GetObject',
+    's3:ListBucket',
   ],
   resources: [props.evalTestCasesBucket.bucketArn,props.evalTestCasesBucket.bucketArn+"/*"]
 }));
