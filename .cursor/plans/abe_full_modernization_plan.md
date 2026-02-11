@@ -247,6 +247,19 @@ try {
 
 The current RAG pipeline has fundamental quality and cost issues.
 
+### Phase 2 Partial Deployment -- 2026-02-11
+
+**Deployed items (2.3, 2.4, 2.5 + date injection):**
+
+- 2.3 [Issue #2] Hyperlinks: Strengthened prompt Section 5 with explicit markdown link instructions. Model now outputs `[text](url)` format for URLs from source documents.
+- 2.4 RAG Grounding: Added Core Rules 8-10 (only answer from KB, cite sources, never fabricate) and new Section 11 (Grounding & Source Accuracy).
+- 2.5 Forced Retrieval: Removed "Please use your search tool" prefix from user messages. Model now naturally decides when to use `query_db`.
+- Date injection: System prompt now includes current Eastern Time date via `constructSysPrompt()`.
+
+**Files modified:** `prompt.mjs`, `index.mjs` (websocket-chat)
+
+**Verified in logs:** Greetings respond without KB search, date context works, out-of-scope questions correctly declined, hyperlinks rendered as markdown.
+
 ### 2.1 [Issue #1] Statewide Contract Index & Trade Index Excel Files
 
 **Bug**: ABE cannot read or produce results from these Excel files. The Excel files have macros and external APIs that we don't have access to yet.
@@ -350,7 +363,7 @@ graph LR
 
 ### 2.10 Model Upgrades (Based on Account Inventory)
 
-Your AWS account (`158878148642`) has access to a rich set of models. Here is a complete upgrade strategy for every LLM usage in the codebase, mapped against what's actually available.
+Your AWS account has access to a rich set of models. Here is a complete upgrade strategy for every LLM usage in the codebase, mapped against what's actually available.
 
 #### Available Models on Account (relevant subset)
 
