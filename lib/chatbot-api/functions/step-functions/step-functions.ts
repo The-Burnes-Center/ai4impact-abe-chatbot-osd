@@ -109,7 +109,8 @@ export class StepFunctionsStack extends Construct {
             handler: 'index.handler', 
             environment : {
                 'KB_ID' : props.knowledgeBase.attrKnowledgeBaseId,
-                'METADATA_RETRIEVAL_FUNCTION': process.env.METADATA_RETRIEVAL_FUNCTION || ''
+                'METADATA_RETRIEVAL_FUNCTION': process.env.METADATA_RETRIEVAL_FUNCTION || '',
+                'PRIMARY_MODEL_ID' : 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
             },
             timeout: cdk.Duration.seconds(60)
         });
@@ -135,14 +136,15 @@ export class StepFunctionsStack extends Construct {
 
         const llmEvalFunction = new lambda.DockerImageFunction(this, 'LlmEvaluationFunction', {
             code: lambda.DockerImageCode.fromImageAsset(path.join(__dirname, 'llm-evaluation/eval'), {
-                platform: Platform.LINUX_AMD64, // Specify the correct platform
+                platform: Platform.LINUX_AMD64,
+                outputs: ['type=docker'],  // Force Docker V2 manifest (Lambda rejects OCI manifests from buildx)
             }),
             environment: {
                 "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,
                 "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName,
                 "CHATBOT_API_URL" : props.wsEndpoint || "https://dcf43zj2k8alr.cloudfront.net",
                 "GENERATE_RESPONSE_LAMBDA_NAME": generateResponseFunction.functionName,
-                "BEDROCK_MODEL_ID": "us.anthropic.claude-sonnet-4-20250514-v1:0"
+                "BEDROCK_MODEL_ID": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
             },
             timeout: cdk.Duration.minutes(15),
             memorySize: 10240

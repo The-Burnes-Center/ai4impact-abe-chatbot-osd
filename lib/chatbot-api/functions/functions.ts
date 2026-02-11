@@ -80,6 +80,8 @@ export class LambdaFunctionStack extends cdk.Stack {
             'KB_ID' : props.knowledgeBase.attrKnowledgeBaseId,
             'GUARDRAIL_ID' : process.env.GUARDRAIL_ID || '',
             'GUARDRAIL_VERSION' : process.env.GUARDRAIL_VERSION || '1',
+            'PRIMARY_MODEL_ID' : 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+            'FAST_MODEL_ID' : 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
           },
           timeout: cdk.Duration.seconds(300)
         });
@@ -91,7 +93,6 @@ export class LambdaFunctionStack extends cdk.Stack {
           ],
           resources: [
             `arn:aws:bedrock:*::foundation-model/anthropic.*`,
-            `arn:aws:bedrock:*::foundation-model/mistral.*`,
             `arn:aws:bedrock:*:${cdk.Stack.of(this).account}:inference-profile/*`,
           ]
         }));
@@ -256,7 +257,8 @@ export class LambdaFunctionStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       environment: {
         "BUCKET": props.knowledgeBucket.bucketName,
-        "KB_ID": props.knowledgeBase.attrKnowledgeBaseId
+        "KB_ID": props.knowledgeBase.attrKnowledgeBaseId,
+        "FAST_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
       },
     });
 

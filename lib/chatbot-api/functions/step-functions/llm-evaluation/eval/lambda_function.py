@@ -292,7 +292,7 @@ def evaluate_with_ragas(question, expected_response, actual_response, retrieved_
             }
         )
         bedrock_embeddings = BedrockEmbeddings(
-            model_id='amazon.titan-embed-text-v1'
+            model_id='amazon.titan-embed-text-v2:0'
         )
 
         logging.info("Starting RAGAS evaluation")
