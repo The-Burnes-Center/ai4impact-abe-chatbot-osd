@@ -100,49 +100,42 @@ export class KnowledgeBaseStack extends cdk.Stack {
 
       },
       knowledgeBaseId: knowledgeBase.attrKnowledgeBaseId,
-      name: `${stackName}-kb-datasource`,
+      // Name must differ from the old DataSource during CloudFormation Replacement
+      // (CFN creates the new resource before deleting the old one).
+      name: `${stackName}-kb-ds`,
 
       // the properties below are optional      
       description: 'S3 data source',
+      // Chunking config is applied via addPropertyOverride below because
+      // CDK 2.140.0 types don't include SEMANTIC chunking (added in later versions).
+      // CloudFormation fully supports it -- we inject the raw CFN properties.
       vectorIngestionConfiguration: {
         chunkingConfiguration: {
-          chunkingStrategy: 'FIXED_SIZE',
-
-          // the properties below are optional
-          fixedSizeChunkingConfiguration: {
-            maxTokens: 300,
-            overlapPercentage: 10,
-          },
-
-          // hierarchicalChunkingConfiguration: {
-          //   levelConfigurations: [{
-          //     maxTokens: 123,
-          //   }],
-          //   overlapTokens: 123,
-          // },
-          // semanticChunkingConfiguration: {
-          //   breakpointPercentileThreshold: 123,
-          //   bufferSize: 123,
-          //   maxTokens: 123,
-          // },
-        },
-        // parsingConfiguration: {
-        //   parsingStrategy: 'parsingStrategy',
-
-        //   // the properties below are optional
-        //   bedrockFoundationModelConfiguration: {
-        //     modelArn: 'modelArn',
-
-        //     // the properties below are optional
-        //     parsingPrompt: {
-        //       parsingPromptText: 'parsingPromptText',
-        //     },
-        //   },
-        // },
+          chunkingStrategy: 'SEMANTIC',
+        } as bedrock.CfnDataSource.ChunkingConfigurationProperty,
       },
     });
 
-    dataSource.addDependency(knowledgeBase);    
+    dataSource.addDependency(knowledgeBase);
+
+    // Inject semantic chunking config via CloudFormation override.
+    // CDK 2.140.0 L1 types don't include SemanticChunkingConfiguration,
+    // so we bypass the type system to set it directly in the CFN template.
+    // Semantic chunking splits documents based on meaning changes using NLP --
+    // far better for procurement docs (policies, contracts, memos) than fixed-size.
+    dataSource.addPropertyOverride(
+      'VectorIngestionConfiguration.ChunkingConfiguration.SemanticChunkingConfiguration',
+      {
+        // 95th percentile = only the top 5% most dissimilar sentence pairs
+        // trigger a split. Conservative setting keeps related content together.
+        BreakpointPercentileThreshold: 95,
+        // bufferSize 1 = compare each sentence with 1 adjacent sentence for context
+        BufferSize: 1,
+        // 512 tokens max per chunk (up from 300 fixed). Semantic chunking
+        // naturally produces variable-size chunks; this caps the upper bound.
+        MaxTokens: 512,
+      }
+    );
 
     this.knowledgeBase = knowledgeBase;
     this.dataSource = dataSource;

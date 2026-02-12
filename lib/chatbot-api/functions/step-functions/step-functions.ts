@@ -188,6 +188,9 @@ export class StepFunctionsStack extends Construct {
         generateResponseFunction.grantInvoke(llmEvalFunction);
         this.llmEvalFunction = llmEvalFunction;
 
+        // The aggregate Lambda only reads partial results from S3 and computes averages.
+        // It does NOT query the live chatbot or compute local ML metrics -- the eval
+        // Docker Lambda (RAGAS) handles all metric computation.
         const aggregateEvalResultsFunction = new lambda.Function(this, 'AggregateEvalResultsFunction', {
             runtime: lambda.Runtime.PYTHON_3_12,
             code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/aggregate-eval-results')),
@@ -195,17 +198,9 @@ export class StepFunctionsStack extends Construct {
             environment: {
                 "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,
                 "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName,
-                "WEBSOCKET_ENDPOINT": props.wsEndpoint || "",
-                // TODO [Phase 2]: Move Cognito credentials to AWS Secrets Manager
-                // These are currently passed from CI/CD env vars as plaintext Lambda env vars.
-                // Phase 2 eval pipeline fix will migrate to secretsmanager:GetSecretValue at runtime.
-                "COGNITO_USER_POOL_ID": process.env.COGNITO_USER_POOL_ID || "",
-                "COGNITO_CLIENT_ID": process.env.COGNITO_CLIENT_ID || "",
-                "COGNITO_USERNAME": process.env.COGNITO_USERNAME || "",
-                "COGNITO_PASSWORD": process.env.COGNITO_PASSWORD || ""
             },
-            timeout: cdk.Duration.seconds(300), // Increase timeout to 5 minutes
-            memorySize: 1024 // Increase memory size
+            timeout: cdk.Duration.seconds(120),
+            memorySize: 256
         });
         aggregateEvalResultsFunction.addToRolePolicy(new iam.PolicyStatement({
             effect: iam.Effect.ALLOW,
@@ -220,26 +215,6 @@ export class StepFunctionsStack extends Construct {
                 props.evalResultsBucket.bucketArn,               // Bucket-level access
                 props.evalResultsBucket.bucketArn + "/*"         // Object-level access
             ]
-        }));
-        aggregateEvalResultsFunction.addToRolePolicy(new iam.PolicyStatement({
-            effect: iam.Effect.ALLOW,
-            actions: [
-                'cognito-idp:InitiateAuth',
-                'cognito-idp:AdminInitiateAuth'
-            ],
-            resources: ['*']
-        }));
-        
-        // Add ECR permissions
-        aggregateEvalResultsFunction.addToRolePolicy(new iam.PolicyStatement({
-            effect: iam.Effect.ALLOW,
-            actions: [
-              'ecr:GetAuthorization',
-              'ecr:GetDownloadUrlForLayer',
-              'ecr:BatchGetImage',
-              'ecr:BatchCheckLayerAvailability'
-            ],
-            resources: ['*']
         }));
         this.aggregateEvalResultsFunction = aggregateEvalResultsFunction;
 
@@ -293,6 +268,9 @@ export class StepFunctionsStack extends Construct {
         });
         processTestCasesMap.itemProcessor(evaluateTestCasesTask);
     
+        // The eval Lambda (Docker/RAGAS) computes ALL metrics including retrieval metrics
+        // (context_precision, context_recall, faithfulness, response_relevancy).
+        // The aggregate Lambda simply reads and averages those pre-computed scores.
         const aggregateResultsTask = new tasks.LambdaInvoke(this, 'Aggregate Results', {
             lambdaFunction: this.aggregateEvalResultsFunction,
             payload: stepfunctions.TaskInput.fromObject({
@@ -300,7 +278,6 @@ export class StepFunctionsStack extends Construct {
                 'evaluation_id.$': '$.evaluation_id',
                 'evaluation_name.$': '$.evaluation_name',
                 'test_cases_key.$': '$.test_cases_key',
-                'perform_retrieval_evaluation': true
             }),
             outputPath: '$.Payload',
             retryOnServiceExceptions: true,

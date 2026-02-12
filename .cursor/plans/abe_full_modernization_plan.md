@@ -27,26 +27,26 @@ todos:
     content: "Phase 1 [BUG]: Fix tool-use JSON parsing crash on follow-up messages -- undefined concat + bitwise AND + missing try/catch"
     status: completed
   - id: phase2-chunking
-    content: "Phase 2: Upgrade KB to semantic/hierarchical chunking with larger chunks"
-    status: pending
+    content: "Phase 2: Upgrade KB to semantic chunking (FIXED_SIZE 300 tokens → SEMANTIC 512 tokens with NLP-based splitting). Uses addPropertyOverride for CDK 2.140.0 compat. Requires KB re-sync after deploy."
+    status: completed
   - id: phase2-excel
     content: "Phase 2 [Issue #1]: Fix Statewide Contract Index & Trade Index Excel file ingestion"
     status: pending
   - id: phase2-hyperlinks
-    content: "Phase 2 [Issue #2]: Fix non-clickable hyperlinks in chatbot responses"
-    status: pending
+    content: "Phase 2 [Issue #2]: Fix non-clickable hyperlinks -- strengthened prompt hyperlink instructions, model now outputs markdown links from source docs"
+    status: completed
   - id: phase2-rag
-    content: "Phase 2: Add RAG grounding rules, fix forced retrieval, fix metadata tool"
-    status: pending
+    content: "Phase 2: Add RAG grounding rules, fix forced retrieval, add date injection -- removed forced 'use your search tool' prefix, added grounding rules to prompt, added current date context"
+    status: completed
   - id: phase2-caching
-    content: "Phase 2: Enable Bedrock prompt caching for system prompt"
-    status: pending
+    content: "Phase 2: Enable Bedrock prompt caching -- system prompt wrapped in cache_control:{type:'ephemeral'} array format in websocket-chat and generate-response models. ~4K token prompt cached with 5-min TTL on Claude Sonnet 4."
+    status: completed
   - id: phase2-models
-    content: "Phase 2: Upgrade to Sonnet 4.5 (chat), Haiku 4.5 (titles+metadata), fix eval embeddings, delete deprecated models, add Cohere Rerank"
-    status: pending
+    content: "Phase 2: Model upgrades -- replaced Mistral 7B titles with Claude 3.5 Haiku, switched metadata handler from Sonnet to Haiku, deleted deprecated llama13b/mistral7b files, added env var-driven model IDs (PRIMARY_MODEL_ID/FAST_MODEL_ID), fixed eval hardcoded guardrail + Titan Embed v1→v2. Sonnet 4.5 + Haiku 4.5 blocked by org SCP on aws-marketplace:Subscribe -- upgrade is one-line env var change once SCP is resolved."
+    status: completed
   - id: phase2-eval-fix
-    content: "Phase 2 [Issue #5]: Fix LLM evaluation pipeline issues"
-    status: pending
+    content: "Phase 2 [Issue #5]: Fix LLM evaluation pipeline -- removed mock fallbacks (MockSentenceTransformer, cosine_similarity=0.5) that produced garbage metrics; simplified aggregate Lambda to only aggregate pre-computed RAGAS scores; removed broken live/retrieval eval paths + Cognito creds from env; fixed generate-response parseChunk null guard, added JSON.parse try/catch, synced stale prompt with grounding rules (Rules 8-10, Section 11); removed perform_retrieval_evaluation from step-functions."
+    status: completed
   - id: phase3-nag
     content: "Phase 3: Enable CDK Nag, fix Stack->Construct, fix scope->this"
     status: pending
@@ -260,6 +260,34 @@ The current RAG pipeline has fundamental quality and cost issues.
 
 **Verified in logs:** Greetings respond without KB search, date context works, out-of-scope questions correctly declined, hyperlinks rendered as markdown.
 
+### Phase 2 Model Upgrades Deployment -- 2026-02-11
+
+**Deployed items (2.10 model upgrades):**
+
+- Title generation: Mistral 7B → Claude 3.5 Haiku (`FAST_MODEL_ID` env var). Much higher quality titles using Claude Messages API instead of legacy Mistral prompt format.
+- Metadata summarization: Sonnet 4 (hardcoded) → Claude 3.5 Haiku (via `FAST_MODEL_ID` env var). Cheaper for document summarization tasks.
+- All model IDs now env var-driven: `PRIMARY_MODEL_ID` (chat, eval) and `FAST_MODEL_ID` (titles, metadata). Upgrading to newer models is a one-line CDK change.
+- Eval pipeline: removed hardcoded guardrail ID from `generate-response/models/claude3Sonnet.mjs`, removed forced retrieval prefix, upgraded Titan Embed v1 → v2.
+- Deleted dead code: `llama13b.mjs` and `mistral7b.mjs` from both `websocket-chat/models/` and `generate-response/models/` (4 files, -386 lines).
+- Removed `mistral.*` from chat Lambda IAM policy (no longer needed).
+- Added `outputs: ['type=docker']` to eval DockerImageFunction to fix OCI manifest issue on ARM Mac deploys.
+
+**Blocked:** Sonnet 4.5 and Haiku 4.5 require `aws-marketplace:Subscribe` which is denied by org SCP. Once the org admin allows marketplace subscriptions, upgrade by changing the env vars in `functions.ts` and `step-functions.ts`.
+
+**Files modified:** `claude3Sonnet.mjs` (websocket-chat), `index.mjs` (websocket-chat), `lambda_function.py` (metadata-handler), `index.mjs` (generate-response), `claude3Sonnet.mjs` (generate-response), `lambda_function.py` (eval), `functions.ts`, `step-functions.ts`
+
+**Files deleted:** `llama13b.mjs` (websocket-chat), `mistral7b.mjs` (websocket-chat), `llama13b.mjs` (generate-response), `mistral7b.mjs` (generate-response)
+
+### Phase 2 Remaining Deployment -- 2026-02-12
+
+**Deployed items (2.2, 2.6, 2.12):**
+
+- 2.2 KB Chunking: Upgraded from FIXED_SIZE (300 tokens, 10% overlap) to SEMANTIC chunking (512 max tokens, 95th percentile breakpoint, buffer 1). Uses `addPropertyOverride` for CDK 2.140.0 compat. KB re-synced -- 100 docs indexed with 0 failures.
+- 2.6 Prompt Caching: System prompt wrapped in `cache_control: {type: "ephemeral"}` array format for Bedrock prompt caching. Applied to websocket-chat and generate-response models (both streaming and non-streaming). 5-min TTL on Claude Sonnet 4.
+- 2.12 Eval Pipeline Fix: Removed all mock fallbacks (MockSentenceTransformer, MockNumpy, cosine_similarity=0.5) that silently produced garbage metrics. Simplified aggregate Lambda to only aggregate pre-computed RAGAS scores (-600 lines). Removed broken live/retrieval eval paths, Cognito creds, WebSocket endpoint, ECR/Cognito IAM permissions from aggregate Lambda. Fixed generate-response: added parseChunk null guard, JSON.parse try/catch, synced stale prompt with grounding rules. Removed `perform_retrieval_evaluation: true` from step-functions.
+
+**Files modified:** `knowledge-base.ts`, `claude3Sonnet.mjs` (websocket-chat), `claude3Sonnet.mjs` (generate-response), `index.mjs` (generate-response), `lambda_function.py` (aggregate-eval-results), `requirements.txt` (aggregate-eval-results), `step-functions.ts`
+
 ### 2.1 [Issue #1] Statewide Contract Index & Trade Index Excel Files
 
 **Bug**: ABE cannot read or produce results from these Excel files. The Excel files have macros and external APIs that we don't have access to yet.
@@ -361,7 +389,9 @@ graph LR
 
 - [index.mjs](lib/chatbot-api/functions/websocket-chat/index.mjs) lines 217-234: The metadata tool handler is in the wrong scope and passes a `filterKey` parameter that `fetchMetadata()` doesn't accept. Restructure the tool-use loop to properly handle multi-turn tool calls.
 
-### 2.10 Model Upgrades (Based on Account Inventory)
+### 2.10 Model Upgrades (Based on Account Inventory) -- COMPLETED (partial)
+
+**Status:** Model infrastructure fully modernized. Env var-driven model IDs deployed. Dead code deleted. Sonnet 4.5/Haiku 4.5 upgrade blocked by org SCP -- currently using Sonnet 4 + Claude 3.5 Haiku.
 
 Your AWS account has access to a rich set of models. Here is a complete upgrade strategy for every LLM usage in the codebase, mapped against what's actually available.
 
@@ -402,15 +432,15 @@ Your AWS account has access to a rich set of models. Here is a complete upgrade 
 #### Upgrade Plan by Use Case
 
 
-| Use Case                     | Current Model                                                     | Recommended Upgrade                                             | Rationale                                                                                                                                               | File(s)                                        |
-| ---------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| **Primary chat**             | `us.anthropic.claude-sonnet-4-20250514-v1:0` (Sonnet 4)           | `**us.anthropic.claude-sonnet-4-5-20250929-v1:0**` (Sonnet 4.5) | Significantly better reasoning, tool-use accuracy, and instruction following. Same price tier. Cross-region profile for higher availability.            | `claude3Sonnet.mjs` line 12                    |
-| **Session title generation** | `mistral.mistral-7b-instruct-v0:2` (Mistral 7B -- **deprecated**) | `**us.anthropic.claude-haiku-4-5-20251001-v1:0**` (Haiku 4.5)   | Mistral 7B is deprecated and may be removed from Bedrock. Haiku 4.5 is fast, cheap (~$0.25/M input tokens), and far better at concise title generation. | `mistral7b.mjs` (delete), `index.mjs` line 386 |
-| **Metadata summarization**   | `us.anthropic.claude-sonnet-4-20250514-v1:0` (Sonnet 4)           | `**us.anthropic.claude-haiku-4-5-20251001-v1:0**` (Haiku 4.5)   | Sonnet is overkill for generating document summaries and tags. Haiku 4.5 is ~10x cheaper and perfectly adequate for structured extraction.              | `metadata-handler/lambda_function.py` line 85  |
-| **Eval response generation** | `us.anthropic.claude-sonnet-4-20250514-v1:0` (Sonnet 4)           | `**us.anthropic.claude-sonnet-4-5-20250929-v1:0**` (Sonnet 4.5) | Eval should use the same model as primary chat to reflect real-world performance.                                                                       | `generate-response/models/claude3Sonnet.mjs`   |
-| **Eval metrics (RAGAS)**     | `amazon.titan-embed-text-v1` (**v1 -- mismatch!**)                | `**amazon.titan-embed-text-v2:0**` (v2)                         | Must match the KB embedding model. v1 vs v2 mismatch produces misleading eval scores.                                                                   | `eval/lambda_function.py` line 295             |
-| **KB embeddings**            | `amazon.titan-embed-text-v2:0`                                    | **Keep** (or evaluate `cohere.embed-v4:0`)                      | Titan v2 is solid. Cohere Embed v4 may offer better retrieval quality -- worth A/B testing. Changing embedding model requires full KB re-index.         | `knowledge-base.ts` line 66                    |
-| **Dead code**                | `meta.llama2-13b-chat-v1` (Llama 2 -- **deprecated**)             | **Delete entirely**                                             | Not imported or used anywhere. Dead code. Llama 2 is deprecated.                                                                                        | `llama13b.mjs` (delete file)                   |
+| Use Case                     | Before                                                            | After (deployed)                                                         | Status |
+| ---------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------ | ------ |
+| **Primary chat**             | `us.anthropic.claude-sonnet-4-20250514-v1:0` (Sonnet 4)           | Sonnet 4 (via `PRIMARY_MODEL_ID` env var). Upgrade to Sonnet 4.5 blocked by SCP. | DONE |
+| **Session title generation** | `mistral.mistral-7b-instruct-v0:2` (Mistral 7B -- **deprecated**) | `us.anthropic.claude-3-5-haiku-20241022-v1:0` (via `FAST_MODEL_ID`). Upgrade to Haiku 4.5 blocked by SCP. | DONE |
+| **Metadata summarization**   | `us.anthropic.claude-sonnet-4-20250514-v1:0` (hardcoded Sonnet 4) | `us.anthropic.claude-3-5-haiku-20241022-v1:0` (via `FAST_MODEL_ID`). ~10x cheaper. Upgrade to Haiku 4.5 blocked by SCP. | DONE |
+| **Eval response generation** | `us.anthropic.claude-sonnet-4-20250514-v1:0` (hardcoded)          | Sonnet 4 (via `PRIMARY_MODEL_ID` env var). Removed hardcoded guardrail ID, removed forced retrieval prefix. | DONE |
+| **Eval metrics (RAGAS)**     | `amazon.titan-embed-text-v1` (**v1 -- mismatch!**)                | `amazon.titan-embed-text-v2:0`. Now matches KB embedding model. | DONE |
+| **KB embeddings**            | `amazon.titan-embed-text-v2:0`                                    | **Keep** (or evaluate `cohere.embed-v4:0` later)                         | N/A |
+| **Dead code**                | `llama13b.mjs` + `mistral7b.mjs` (4 files across websocket-chat and generate-response) | **Deleted** (-386 lines) | DONE |
 
 
 #### Implementation Steps
