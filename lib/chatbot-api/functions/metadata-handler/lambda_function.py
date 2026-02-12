@@ -82,7 +82,7 @@ def retrieve_kb_docs(bucket, file_name, knowledge_base_id):
 def summarize_and_categorize(key,content):
     try:
         response = bedrock_invoke.invoke_model(
-            modelId=os.environ.get('FAST_MODEL_ID', 'us.anthropic.claude-haiku-4-5-20251001-v1:0'),
+            modelId=os.environ.get('FAST_MODEL_ID', 'us.anthropic.claude-3-5-haiku-20241022-v1:0'),
             contentType='application/json',
             accept='application/json',
             body=json.dumps({

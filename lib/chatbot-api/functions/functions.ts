@@ -80,8 +80,8 @@ export class LambdaFunctionStack extends cdk.Stack {
             'KB_ID' : props.knowledgeBase.attrKnowledgeBaseId,
             'GUARDRAIL_ID' : process.env.GUARDRAIL_ID || '',
             'GUARDRAIL_VERSION' : process.env.GUARDRAIL_VERSION || '1',
-            'PRIMARY_MODEL_ID' : 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
-            'FAST_MODEL_ID' : 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+            'PRIMARY_MODEL_ID' : 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+            'FAST_MODEL_ID' : 'us.anthropic.claude-3-5-haiku-20241022-v1:0',
           },
           timeout: cdk.Duration.seconds(300)
         });
@@ -258,7 +258,7 @@ export class LambdaFunctionStack extends cdk.Stack {
       environment: {
         "BUCKET": props.knowledgeBucket.bucketName,
         "KB_ID": props.knowledgeBase.attrKnowledgeBaseId,
-        "FAST_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "FAST_MODEL_ID": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
       },
     });
 

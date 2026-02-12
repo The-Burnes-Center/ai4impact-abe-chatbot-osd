@@ -110,7 +110,7 @@ export class StepFunctionsStack extends Construct {
             environment : {
                 'KB_ID' : props.knowledgeBase.attrKnowledgeBaseId,
                 'METADATA_RETRIEVAL_FUNCTION': process.env.METADATA_RETRIEVAL_FUNCTION || '',
-                'PRIMARY_MODEL_ID' : 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+                'PRIMARY_MODEL_ID' : 'us.anthropic.claude-sonnet-4-20250514-v1:0',
             },
             timeout: cdk.Duration.seconds(60)
         });
@@ -144,7 +144,7 @@ export class StepFunctionsStack extends Construct {
                 "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName,
                 "CHATBOT_API_URL" : props.wsEndpoint || "https://dcf43zj2k8alr.cloudfront.net",
                 "GENERATE_RESPONSE_LAMBDA_NAME": generateResponseFunction.functionName,
-                "BEDROCK_MODEL_ID": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                "BEDROCK_MODEL_ID": "us.anthropic.claude-sonnet-4-20250514-v1:0"
             },
             timeout: cdk.Duration.minutes(15),
             memorySize: 10240
