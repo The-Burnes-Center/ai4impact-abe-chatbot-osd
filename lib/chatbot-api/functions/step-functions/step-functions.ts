@@ -2,10 +2,9 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as path from 'path';
 import * as process from 'process';
-
-// Import Lambda L2 construct
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import { Table } from 'aws-cdk-lib/aws-dynamodb';
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as bedrock from "aws-cdk-lib/aws-bedrock";
@@ -13,6 +12,12 @@ import { Platform } from 'aws-cdk-lib/aws-ecr-assets';
 import { StateMachine } from 'aws-cdk-lib/aws-stepfunctions';
 import * as stepfunctions from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
+
+const LAMBDA_DEFAULTS: Partial<lambda.FunctionProps> = {
+    architecture: lambda.Architecture.ARM_64,
+    tracing: lambda.Tracing.ACTIVE,
+    logRetention: logs.RetentionDays.ONE_MONTH,
+};
 
 interface StepFunctionsStackProps {
     readonly knowledgeBase : bedrock.CfnKnowledgeBase;
@@ -37,13 +42,14 @@ export class StepFunctionsStack extends Construct {
         super(scope, id);
 
         const splitEvalTestCasesFunction = new lambda.Function(this, 'SplitEvalTestCasesFunction', {
+            ...LAMBDA_DEFAULTS,
             runtime: lambda.Runtime.PYTHON_3_12,
-            code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/split-test-cases')), 
-            handler: 'lambda_function.lambda_handler', 
+            code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/split-test-cases')),
+            handler: 'lambda_function.lambda_handler',
             environment: {
-                "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName
+                "TEST_CASES_BUCKET": props.evalTestCasesBucket.bucketName,
             },
-            timeout: cdk.Duration.seconds(30)
+            timeout: cdk.Duration.seconds(30),
         });
         splitEvalTestCasesFunction.addToRolePolicy(new iam.PolicyStatement({
             effect: iam.Effect.ALLOW,
@@ -60,18 +66,19 @@ export class StepFunctionsStack extends Construct {
         this.splitEvalTestCasesFunction = splitEvalTestCasesFunction;
 
         const llmEvalResultsHandlerFunction = new lambda.Function(this, 'LlmEvalResultsHandlerFunction', {
+            ...LAMBDA_DEFAULTS,
             runtime: lambda.Runtime.PYTHON_3_12,
-            code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/results-to-ddb')), 
-            handler: 'lambda_function.lambda_handler', 
+            code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/results-to-ddb')),
+            handler: 'lambda_function.lambda_handler',
             environment: {
-                "EVAL_SUMMARIES_TABLE" : props.evalSummariesTable.tableName,
-                "EVAL_RESULTS_TABLE" : props.evalResutlsTable.tableName,
-                "EVALUATION_SUMMARIES_TABLE" : props.evalSummariesTable.tableName,
-                "EVALUATION_RESULTS_TABLE" : props.evalResutlsTable.tableName,
-                "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,
-                "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName
+                "EVAL_SUMMARIES_TABLE": props.evalSummariesTable.tableName,
+                "EVAL_RESULTS_TABLE": props.evalResutlsTable.tableName,
+                "EVALUATION_SUMMARIES_TABLE": props.evalSummariesTable.tableName,
+                "EVALUATION_RESULTS_TABLE": props.evalResutlsTable.tableName,
+                "TEST_CASES_BUCKET": props.evalTestCasesBucket.bucketName,
+                "EVAL_RESULTS_BUCKET": props.evalResultsBucket.bucketName,
             },
-            timeout: cdk.Duration.seconds(30)
+            timeout: cdk.Duration.seconds(30),
         });
         llmEvalResultsHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
             effect: iam.Effect.ALLOW,
@@ -104,15 +111,17 @@ export class StepFunctionsStack extends Construct {
         this.llmEvalResultsHandlerFunction = llmEvalResultsHandlerFunction; 
 
         const generateResponseFunction = new lambda.Function(this, 'GenerateResponseFunction', {
+            ...LAMBDA_DEFAULTS,
             runtime: lambda.Runtime.NODEJS_20_X,
             code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/generate-response')),
-            handler: 'index.handler', 
-            environment : {
-                'KB_ID' : props.knowledgeBase.attrKnowledgeBaseId,
+            handler: 'index.handler',
+            memorySize: 512,
+            environment: {
+                'KB_ID': props.knowledgeBase.attrKnowledgeBaseId,
                 'METADATA_RETRIEVAL_FUNCTION': process.env.METADATA_RETRIEVAL_FUNCTION || '',
-                'PRIMARY_MODEL_ID' : 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+                'PRIMARY_MODEL_ID': process.env.PRIMARY_MODEL_ID || 'us.anthropic.claude-sonnet-4-20250514-v1:0',
             },
-            timeout: cdk.Duration.seconds(60)
+            timeout: cdk.Duration.seconds(60),
         });
         generateResponseFunction.addToRolePolicy(new iam.PolicyStatement({
             effect: iam.Effect.ALLOW,
@@ -140,11 +149,11 @@ export class StepFunctionsStack extends Construct {
                 outputs: ['type=docker'],  // Force Docker V2 manifest (Lambda rejects OCI manifests from buildx)
             }),
             environment: {
-                "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,
-                "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName,
-                "CHATBOT_API_URL" : props.wsEndpoint || "https://dcf43zj2k8alr.cloudfront.net",
+                "TEST_CASES_BUCKET": props.evalTestCasesBucket.bucketName,
+                "EVAL_RESULTS_BUCKET": props.evalResultsBucket.bucketName,
+                "CHATBOT_API_URL": props.wsEndpoint || '',
                 "GENERATE_RESPONSE_LAMBDA_NAME": generateResponseFunction.functionName,
-                "BEDROCK_MODEL_ID": "us.anthropic.claude-sonnet-4-20250514-v1:0"
+                "BEDROCK_MODEL_ID": process.env.PRIMARY_MODEL_ID || "us.anthropic.claude-sonnet-4-20250514-v1:0",
             },
             timeout: cdk.Duration.minutes(15),
             memorySize: 10240
@@ -188,19 +197,17 @@ export class StepFunctionsStack extends Construct {
         generateResponseFunction.grantInvoke(llmEvalFunction);
         this.llmEvalFunction = llmEvalFunction;
 
-        // The aggregate Lambda only reads partial results from S3 and computes averages.
-        // It does NOT query the live chatbot or compute local ML metrics -- the eval
-        // Docker Lambda (RAGAS) handles all metric computation.
         const aggregateEvalResultsFunction = new lambda.Function(this, 'AggregateEvalResultsFunction', {
+            ...LAMBDA_DEFAULTS,
             runtime: lambda.Runtime.PYTHON_3_12,
             code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/aggregate-eval-results')),
             handler: 'lambda_function.lambda_handler',
             environment: {
-                "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,
-                "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName,
+                "TEST_CASES_BUCKET": props.evalTestCasesBucket.bucketName,
+                "EVAL_RESULTS_BUCKET": props.evalResultsBucket.bucketName,
             },
             timeout: cdk.Duration.seconds(120),
-            memorySize: 256
+            memorySize: 256,
         });
         aggregateEvalResultsFunction.addToRolePolicy(new iam.PolicyStatement({
             effect: iam.Effect.ALLOW,
@@ -219,14 +226,15 @@ export class StepFunctionsStack extends Construct {
         this.aggregateEvalResultsFunction = aggregateEvalResultsFunction;
 
         const llmEvalCleanupFunction = new lambda.Function(this, 'LlmEvalCleanupFunction', {
+            ...LAMBDA_DEFAULTS,
             runtime: lambda.Runtime.PYTHON_3_12,
-            code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/cleanup')), 
-            handler: 'lambda_function.lambda_handler', 
+            code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/cleanup')),
+            handler: 'lambda_function.lambda_handler',
             environment: {
-                "TEST_CASES_BUCKET" : props.evalTestCasesBucket.bucketName,
-                "EVAL_RESULTS_BUCKET" : props.evalResultsBucket.bucketName
+                "TEST_CASES_BUCKET": props.evalTestCasesBucket.bucketName,
+                "EVAL_RESULTS_BUCKET": props.evalResultsBucket.bucketName,
             },
-            timeout: cdk.Duration.seconds(30)
+            timeout: cdk.Duration.seconds(30),
         });
         llmEvalCleanupFunction.addToRolePolicy(new iam.PolicyStatement({
             effect: iam.Effect.ALLOW,
@@ -344,20 +352,31 @@ export class StepFunctionsStack extends Construct {
             .next(saveResultsTask)
             .next(cleanupChunksTask);
 
+        const sfnLogGroup = new logs.LogGroup(this, 'EvaluationStateMachineLogGroup', {
+            retention: logs.RetentionDays.ONE_MONTH,
+            removalPolicy: cdk.RemovalPolicy.DESTROY,
+        });
+
         const llmEvalStateMachine = new stepfunctions.StateMachine(this, 'EvaluationStateMachine', {
             definitionBody: stepfunctions.DefinitionBody.fromChainable(definition),
             timeout: cdk.Duration.hours(1),
+            tracingEnabled: true,
+            logs: {
+                destination: sfnLogGroup,
+                level: stepfunctions.LogLevel.ALL,
+            },
         });
         this.llmEvalStateMachine = llmEvalStateMachine;
 
         const startLlmEvalStateMachineFunction = new lambda.Function(this, 'StartLlmEvalStateMachineFunction', {
+            ...LAMBDA_DEFAULTS,
             runtime: lambda.Runtime.NODEJS_20_X,
-            code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/start-llm-eval')), 
-            handler: 'index.handler', 
+            code: lambda.Code.fromAsset(path.join(__dirname, 'llm-evaluation/start-llm-eval')),
+            handler: 'index.handler',
             environment: {
-                "STATE_MACHINE_ARN" : this.llmEvalStateMachine.stateMachineArn
+                "STATE_MACHINE_ARN": this.llmEvalStateMachine.stateMachineArn,
             },
-            timeout: cdk.Duration.seconds(30)
+            timeout: cdk.Duration.seconds(30),
         });
         startLlmEvalStateMachineFunction.addToRolePolicy(new iam.PolicyStatement({
             effect: iam.Effect.ALLOW,

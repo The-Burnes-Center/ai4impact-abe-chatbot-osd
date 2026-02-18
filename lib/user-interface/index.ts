@@ -63,7 +63,7 @@ export class UserInterface extends Construct {
         userPoolId: props.userPoolId,
         userPoolWebClientId: props.userPoolClientId,
         oauth: {
-          domain: props.cognitoDomain.concat(".auth.us-east-1.amazoncognito.com"),
+          domain: props.cognitoDomain.concat(`.auth.${cdk.Aws.REGION}.amazoncognito.com`),
           scope: ["aws.cognito.signin.user.admin","email", "openid", "profile"],
           redirectSignIn: "https://" + distribution.distributionDomainName,
           redirectSignOut: "https://" + distribution.distributionDomainName,

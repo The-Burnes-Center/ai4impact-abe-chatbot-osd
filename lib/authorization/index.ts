@@ -20,7 +20,7 @@ export class AuthorizationStack extends Construct {
     // const azureIssuerUrl = 'https://your-azure-issuer.com';
 
     // Create the Cognito User Pool
-    const userPool = new UserPool(this, 'UserPool', {      
+    const userPool = new UserPool(this, 'UserPool', {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       selfSignUpEnabled: false,
       mfa: cognito.Mfa.OPTIONAL,
@@ -29,10 +29,16 @@ export class AuthorizationStack extends Construct {
       signInAliases: {
         email: true,
       },
-      customAttributes : {
-        'role' : new cognito.StringAttribute({ minLen: 0, maxLen: 30, mutable: true })
-      }
-      // ... other user pool configurations
+      passwordPolicy: {
+        minLength: 12,
+        requireUppercase: true,
+        requireLowercase: true,
+        requireDigits: true,
+        requireSymbols: true,
+      },
+      customAttributes: {
+        'role': new cognito.StringAttribute({ minLen: 0, maxLen: 30, mutable: true }),
+      },
     });
     this.userPool = userPool;
 

@@ -1,58 +1,66 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as path from 'path';
-
-// Import Lambda L2 construct
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import { Table } from 'aws-cdk-lib/aws-dynamodb';
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as bedrock from "aws-cdk-lib/aws-bedrock";
 import { S3EventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 import { StepFunctionsStack } from './step-functions/step-functions';
 
-interface LambdaFunctionStackProps {  
-  readonly wsApiEndpoint : string;  
-  readonly sessionTable : Table;  
-  readonly feedbackTable : Table;
-  readonly feedbackBucket : s3.Bucket;
-  readonly knowledgeBucket : s3.Bucket;
-  readonly knowledgeBase : bedrock.CfnKnowledgeBase;
+interface LambdaFunctionStackProps {
+  readonly wsApiEndpoint: string;
+  readonly sessionTable: Table;
+  readonly feedbackTable: Table;
+  readonly feedbackBucket: s3.Bucket;
+  readonly knowledgeBucket: s3.Bucket;
+  readonly knowledgeBase: bedrock.CfnKnowledgeBase;
   readonly knowledgeBaseSource: bedrock.CfnDataSource;
-  readonly evalSummariesTable : Table;
-  readonly evalResutlsTable : Table;
-  readonly evalTestCasesBucket : s3.Bucket;
-  readonly evalResultsBucket : s3.Bucket;
+  readonly evalSummariesTable: Table;
+  readonly evalResutlsTable: Table;
+  readonly evalTestCasesBucket: s3.Bucket;
+  readonly evalResultsBucket: s3.Bucket;
 }
 
-export class LambdaFunctionStack extends cdk.Stack {  
-  public readonly chatFunction : lambda.Function;
-  public readonly sessionFunction : lambda.Function;
-  public readonly feedbackFunction : lambda.Function;
-  public readonly deleteS3Function : lambda.Function;
-  public readonly getS3Function : lambda.Function;
-  public readonly uploadS3Function : lambda.Function;
-  public readonly syncKBFunction : lambda.Function;
-  public readonly metadataHandlerFunction: lambda.Function;
-  public readonly getS3TestCasesFunction : lambda.Function;
-  public readonly stepFunctionsStack : StepFunctionsStack;
-  public readonly uploadS3TestCasesFunction : lambda.Function;
-  public readonly handleEvalResultsFunction : lambda.Function;
-  public readonly metricsHandlerFunction : lambda.Function;
+const LAMBDA_DEFAULTS: Partial<lambda.FunctionProps> = {
+  architecture: lambda.Architecture.ARM_64,
+  tracing: lambda.Tracing.ACTIVE,
+  logRetention: logs.RetentionDays.ONE_MONTH,
+};
 
+export class LambdaFunctionStack extends Construct {
+  public readonly chatFunction: lambda.Function;
+  public readonly sessionFunction: lambda.Function;
+  public readonly feedbackFunction: lambda.Function;
+  public readonly deleteS3Function: lambda.Function;
+  public readonly getS3Function: lambda.Function;
+  public readonly uploadS3Function: lambda.Function;
+  public readonly syncKBFunction: lambda.Function;
+  public readonly metadataHandlerFunction: lambda.Function;
+  public readonly getS3TestCasesFunction: lambda.Function;
+  public readonly stepFunctionsStack: StepFunctionsStack;
+  public readonly uploadS3TestCasesFunction: lambda.Function;
+  public readonly handleEvalResultsFunction: lambda.Function;
+  public readonly metricsHandlerFunction: lambda.Function;
 
   constructor(scope: Construct, id: string, props: LambdaFunctionStackProps) {
-    super(scope, id);    
+    super(scope, id);
+
+    // Resources use `scope` (not `this`) to preserve existing CloudFormation
+    // logical IDs. Switching to `this` would change IDs and recreate functions.
 
     const sessionAPIHandlerFunction = new lambda.Function(scope, 'SessionHandlerFunction', {
-      runtime: lambda.Runtime.PYTHON_3_12, // Choose any supported Node.js runtime
-      code: lambda.Code.fromAsset(path.join(__dirname, 'session-handler')), // Points to the lambda directory
-      handler: 'lambda_function.lambda_handler', // Points to the 'hello' file in the lambda directory
+      ...LAMBDA_DEFAULTS,
+      runtime: lambda.Runtime.PYTHON_3_12,
+      code: lambda.Code.fromAsset(path.join(__dirname, 'session-handler')),
+      handler: 'lambda_function.lambda_handler',
       environment: {
-        "DDB_TABLE_NAME" : props.sessionTable.tableName,
+        "DDB_TABLE_NAME": props.sessionTable.tableName,
         "METADATA_BUCKET": props.knowledgeBucket.bucketName,
       },
-      timeout: cdk.Duration.seconds(30)
+      timeout: cdk.Duration.seconds(30),
     });
     
     sessionAPIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
@@ -70,20 +78,21 @@ export class LambdaFunctionStack extends cdk.Stack {
 
     this.sessionFunction = sessionAPIHandlerFunction;
 
-        // Define the Lambda function resource
         const websocketAPIFunction = new lambda.Function(scope, 'ChatHandlerFunction', {
-          runtime: lambda.Runtime.NODEJS_20_X, // Choose any supported Node.js runtime
-          code: lambda.Code.fromAsset(path.join(__dirname, 'websocket-chat')), // Points to the lambda directory
-          handler: 'index.handler', // Points to the 'hello' file in the lambda directory
-          environment : {
-            "WEBSOCKET_API_ENDPOINT" : props.wsApiEndpoint.replace("wss","https"),
-            'KB_ID' : props.knowledgeBase.attrKnowledgeBaseId,
-            'GUARDRAIL_ID' : process.env.GUARDRAIL_ID || '',
-            'GUARDRAIL_VERSION' : process.env.GUARDRAIL_VERSION || '1',
-            'PRIMARY_MODEL_ID' : 'us.anthropic.claude-sonnet-4-20250514-v1:0',
-            'FAST_MODEL_ID' : 'us.anthropic.claude-3-5-haiku-20241022-v1:0',
+          ...LAMBDA_DEFAULTS,
+          runtime: lambda.Runtime.NODEJS_20_X,
+          code: lambda.Code.fromAsset(path.join(__dirname, 'websocket-chat')),
+          handler: 'index.handler',
+          memorySize: 512,
+          environment: {
+            "WEBSOCKET_API_ENDPOINT": props.wsApiEndpoint.replace("wss", "https"),
+            'KB_ID': props.knowledgeBase.attrKnowledgeBaseId,
+            'GUARDRAIL_ID': process.env.GUARDRAIL_ID || '',
+            'GUARDRAIL_VERSION': process.env.GUARDRAIL_VERSION || '1',
+            'PRIMARY_MODEL_ID': process.env.PRIMARY_MODEL_ID || 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+            'FAST_MODEL_ID': process.env.FAST_MODEL_ID || 'us.anthropic.claude-3-5-haiku-20241022-v1:0',
           },
-          timeout: cdk.Duration.seconds(300)
+          timeout: cdk.Duration.seconds(300),
         });
         websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
           effect: iam.Effect.ALLOW,
@@ -125,14 +134,15 @@ export class LambdaFunctionStack extends cdk.Stack {
         this.chatFunction = websocketAPIFunction;
 
     const feedbackAPIHandlerFunction = new lambda.Function(scope, 'FeedbackHandlerFunction', {
-      runtime: lambda.Runtime.PYTHON_3_12, // Choose any supported Node.js runtime
-      code: lambda.Code.fromAsset(path.join(__dirname, 'feedback-handler')), // Points to the lambda directory
-      handler: 'lambda_function.lambda_handler', // Points to the 'hello' file in the lambda directory
+      ...LAMBDA_DEFAULTS,
+      runtime: lambda.Runtime.PYTHON_3_12,
+      code: lambda.Code.fromAsset(path.join(__dirname, 'feedback-handler')),
+      handler: 'lambda_function.lambda_handler',
       environment: {
-        "FEEDBACK_TABLE" : props.feedbackTable.tableName,
-        "FEEDBACK_S3_DOWNLOAD" : props.feedbackBucket.bucketName
+        "FEEDBACK_TABLE": props.feedbackTable.tableName,
+        "FEEDBACK_S3_DOWNLOAD": props.feedbackBucket.bucketName,
       },
-      timeout: cdk.Duration.seconds(30)
+      timeout: cdk.Duration.seconds(30),
     });
     
     feedbackAPIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
@@ -161,13 +171,14 @@ export class LambdaFunctionStack extends cdk.Stack {
     this.feedbackFunction = feedbackAPIHandlerFunction;
     
     const deleteS3APIHandlerFunction = new lambda.Function(scope, 'DeleteS3FilesHandlerFunction', {
-      runtime: lambda.Runtime.PYTHON_3_12, // Choose any supported Node.js runtime
-      code: lambda.Code.fromAsset(path.join(__dirname, 'knowledge-management/delete-s3')), // Points to the lambda directory
-      handler: 'lambda_function.lambda_handler', // Points to the 'hello' file in the lambda directory
+      ...LAMBDA_DEFAULTS,
+      runtime: lambda.Runtime.PYTHON_3_12,
+      code: lambda.Code.fromAsset(path.join(__dirname, 'knowledge-management/delete-s3')),
+      handler: 'lambda_function.lambda_handler',
       environment: {
-        "BUCKET" : props.knowledgeBucket.bucketName,        
+        "BUCKET": props.knowledgeBucket.bucketName,
       },
-      timeout: cdk.Duration.seconds(30)
+      timeout: cdk.Duration.seconds(30),
     });
 
     deleteS3APIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
@@ -182,13 +193,14 @@ export class LambdaFunctionStack extends cdk.Stack {
     this.deleteS3Function = deleteS3APIHandlerFunction;
 
     const getS3APIHandlerFunction = new lambda.Function(scope, 'GetS3FilesHandlerFunction', {
-      runtime: lambda.Runtime.NODEJS_20_X, // Choose any supported Node.js runtime
-      code: lambda.Code.fromAsset(path.join(__dirname, 'knowledge-management/get-s3')), // Points to the lambda directory
-      handler: 'index.handler', // Points to the 'hello' file in the lambda directory
+      ...LAMBDA_DEFAULTS,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      code: lambda.Code.fromAsset(path.join(__dirname, 'knowledge-management/get-s3')),
+      handler: 'index.handler',
       environment: {
-        "BUCKET" : props.knowledgeBucket.bucketName,        
+        "BUCKET": props.knowledgeBucket.bucketName,
       },
-      timeout: cdk.Duration.seconds(30)
+      timeout: cdk.Duration.seconds(30),
     });
 
     getS3APIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
@@ -203,14 +215,15 @@ export class LambdaFunctionStack extends cdk.Stack {
 
 
     const kbSyncAPIHandlerFunction = new lambda.Function(scope, 'SyncKBHandlerFunction', {
-      runtime: lambda.Runtime.PYTHON_3_12, // Choose any supported Node.js runtime
-      code: lambda.Code.fromAsset(path.join(__dirname, 'knowledge-management/kb-sync')), // Points to the lambda directory
-      handler: 'lambda_function.lambda_handler', // Points to the 'hello' file in the lambda directory
+      ...LAMBDA_DEFAULTS,
+      runtime: lambda.Runtime.PYTHON_3_12,
+      code: lambda.Code.fromAsset(path.join(__dirname, 'knowledge-management/kb-sync')),
+      handler: 'lambda_function.lambda_handler',
       environment: {
-        "KB_ID" : props.knowledgeBase.attrKnowledgeBaseId,      
-        "SOURCE" : props.knowledgeBaseSource.attrDataSourceId  
+        "KB_ID": props.knowledgeBase.attrKnowledgeBaseId,
+        "SOURCE": props.knowledgeBaseSource.attrDataSourceId,
       },
-      timeout: cdk.Duration.seconds(30)
+      timeout: cdk.Duration.seconds(30),
     });
 
     kbSyncAPIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
@@ -225,13 +238,14 @@ export class LambdaFunctionStack extends cdk.Stack {
     this.syncKBFunction = kbSyncAPIHandlerFunction;
 
     const uploadS3APIHandlerFunction = new lambda.Function(scope, 'UploadS3FilesHandlerFunction', {
-      runtime: lambda.Runtime.NODEJS_20_X, // Choose any supported Node.js runtime
-      code: lambda.Code.fromAsset(path.join(__dirname, 'knowledge-management/upload-s3')), // Points to the lambda directory
-      handler: 'index.handler', // Points to the 'hello' file in the lambda directory
+      ...LAMBDA_DEFAULTS,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      code: lambda.Code.fromAsset(path.join(__dirname, 'knowledge-management/upload-s3')),
+      handler: 'index.handler',
       environment: {
-        "BUCKET" : props.knowledgeBucket.bucketName,        
+        "BUCKET": props.knowledgeBucket.bucketName,
       },
-      timeout: cdk.Duration.seconds(30)
+      timeout: cdk.Duration.seconds(30),
     });
 
     uploadS3APIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
@@ -249,8 +263,8 @@ export class LambdaFunctionStack extends cdk.Stack {
 
 
 
-    // Define the Lambda function for metadata
     const metadataHandlerFunction = new lambda.Function(scope, 'MetadataHandlerFunction', {
+      ...LAMBDA_DEFAULTS,
       runtime: lambda.Runtime.PYTHON_3_12,
       code: lambda.Code.fromAsset(path.join(__dirname, 'metadata-handler')),
       handler: 'lambda_function.lambda_handler',
@@ -258,7 +272,7 @@ export class LambdaFunctionStack extends cdk.Stack {
       environment: {
         "BUCKET": props.knowledgeBucket.bucketName,
         "KB_ID": props.knowledgeBase.attrKnowledgeBaseId,
-        "FAST_MODEL_ID": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+        "FAST_MODEL_ID": process.env.FAST_MODEL_ID || "us.anthropic.claude-3-5-haiku-20241022-v1:0",
       },
     });
 
@@ -310,6 +324,7 @@ export class LambdaFunctionStack extends cdk.Stack {
       }));
 
 const metadataRetrievalFunction = new lambda.Function(scope, 'MetadataRetrievalFunction', {
+  ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,
   code: lambda.Code.fromAsset(path.join(__dirname, 'metadata-retrieval')),
   handler: 'lambda_function.lambda_handler',
@@ -337,13 +352,14 @@ websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
 }));
 
 const getS3TestCasesFunction = new lambda.Function(scope, 'GetS3TestCasesFilesHandlerFunction', {
+  ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.NODEJS_20_X,
   code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/S3-get-test-cases')),
   handler: 'index.handler',
   environment: {
     "BUCKET": props.evalTestCasesBucket.bucketName,
   },
-  timeout: cdk.Duration.seconds(30)
+  timeout: cdk.Duration.seconds(30),
 });
 
 getS3TestCasesFunction.addToRolePolicy(new iam.PolicyStatement({
@@ -357,13 +373,14 @@ getS3TestCasesFunction.addToRolePolicy(new iam.PolicyStatement({
 this.getS3TestCasesFunction = getS3TestCasesFunction;
 
 const uploadS3TestCasesFunction = new lambda.Function(scope, 'UploadS3TestCasesFilesHandlerFunction', {
-  runtime: lambda.Runtime.NODEJS_20_X, // Choose any supported Node.js runtime
-  code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/S3-upload')), // Points to the lambda directory
-  handler: 'index.handler', // Points to the 'hello' file in the lambda directory
+  ...LAMBDA_DEFAULTS,
+  runtime: lambda.Runtime.NODEJS_20_X,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/S3-upload')),
+  handler: 'index.handler',
   environment: {
-    "BUCKET" : props.evalTestCasesBucket.bucketName,        
+    "BUCKET": props.evalTestCasesBucket.bucketName,
   },
-  timeout: cdk.Duration.seconds(30)
+  timeout: cdk.Duration.seconds(30),
 });
 
 uploadS3TestCasesFunction.addToRolePolicy(new iam.PolicyStatement({
@@ -379,17 +396,15 @@ this.uploadS3TestCasesFunction = uploadS3TestCasesFunction;
 
 
 const evalResultsAPIHandlerFunction = new lambda.Function(scope, 'EvalResultsHandlerFunction', {
-  runtime: lambda.Runtime.PYTHON_3_12, // Choose any supported Node.js runtime
-  code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/eval-results-handler')), // Points to the lambda directory
-  handler: 'lambda_function.lambda_handler', // Points to the 'hello' file in the lambda directory
+  ...LAMBDA_DEFAULTS,
+  runtime: lambda.Runtime.PYTHON_3_12,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/eval-results-handler')),
+  handler: 'lambda_function.lambda_handler',
   environment: {
-    // Using the full table names: 
-    // GenAiOsdChatStack-ChatbotAPIEvaluationResultsTableE72FCF7C-136Z3LGPGTSF1
-    // GenAiOsdChatStack-ChatbotAPIEvaluationSummariesTableE9B95A54-1S7WAPF93R60M
-    "EVALUATION_RESULTS_TABLE" : props.evalResutlsTable.tableName,
-    "EVALUATION_SUMMARIES_TABLE" : props.evalSummariesTable.tableName
+    "EVALUATION_RESULTS_TABLE": props.evalResutlsTable.tableName,
+    "EVALUATION_SUMMARIES_TABLE": props.evalSummariesTable.tableName,
   },
-  timeout: cdk.Duration.seconds(30)
+  timeout: cdk.Duration.seconds(30),
 });
 evalResultsAPIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({ 
   effect: iam.Effect.ALLOW,
@@ -409,13 +424,14 @@ props.evalResutlsTable.grantReadWriteData(evalResultsAPIHandlerFunction);
 props.evalSummariesTable.grantReadWriteData(evalResultsAPIHandlerFunction);
 
 const metricsHandlerFunction = new lambda.Function(scope, 'MetricsHandlerFunction', {
+  ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,
   code: lambda.Code.fromAsset(path.join(__dirname, 'metrics-handler')),
   handler: 'lambda_function.lambda_handler',
   environment: {
     "DDB_TABLE_NAME": props.sessionTable.tableName,
   },
-  timeout: cdk.Duration.seconds(60) // Increased timeout for scanning large tables
+  timeout: cdk.Duration.seconds(60),
 });
 
 metricsHandlerFunction.addToRolePolicy(new iam.PolicyStatement({

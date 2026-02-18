@@ -32,15 +32,12 @@ export class ChatBotApi extends Construct {
   constructor(scope: Construct, id: string, props: ChatBotApiProps) {
     super(scope, id);
     
-    // Create dedicated Lambda function to handle OPTIONS requests for CORS
     const corsHandler = new lambda.Function(this, 'OptionsHandler', {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'index.handler',
       code: lambda.Code.fromInline(`
         exports.handler = async (event) => {
-          // Get the origin from the request
-          const origin = event.headers?.origin || event.headers?.Origin || 'https://dcf43zj2k8alr.cloudfront.net';
-          
+          const origin = event.headers?.origin || event.headers?.Origin || '*';
           return {
             statusCode: 200,
             headers: {
@@ -52,7 +49,7 @@ export class ChatBotApi extends Construct {
             body: JSON.stringify({}),
           };
         };
-      `)
+      `),
     });
     
     const corsHandlerIntegration = new HttpLambdaIntegration('CorsHandlerIntegration', corsHandler);

@@ -47,12 +47,15 @@ todos:
   - id: phase2-eval-fix
     content: "Phase 2 [Issue #5]: Fix LLM evaluation pipeline -- removed mock fallbacks (MockSentenceTransformer, cosine_similarity=0.5) that produced garbage metrics; simplified aggregate Lambda to only aggregate pre-computed RAGAS scores; removed broken live/retrieval eval paths + Cognito creds from env; fixed generate-response parseChunk null guard, added JSON.parse try/catch, synced stale prompt with grounding rules (Rules 8-10, Section 11); removed perform_retrieval_evaluation from step-functions."
     status: completed
+  - id: phase2-tool-use-repeat
+    content: "Phase 2 [BUG]: Fix duplicate/restarting response on tool-use queries -- pre-tool preamble text was not included in assistant message history, causing Claude to repeat itself after KB retrieval. Fixed in websocket-chat and generate-response by tracking currentIterationText and adding it as a text content block in the assistant message before the tool_use block."
+    status: completed
   - id: phase3-nag
-    content: "Phase 3: Enable CDK Nag, fix Stack->Construct, fix scope->this"
-    status: pending
+    content: "Phase 3: Enable CDK Nag with AwsSolutionsChecks, convert all nested Stacks to Constructs (tables, buckets, opensearch, knowledge-base, functions), replace hardcoded stackName imports with dynamic cdk.Stack.of(this).stackName, add comprehensive NagSuppressions for justified patterns"
+    status: completed
   - id: phase3-hardening
-    content: "Phase 3: DynamoDB PITR + PAY_PER_REQUEST, S3 SSL + public access blocks, API throttling + logging"
-    status: pending
+    content: "Phase 3: DynamoDB PITR + PAY_PER_REQUEST on all 4 tables, S3 enforceSSL on all buckets, Lambda ARM64 + X-Ray tracing + 1-month log retention on all ~20 functions, Step Functions logging + tracing, Cognito strong password policy (12 chars, upper/lower/digit/symbol), CDK env resolution via CDK_DEFAULT_ACCOUNT/REGION"
+    status: completed
   - id: phase3-waf
     content: "Phase 3: Add WAF to CloudFront, migrate to modern Distribution + OAC"
     status: pending
@@ -526,6 +529,24 @@ model_id = os.environ.get('FAST_MODEL_ID', 'us.anthropic.claude-haiku-4-5-202510
 ---
 
 ## Phase 3: CDK Infrastructure Hardening
+
+### Phase 3 Partial Deployment -- 2026-02-18
+
+**Deployed items (3.1, 3.2, 3.3, 3.4, 3.7, 3.9 partial):**
+
+- 3.1 CDK Nag: Enabled `AwsSolutionsChecks({ verbose: true })` in `bin/gen-ai-mvp.ts`. Added comprehensive `NagSuppressions` in `gen-ai-mvp-stack.ts` for justified patterns (Lambda basic execution roles, S3 object wildcards, Bedrock model wildcards, CORS OPTIONS routes, Cognito MFA deferred, CDK-managed runtimes).
+- 3.2 Construct fixes: Converted all 5 nested constructs from `extends cdk.Stack` to `extends Construct` (tables, buckets, opensearch, knowledge-base, functions). Resources stay scoped to `scope` to preserve CloudFormation logical IDs and prevent data loss. Replaced all `stackName` imports with dynamic `cdk.Stack.of(this).stackName`. Fixed `this.account` reference in opensearch.ts to `stack.account`.
+- 3.3 DynamoDB: Added `pointInTimeRecovery: true` and `billingMode: PAY_PER_REQUEST` to all 4 tables. Removed provisioned throughput.
+- 3.4 S3: Added `enforceSSL: true` to EvalResults, EvalTestCases, FeedbackDownload, and RagasDependencies buckets (KnowledgeSource already had it).
+- 3.7 Lambda: Applied `LAMBDA_DEFAULTS` (ARM64 architecture, X-Ray Active tracing, 1-month log retention) to all ~20 Lambda functions across functions.ts and step-functions.ts. Added Step Functions StateMachine logging (LogGroup + LogLevel.ALL) and tracing.
+- 3.9 Partial: Removed hardcoded CloudFront domain from CORS handler fallback and step-functions CHATBOT_API_URL. Fixed hardcoded `us-east-1` in Cognito OAuth domain to `cdk.Aws.REGION`. Added `env: { account: CDK_DEFAULT_ACCOUNT, region: CDK_DEFAULT_REGION }` to stack instantiation. Made BEDROCK_MODEL_ID env var-driven.
+- Auth: Added Cognito password policy (min 12 chars, uppercase, lowercase, digits, symbols) to address AwsSolutions-COG1.
+
+**Files modified:** `bin/gen-ai-mvp.ts`, `lib/gen-ai-mvp-stack.ts`, `lib/chatbot-api/tables/tables.ts`, `lib/chatbot-api/buckets/buckets.ts`, `lib/chatbot-api/opensearch/opensearch.ts`, `lib/chatbot-api/knowledge-base/knowledge-base.ts`, `lib/chatbot-api/functions/functions.ts`, `lib/chatbot-api/functions/step-functions/step-functions.ts`, `lib/chatbot-api/index.ts`, `lib/user-interface/index.ts`, `lib/authorization/index.ts`
+
+**Verified:** `cdk synth` passed with zero cdk-nag errors. `cdk diff` confirmed no stateful resource replacements. Deployed successfully (145 resources, 540s). Chatbot functional at CloudFront URL.
+
+**Remaining for Phase 3:** 3.5 API Gateway hardening (access logging, throttling), 3.6 CloudFront WAF + OAC migration, 3.8 Monitoring construct.
 
 ### 3.1 Enable CDK Nag
 
@@ -1149,7 +1170,7 @@ graph TD
 
 - **Phase 1** (Security + Critical Bugs): ~~1-2 weeks, 1-2 engineers~~ **COMPLETE -- deployed 2026-02-10** -- includes Issue #6, #7, tool-use crash fix
 - **Phase 2** (GenAI + Data Fixes): 2-3 weeks, 1 engineer with GenAI expertise -- includes Issue #1, #2, #5
-- **Phase 3** (CDK Hardening): 2-3 weeks, 1 infrastructure engineer
+- **Phase 3** (CDK Hardening): ~~2-3 weeks, 1 infrastructure engineer~~ **PARTIAL -- deployed 2026-02-18** -- CDK Nag, Construct refactor, DynamoDB/S3/Lambda hardening, env parameterization. Remaining: WAF, OAC, monitoring construct.
 - **Phase 4** (Backend + Analytics): 2-3 weeks, 1-2 engineers -- includes Issue #3, #8
 - **Phase 5** (Frontend + Admin): 3-4 weeks, 1-2 frontend engineers -- includes Issue #9
 - **Phase 6** (Operations): 2-4 weeks, 1 engineer

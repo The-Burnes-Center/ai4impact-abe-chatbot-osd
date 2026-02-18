@@ -1,22 +1,27 @@
-import { Stack, StackProps } from 'aws-cdk-lib';
+import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { Attribute, AttributeType, Table, ProjectionType } from 'aws-cdk-lib/aws-dynamodb';
+import { AttributeType, BillingMode, Table, ProjectionType } from 'aws-cdk-lib/aws-dynamodb';
 
-export class TableStack extends Stack {
-  public readonly historyTable : Table;
-  public readonly feedbackTable : Table;
-  public readonly evalResultsTable : Table;
-  public readonly evalSummaryTable : Table;
-  constructor(scope: Construct, id: string, props?: StackProps) {
-    super(scope, id, props);
+export class TableStack extends Construct {
+  public readonly historyTable: Table;
+  public readonly feedbackTable: Table;
+  public readonly evalResultsTable: Table;
+  public readonly evalSummaryTable: Table;
 
-    // Define the table
+  constructor(scope: Construct, id: string) {
+    super(scope, id);
+
+    // Resources use `scope` (not `this`) to preserve existing CloudFormation
+    // logical IDs. Switching to `this` would change IDs and recreate tables.
+
     const chatHistoryTable = new Table(scope, 'ChatHistoryTable', {
       partitionKey: { name: 'user_id', type: AttributeType.STRING },
       sortKey: { name: 'session_id', type: AttributeType.STRING },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    // Add a global secondary index to sort ChatHistoryTable by time_stamp
     chatHistoryTable.addGlobalSecondaryIndex({
       indexName: 'TimeIndex',
       partitionKey: { name: 'user_id', type: AttributeType.STRING },
@@ -26,19 +31,20 @@ export class TableStack extends Stack {
 
     this.historyTable = chatHistoryTable;
 
-    // Define the second table (UserFeedbackTable)
     const userFeedbackTable = new Table(scope, 'UserFeedbackTable', {
       partitionKey: { name: 'Topic', type: AttributeType.STRING },
       sortKey: { name: 'CreatedAt', type: AttributeType.STRING },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    // Add a global secondary index to UserFeedbackTable with partition key CreatedAt
     userFeedbackTable.addGlobalSecondaryIndex({
       indexName: 'CreatedAtIndex',
       partitionKey: { name: 'CreatedAt', type: AttributeType.STRING },
       projectionType: ProjectionType.ALL,
     });
-    
+
     userFeedbackTable.addGlobalSecondaryIndex({
       indexName: 'AnyIndex',
       partitionKey: { name: 'Any', type: AttributeType.STRING },
@@ -47,18 +53,24 @@ export class TableStack extends Stack {
     });
 
     this.feedbackTable = userFeedbackTable;
-    
+
     const evalSummariesTable = new Table(scope, 'EvaluationSummariesTable', {
       partitionKey: { name: 'PartitionKey', type: AttributeType.STRING },
       sortKey: { name: 'Timestamp', type: AttributeType.STRING },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
     this.evalSummaryTable = evalSummariesTable;
 
     const evalResultsTable = new Table(scope, 'EvaluationResultsTable', {
       partitionKey: { name: 'EvaluationId', type: AttributeType.STRING },
       sortKey: { name: 'QuestionId', type: AttributeType.STRING },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
-    // add secondary index to sort EvaluationResultsTable by Question ID
+
     evalResultsTable.addGlobalSecondaryIndex({
       indexName: 'QuestionIndex',
       partitionKey: { name: 'EvaluationId', type: AttributeType.STRING },
@@ -66,6 +78,5 @@ export class TableStack extends Stack {
       projectionType: ProjectionType.ALL,
     });
     this.evalResultsTable = evalResultsTable;
-
   }
 }
