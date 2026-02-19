@@ -89,6 +89,9 @@ todos:
   - id: phase5-superadmin
     content: "Phase 5 [Issue #9]: Build SuperAdmin Add/Edit User page (Cognito user management)"
     status: pending
+  - id: phase5-streaming-ux
+    content: "Phase 5 [UX]: Fix streaming UX during tool-use pauses -- add backend status markers, blinking cursor during streaming, 'Searching knowledge base...' indicator during tool execution"
+    status: pending
   - id: phase6-testing
     content: "Phase 6: Add Vitest + RTL frontend tests, pytest backend tests, Playwright E2E"
     status: pending
@@ -1014,6 +1017,72 @@ This prevents admin-only code from loading for regular users.
   - Add `/admin/users` routes to [rest-api.ts](lib/chatbot-api/gateway/rest-api.ts) with JWT authorizer
   - Add the Lambda function to [functions.ts](lib/chatbot-api/functions/functions.ts)
 
+### 5.12 Streaming UX Indicators (Tool-Use Pause Fix)
+
+**Bug**: When the chatbot response involves a tool call (KB retrieval), the AI appears to finish its answer, then suddenly continues seconds later with no visual indicator that it was still working.
+
+**Root Cause**: The streaming flow has a multi-second gap during tool execution that the UI does not communicate:
+
+1. Claude streams preamble text ("Let me search for that...") -- text appears in the chat bubble
+2. Claude decides to use `query_db` -- streaming **stops completely** while tool input JSON is assembled and `retrieveKBDocs` executes (2-5 seconds)
+3. After KB results return, a new stream starts and Claude generates the actual answer -- text **suddenly resumes**
+
+The user perceives step 1's text as the complete answer because:
+- The `<Spinner />` in [chat-message.tsx](lib/user-interface/app/src/components/chatbot/chat-message.tsx) line 149 only shows when `content.length === 0` -- it disappears the instant the first text chunk arrives
+- There is no blinking cursor, typing dots, or "searching..." indicator during the tool-use pause
+- The only remaining signal is the subtle "Loading" text on the Send button, which most users won't notice
+- Then step 3's text appearing feels like the AI "randomly continued" or restarted
+
+**Fix -- Backend ([index.mjs](lib/chatbot-api/functions/websocket-chat/index.mjs)):**
+
+Send lightweight status markers over the WebSocket so the frontend knows what's happening (same pattern as the existing `!<|EOF_STREAM|>!` marker):
+
+- Send `!<|TOOL_SEARCHING|>!` right before KB retrieval starts (~line 274, after tool input is parsed, before `retrieveKBDocs` call)
+- Send `!<|TOOL_COMPLETE|>!` right after KB results return (~line 316, before the loop continues with the new stream)
+
+**Fix -- Frontend ([chat-input-panel.tsx](lib/user-interface/app/src/components/chatbot/chat-input-panel.tsx)):**
+
+- Add a `streamingStatus` state: `'idle' | 'streaming' | 'searching'`
+- Set `streaming` when text chunks arrive
+- Set `searching` when `!<|TOOL_SEARCHING|>!` is received
+- Set back to `streaming` when `!<|TOOL_COMPLETE|>!` is received
+- Set `idle` on WebSocket close / EOF
+- Pass `streamingStatus` to the message component
+
+**Fix -- Frontend ([chat-message.tsx](lib/user-interface/app/src/components/chatbot/chat-message.tsx)):**
+
+- When `streamingStatus === 'streaming'` and this is the last AI message: show a **blinking cursor** (`|`) after the text, indicating more text is coming
+- When `streamingStatus === 'searching'`: show a **"Searching knowledge base..."** inline indicator (small text + spinner below the current text)
+- When `streamingStatus === 'idle'` or message is not the latest: show nothing (final state)
+
+**Visual timeline:**
+
+```
+User sends message
+  └─ streamingStatus = 'streaming'
+      └─ AI text streams in with blinking cursor ▍
+          └─ Backend sends TOOL_SEARCHING marker
+              └─ streamingStatus = 'searching'
+              └─ "Searching knowledge base..." indicator appears
+              └─ (2-5 seconds pass while KB is queried)
+              └─ Backend sends TOOL_COMPLETE marker
+                  └─ streamingStatus = 'streaming'
+                  └─ AI answer streams in with blinking cursor ▍
+                      └─ EOF received
+                          └─ streamingStatus = 'idle'
+                          └─ Cursor disappears, sources shown
+```
+
+**Files affected:**
+
+| File | Change |
+|---|---|
+| `websocket-chat/index.mjs` | Send `TOOL_SEARCHING` / `TOOL_COMPLETE` WebSocket markers |
+| `generate-response/index.mjs` | Same markers (for non-WebSocket path, if applicable) |
+| `chat-input-panel.tsx` | Add `streamingStatus` state, parse new markers |
+| `chat-message.tsx` | Blinking cursor + "Searching..." indicator based on status |
+| `chat-message.module.scss` | CSS for blinking cursor animation + searching indicator |
+
 ---
 
 ## Phase 6: Operational Excellence
@@ -1142,6 +1211,7 @@ graph TD
         F1[WebSocket Abstraction]
         F2[TypeScript Strict]
         F3[React Query + a11y]
+        F4[Streaming UX Indicators]
         D9["Issue #9: SuperAdmin User Mgmt"]
     end
 
