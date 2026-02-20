@@ -155,4 +155,33 @@ export class Utils {
       throw new Error('Authentication failed');
     }
   }
+
+  /**
+   * Converts a UTC ISO 8601 timestamp to Eastern Time (EST/EDT) formatted string.
+   * Handles both EST and EDT automatically based on the date.
+   * 
+   * @param utcTimestamp - ISO 8601 timestamp string with Z suffix (e.g., "2026-02-20T14:17:00Z")
+   * @returns Formatted date string in Eastern Time (e.g., "Feb 20, 2026, 9:17 AM")
+   */
+  static formatToEasternTime(utcTimestamp: string | null | undefined): string {
+    if (!utcTimestamp) {
+      return 'N/A';
+    }
+
+    try {
+      const date = new Date(utcTimestamp);
+      if (isNaN(date.getTime())) {
+        return 'Invalid date';
+      }
+
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }).format(date);
+    } catch (error) {
+      console.error('Error formatting timestamp to Eastern Time:', error);
+      return 'Invalid date';
+    }
+  }
 }

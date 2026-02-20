@@ -21,7 +21,7 @@ export interface DocumentsTabProps {
   tabChangeFunction: () => void;
   documentType: AdminDataType;
   statusRefreshFunction: () => void;
-  lastSyncTime: string;
+  lastSyncTime: string | null;
   setShowUnsyncedAlert: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
@@ -64,49 +64,35 @@ export default function DocumentsTab(props: DocumentsTabProps) {
   });
 
   useEffect(() => {
-    // Function to parse the lastSyncTime
-    const parseLastSyncTime = (timeString: string) => {
-      try {
-        const dateParts = timeString.split(', ');
-        const datePart = dateParts.slice(0, 2).join(', ');
-        const timePart = dateParts.slice(2).join(', ');
+    // If no sync time available, don't show unsynced alert
+    if (!props.lastSyncTime) {
+      props.setShowUnsyncedAlert(false);
+      return;
+    }
+
+    try {
+      // Parse ISO 8601 UTC timestamp (e.g., "2026-02-20T14:17:00Z")
+      const lastSyncDate = new Date(props.lastSyncTime);
       
-        const [month, day, year] = datePart.split(' ');
-        const [time, period] = timePart.split(' ');
-        const [hours, minutes] = time.split(':');
-      
-        const date = new Date(Date.UTC(
-          parseInt(year),
-          new Date(Date.parse(month + " 1, " + year)).getUTCMonth(),
-          parseInt(day),
-          parseInt(hours),
-          parseInt(minutes)
-        ));
-      
-        if (period.toLowerCase() === 'pm' && parseInt(hours) !== 12) {
-          date.setUTCHours(date.getUTCHours() + 12);
-        } else if (period.toLowerCase() === 'am' && parseInt(hours) === 12) {
-          date.setUTCHours(0);
-        }
-      
-        return date;
-      } catch (error) {
-        console.log(error)
-        return new Date();
+      if (isNaN(lastSyncDate.getTime())) {
+        console.error('Invalid lastSyncTime format:', props.lastSyncTime);
+        props.setShowUnsyncedAlert(false);
+        return;
       }
-    };
 
-    const lastSyncDate = parseLastSyncTime(props.lastSyncTime);
+      // Check if any files have a LastModified date newer than the lastSyncTime
+      const hasUnsyncedFiles = pages.some((page) =>
+        page.Contents?.some((file) => {
+          const fileDate = new Date(file.LastModified);
+          return fileDate > lastSyncDate;
+        })
+      );
 
-    // Check if any files have a LastModified date newer than the lastSyncTime
-    const hasUnsyncedFiles = pages.some((page) =>
-      page.Contents?.some((file) => {
-        const fileDate = new Date(file.LastModified);
-        return fileDate > lastSyncDate;
-      })
-    );
-
-    props.setShowUnsyncedAlert(hasUnsyncedFiles);
+      props.setShowUnsyncedAlert(hasUnsyncedFiles);
+    } catch (error) {
+      console.error('Error comparing sync time:', error);
+      props.setShowUnsyncedAlert(false);
+    }
   }, [pages, props.lastSyncTime, props.setShowUnsyncedAlert]);
 
   /** Function to get documents */

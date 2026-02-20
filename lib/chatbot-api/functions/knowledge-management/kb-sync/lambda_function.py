@@ -81,31 +81,60 @@ def get_last_sync():
             return {
                 'statusCode': 200,
                 'headers': {'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps('No sync history available')
+                'body': json.dumps({
+                    'status': 'NO_SYNC_HISTORY',
+                    'message': 'No sync history available',
+                    'startedAt': None,
+                    'completedAt': None
+                })
             }
         
         # Sort by updatedAt descending to get the most recent sync job
         # The API might not return results in chronological order
+        # For COMPLETE jobs, updatedAt represents the completion time
         hist_sorted = sorted(hist, key=lambda x: x["updatedAt"], reverse=True)
         most_recent = hist_sorted[0]
         
         logger.info(f"Found {len(hist)} completed sync job(s). Most recent: {most_recent.get('ingestionJobId', 'N/A')}")
-        logger.info(f"Most recent sync updatedAt: {most_recent['updatedAt']}")
+        logger.info(f"Most recent sync startedAt: {most_recent.get('startedAt')}")
+        logger.info(f"Most recent sync updatedAt (completion): {most_recent['updatedAt']}")
         
-        time = most_recent["updatedAt"].strftime('%B %d, %Y, %I:%M%p UTC')
-        logger.info(f"Last sync time formatted: {time}")
+        from datetime import timezone
+        started_at = most_recent.get('startedAt')
+        completed_at = most_recent['updatedAt']
+        
+        if started_at and started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+        if completed_at.tzinfo is None:
+            completed_at = completed_at.replace(tzinfo=timezone.utc)
+        
+        started_at_iso = started_at.isoformat().replace('+00:00', 'Z') if started_at else None
+        completed_at_iso = completed_at.isoformat().replace('+00:00', 'Z')
+        
+        response_data = {
+            'status': 'COMPLETE',
+            'startedAt': started_at_iso,
+            'completedAt': completed_at_iso
+        }
+        
+        logger.info(f"Returning sync data: {response_data}")
         
         return {
             'statusCode': 200,
             'headers': {'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps(time)
+            'body': json.dumps(response_data)
         }
     except Exception as e:
         logger.error(f"Error getting last sync: {str(e)}", exc_info=True)
         return {
             'statusCode': 500,
             'headers': {'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps(f'Error retrieving last sync: {str(e)}')
+            'body': json.dumps({
+                'status': 'ERROR',
+                'message': f'Error retrieving last sync: {str(e)}',
+                'startedAt': None,
+                'completedAt': None
+            })
         }
 
 

@@ -16,6 +16,7 @@ import {
   import DataFileUpload from "./file-upload-tab.tsx";
   import { ApiClient } from "../../common/api-client/api-client";
   import { AppContext } from "../../common/app-context";
+  import { Utils } from "../../common/utils";
 
   export default function DataPage() {
     const onFollow = useOnFollow();
@@ -23,16 +24,31 @@ import {
     const [activeTab, setActiveTab] = useState("file");
     const appContext = useContext(AppContext);
     const apiClient = new ApiClient(appContext);
-    const [lastSyncTime, setLastSyncTime] = useState("")
+    const [lastSyncTime, setLastSyncTime] = useState<string>("")
+    const [lastSyncData, setLastSyncData] = useState<{
+      status: string;
+      startedAt: string | null;
+      completedAt: string | null;
+    } | null>(null);
     const [showUnsyncedAlert, setShowUnsyncedAlert] = useState(false);
 
     /** Function to get the last synced time */
     const refreshSyncTime = async () => {
       try {
-        const lastSync = await apiClient.knowledgeManagement.lastKendraSync();    
-        setLastSyncTime(lastSync);
+        const syncData = await apiClient.knowledgeManagement.lastKendraSync();
+        setLastSyncData(syncData);
+        
+        if (syncData.status === 'COMPLETE' && syncData.completedAt) {
+          const formattedTime = Utils.formatToEasternTime(syncData.completedAt);
+          setLastSyncTime(formattedTime);
+        } else if (syncData.status === 'NO_SYNC_HISTORY') {
+          setLastSyncTime('No sync history available');
+        } else {
+          setLastSyncTime('Unknown');
+        }
       } catch (e) {
         console.log(e);
+        setLastSyncTime('Error loading sync time');
       }
     }
 
@@ -63,7 +79,12 @@ import {
       })();
     }, []);
 
-    /** If the admin status check fails, just show an access denied page*/
+    useEffect(() => {
+      if (admin) {
+        refreshSyncTime();
+      }
+    }, [admin]);
+
     if (!admin) {
       return (
         <div
@@ -117,7 +138,9 @@ import {
                     variant="h3"
                     // description="Container description"
                   >
-                    Last sync
+                    {lastSyncData?.status === 'COMPLETE' 
+                      ? `Last successful sync: ${lastSyncTime}` 
+                      : lastSyncTime || 'Last sync'}
                   </Header>                
                 }
               >
@@ -150,7 +173,7 @@ import {
                         documentType="file"
                         tabChangeFunction={() => setActiveTab("add-data")}
                         statusRefreshFunction={refreshSyncTime}
-                        lastSyncTime={lastSyncTime}
+                        lastSyncTime={lastSyncData?.completedAt || null}
                         setShowUnsyncedAlert={setShowUnsyncedAlert}
                       />
                     ),

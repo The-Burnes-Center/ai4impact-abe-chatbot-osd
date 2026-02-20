@@ -16,6 +16,7 @@ import { Auth } from "aws-amplify";
 import DataFileUpload from "./file-upload-tab";
 import { ApiClient } from "../../common/api-client/api-client";
 import { AppContext } from "../../common/app-context";
+import { Utils } from "../../common/utils";
 
 export default function DataPage() {
   const onFollow = useOnFollow();
@@ -24,18 +25,34 @@ export default function DataPage() {
   const appContext = useContext(AppContext);
   const apiClient = new ApiClient(appContext);
   const [lastSyncTime, setLastSyncTime] = useState("")
+  const [lastSyncData, setLastSyncData] = useState<{
+    status: string;
+    startedAt: string | null;
+    completedAt: string | null;
+  } | null>(null);
   const [showUnsyncedAlert, setShowUnsyncedAlert] = useState(false);
 
   /** Function to get the last synced time */
   const refreshSyncTime = async () => {
     try {
       console.log("🔄 refreshSyncTime() called - fetching last sync time from API...");
-      const lastSync = await apiClient.knowledgeManagement.lastKendraSync();
-      console.log("📅 Received last sync time from API:", lastSync);
-      setLastSyncTime(lastSync);
-      console.log("✅ Updated lastSyncTime state to:", lastSync);
+      const syncData = await apiClient.knowledgeManagement.lastKendraSync();
+      console.log("📅 Received last sync data from API:", syncData);
+      setLastSyncData(syncData);
+      
+      // Format the completed timestamp for display (convert UTC to Eastern Time)
+      if (syncData.status === 'COMPLETE' && syncData.completedAt) {
+        const formattedTime = Utils.formatToEasternTime(syncData.completedAt);
+        setLastSyncTime(formattedTime);
+        console.log("✅ Updated lastSyncTime state to:", formattedTime);
+      } else if (syncData.status === 'NO_SYNC_HISTORY') {
+        setLastSyncTime('No sync history available');
+      } else {
+        setLastSyncTime('Unknown');
+      }
     } catch (e) {
       console.error("❌ Error in refreshSyncTime():", e);
+      setLastSyncTime('Error loading sync time');
     }
   }
 
@@ -65,6 +82,14 @@ export default function DataPage() {
       }
     })();
   }, []);
+
+  /** Load sync time when admin is confirmed */
+  useEffect(() => {
+    if (admin) {
+      refreshSyncTime();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [admin]);
 
   /** If the admin status check fails, just show an access denied page*/
   if (!admin) {
@@ -120,7 +145,9 @@ export default function DataPage() {
                   variant="h3"
                   // description="Container description"
                 >
-                  Last successful sync: {lastSyncTime}
+                  {lastSyncData?.status === 'COMPLETE' 
+                    ? `Last successful sync: ${lastSyncTime}` 
+                    : lastSyncTime}
                 </Header>                
               }
             >
@@ -153,7 +180,7 @@ export default function DataPage() {
                       tabChangeFunction={() => setActiveTab("add-data")}
                       documentType="file"
                       statusRefreshFunction={refreshSyncTime}
-                      lastSyncTime={lastSyncTime}
+                      lastSyncTime={lastSyncData?.completedAt || null}
                       setShowUnsyncedAlert={setShowUnsyncedAlert}
                     />
                   ),

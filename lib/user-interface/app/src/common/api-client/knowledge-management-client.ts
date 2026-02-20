@@ -108,7 +108,12 @@ export class KnowledgeManagementClient {
   }
 
   // Checks the last time Kendra was synced
-  async lastKendraSync() : Promise<string> {
+  async lastKendraSync() : Promise<{
+    status: string;
+    message?: string;
+    startedAt: string | null;
+    completedAt: string | null;
+  }> {
     const auth = await Utils.authenticate();
     const response = await fetch(this.API + '/kb-sync/get-last-sync', {headers: {
       'Content-Type': 'application/json',

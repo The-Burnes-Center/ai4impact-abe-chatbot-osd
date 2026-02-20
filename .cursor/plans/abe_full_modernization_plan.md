@@ -72,8 +72,8 @@ todos:
     content: "Phase 4 [Issue #3]: Build enhanced analytics -- FAQ tracking + advanced traffic stats"
     status: pending
   - id: phase4-sync-timestamp
-    content: "Phase 4 [Issue #8]: Fix incorrect document sync timestamp in Data dashboard"
-    status: pending
+    content: "Phase 4 [Issue #8]: Fix incorrect document sync timestamp in Data dashboard -- backend returns ISO 8601 UTC timestamps with status, frontend converts to Eastern Time, removed fragile custom parsing"
+    status: completed
   - id: phase4-llm-validation
     content: "Phase 4: Add Pydantic (Python) + Zod (JS) validation for all 13 LLM-to-JSON parsing points"
     status: pending
@@ -87,8 +87,8 @@ todos:
     content: "Phase 5: Add React Query, fix accessibility, upgrade Amplify v5->v6, cleanup deps"
     status: pending
   - id: phase5-superadmin
-    content: "Phase 5 [Issue #9]: Build SuperAdmin Add/Edit User page (Cognito user management)"
-    status: pending
+    content: "Phase 5 [Issue #9]: Build SuperAdmin Add/Edit User page (Cognito user management) -- cannot be implemented due to SSO integration, needs clarity from OSD side"
+    status: cancelled
   - id: phase5-streaming-ux
     content: "Phase 5 [UX]: Fix streaming UX during tool-use pauses -- add backend status markers, blinking cursor during streaming, 'Searching knowledge base...' indicator during tool execution"
     status: pending
@@ -994,6 +994,8 @@ This prevents admin-only code from loading for regular users.
 
 ### 5.11 [Issue #9] SuperAdmin Add/Edit User Page
 
+**Status**: Cannot be implemented due to SSO integration — needs clarity from OSD side.
+
 **Feature request**: Admin page to manage Cognito users (create accounts, assign roles, enable/disable users).
 
 **Implementation**:
@@ -1161,8 +1163,8 @@ In [deploy.yml](.github/workflows/deploy.yml):
 | 5   | LLM evaluation fix                              | Phase 2 | 2.12    | Root cause identified                                                  |
 | 6   | Error page with acronyms                        | Phase 1 | 1.9     | **DEPLOYED 2026-02-10** -- sanitized error messages + replaced alert() |
 | 7   | Source file Access Denied                       | Phase 1 | 1.8     | **DEPLOYED 2026-02-10** -- fixed dedup + pre-signed URLs               |
-| 8   | Incorrect sync timestamp                        | Phase 4 | 4.4     | Root cause identified                                                  |
-| 9   | SuperAdmin Add/Edit User                        | Phase 5 | 5.11    | Full spec ready                                                        |
+| 8   | Incorrect sync timestamp                        | Phase 4 | 4.4     | **COMPLETED** -- Backend returns ISO 8601 UTC timestamps with status; frontend converts to Eastern Time (America/New_York); removed fragile custom parsing in documents-tab |
+| 9   | SuperAdmin Add/Edit User                        | Phase 5 | 5.11    | Cannot be implemented — SSO integration, needs clarity from OSD side   |
 | NEW | Tool-use JSON crash on follow-up messages       | Phase 1 | 1.10    | **DEPLOYED 2026-02-10** -- fixed 3 compounding bugs                    |
 
 

@@ -19,6 +19,7 @@ import {
   import { ApiClient } from "../../common/api-client/api-client";
   import { AppContext } from "../../common/app-context";
   import { useNavigate, useLocation } from "react-router-dom";
+  import { Utils } from "../../common/utils";
 
   export default function LlmEvaluationPage() {
     const onFollow = useOnFollow();
@@ -26,7 +27,12 @@ import {
     const [activeTab, setActiveTab] = useState("current-eval");
     const appContext = useContext(AppContext);
     const apiClient = new ApiClient(appContext);
-    const [lastSyncTime, setLastSyncTime] = useState("")
+    const [lastSyncTime, setLastSyncTime] = useState<string>("")
+    const [lastSyncData, setLastSyncData] = useState<{
+      status: string;
+      startedAt: string | null;
+      completedAt: string | null;
+    } | null>(null);
     const [showUnsyncedAlert, setShowUnsyncedAlert] = useState(false);
     const navigate = useNavigate();
     const location = useLocation();
@@ -34,10 +40,21 @@ import {
     /** Function to get the last synced time */
     const refreshSyncTime = async () => {
       try {
-        const lastSync = await apiClient.knowledgeManagement.lastKendraSync();    
-        setLastSyncTime(lastSync);
+        const syncData = await apiClient.knowledgeManagement.lastKendraSync();
+        setLastSyncData(syncData);
+        
+        // Format the completed timestamp for display (convert UTC to Eastern Time)
+        if (syncData.status === 'COMPLETE' && syncData.completedAt) {
+          const formattedTime = Utils.formatToEasternTime(syncData.completedAt);
+          setLastSyncTime(formattedTime);
+        } else if (syncData.status === 'NO_SYNC_HISTORY') {
+          setLastSyncTime('No sync history available');
+        } else {
+          setLastSyncTime('Unknown');
+        }
       } catch (e) {
         console.log(e);
+        setLastSyncTime('Error loading sync time');
       }
     }
 
