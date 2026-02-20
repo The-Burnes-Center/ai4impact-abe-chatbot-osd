@@ -179,7 +179,7 @@ export default function MetricsPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {metrics.daily_breakdown.map((day, index) => (
+                          {[...metrics.daily_breakdown].sort((a, b) => a.date.localeCompare(b.date)).map((day, index) => (
                             <tr key={day.date} style={{ borderBottom: index < metrics.daily_breakdown.length - 1 ? "1px solid #e9ebed" : "none" }}>
                               <td style={{ padding: "12px" }}>{day.date}</td>
                               <td style={{ textAlign: "right", padding: "12px" }}>
