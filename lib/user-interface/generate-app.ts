@@ -144,6 +144,12 @@ export class Website extends Construct {
         webAclId: webAcl.attrArn,
         errorResponses: [
           {
+            httpStatus: 403,
+            ttl: cdk.Duration.seconds(0),
+            responseHttpStatus: 200,
+            responsePagePath: "/index.html",
+          },
+          {
             httpStatus: 404,
             ttl: cdk.Duration.seconds(0),
             responseHttpStatus: 200,
