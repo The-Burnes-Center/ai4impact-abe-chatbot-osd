@@ -1,7 +1,8 @@
 import * as cdk from "aws-cdk-lib";
 import * as cf from "aws-cdk-lib/aws-cloudfront";
+import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as s3 from "aws-cdk-lib/aws-s3";
-import * as acm from "aws-cdk-lib/aws-certificatemanager";
+import * as wafv2 from "aws-cdk-lib/aws-wafv2";
 import { Construct } from "constructs";
 import { ChatBotApi } from "../chatbot-api";
 import { NagSuppressions } from "cdk-nag";
@@ -15,18 +16,94 @@ export interface WebsiteProps {
 }
 
 export class Website extends Construct {
-    readonly distribution: cf.CloudFrontWebDistribution;
+    readonly distribution: cf.Distribution;
 
   constructor(scope: Construct, id: string, props: WebsiteProps) {
     super(scope, id);
 
     /////////////////////////////////////
-    ///// CLOUDFRONT IMPLEMENTATION /////
+    ///// WAF WEB ACL                /////
     /////////////////////////////////////
 
-    const originAccessIdentity = new cf.OriginAccessIdentity(this, "S3OAI");
-    props.websiteBucket.grantRead(originAccessIdentity);    
+    const webAcl = new wafv2.CfnWebACL(this, "WebACL", {
+      defaultAction: { allow: {} },
+      scope: "CLOUDFRONT",
+      visibilityConfig: {
+        cloudWatchMetricsEnabled: true,
+        metricName: "ABECloudFrontWebACL",
+        sampledRequestsEnabled: true,
+      },
+      rules: [
+        {
+          name: "AWSManagedRulesCommonRuleSet",
+          priority: 10,
+          overrideAction: { none: {} },
+          statement: {
+            managedRuleGroupStatement: {
+              name: "AWSManagedRulesCommonRuleSet",
+              vendorName: "AWS",
+            },
+          },
+          visibilityConfig: {
+            sampledRequestsEnabled: true,
+            cloudWatchMetricsEnabled: true,
+            metricName: "AWSManagedRulesCommonRuleSet",
+          },
+        },
+        {
+          name: "AWSManagedRulesAmazonIpReputationList",
+          priority: 20,
+          overrideAction: { none: {} },
+          statement: {
+            managedRuleGroupStatement: {
+              name: "AWSManagedRulesAmazonIpReputationList",
+              vendorName: "AWS",
+            },
+          },
+          visibilityConfig: {
+            sampledRequestsEnabled: true,
+            cloudWatchMetricsEnabled: true,
+            metricName: "AWSManagedRulesAmazonIpReputationList",
+          },
+        },
+        {
+          name: "AWSManagedRulesKnownBadInputsRuleSet",
+          priority: 30,
+          overrideAction: { none: {} },
+          statement: {
+            managedRuleGroupStatement: {
+              name: "AWSManagedRulesKnownBadInputsRuleSet",
+              vendorName: "AWS",
+            },
+          },
+          visibilityConfig: {
+            sampledRequestsEnabled: true,
+            cloudWatchMetricsEnabled: true,
+            metricName: "AWSManagedRulesKnownBadInputsRuleSet",
+          },
+        },
+        {
+          name: "RateLimitPerIP",
+          priority: 40,
+          action: { block: {} },
+          statement: {
+            rateBasedStatement: {
+              limit: 1000,
+              aggregateKeyType: "IP",
+            },
+          },
+          visibilityConfig: {
+            sampledRequestsEnabled: true,
+            cloudWatchMetricsEnabled: true,
+            metricName: "RateLimitPerIP",
+          },
+        },
+      ],
+    });
 
+    /////////////////////////////////////
+    ///// CLOUDFRONT DISTRIBUTION    /////
+    /////////////////////////////////////
 
     const distributionLogsBucket = new s3.Bucket(
       this,
@@ -40,72 +117,36 @@ export class Website extends Construct {
       }
     );
 
-    const distribution = new cf.CloudFrontWebDistribution(
+    const s3Origin = new origins.S3Origin(props.websiteBucket);
+
+    const distribution = new cf.Distribution(
       this,
-      "Distribution",
+      "Dist",
       {
-        // CUSTOM DOMAIN FOR PUBLIC WEBSITE
-        // REQUIRES:
-        // 1. ACM Certificate ARN in us-east-1 and Domain of website to be input during 'npm run config':
-        //    "privateWebsite" : false,
-        //    "certificate" : "arn:aws:acm:us-east-1:1234567890:certificate/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXX",
-        //    "domain" : "sub.example.com"
-        // 2. After the deployment, in your Route53 Hosted Zone, add an "A Record" that points to the Cloudfront Alias (https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/routing-to-cloudfront-distribution.html)
-        // ...(props.config.certificate && props.config.domain && {
-        //   viewerCertificate: cf.ViewerCertificate.fromAcmCertificate(
-        //     acm.Certificate.fromCertificateArn(this,'CloudfrontAcm', props.config.certificate),
-        //     {
-        //       aliases: [props.config.domain]
-        //     })
-        // }),
-        viewerProtocolPolicy: cf.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        priceClass: cf.PriceClass.PRICE_CLASS_ALL,
-        httpVersion: cf.HttpVersion.HTTP2_AND_3,
-        loggingConfig: {
-          bucket: distributionLogsBucket,
+        defaultBehavior: {
+          origin: s3Origin,
+          viewerProtocolPolicy: cf.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         },
-        originConfigs: [
-          {
-            behaviors: [{ isDefaultBehavior: true }],
-            s3OriginSource: {
-              s3BucketSource: props.websiteBucket,
-              originAccessIdentity,
-            },
+        additionalBehaviors: {
+          "/chatbot/files/*": {
+            origin: s3Origin,
+            viewerProtocolPolicy: cf.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+            allowedMethods: cf.AllowedMethods.ALLOW_ALL,
+            cachePolicy: cf.CachePolicy.CACHING_DISABLED,
+            originRequestPolicy: cf.OriginRequestPolicy.CORS_S3_ORIGIN,
           },
+        },
+        defaultRootObject: "index.html",
+        priceClass: cf.PriceClass.PRICE_CLASS_100,
+        httpVersion: cf.HttpVersion.HTTP2_AND_3,
+        enableLogging: true,
+        logBucket: distributionLogsBucket,
+        webAclId: webAcl.attrArn,
+        errorResponses: [
           {
-            behaviors: [
-              {
-                pathPattern: "/chatbot/files/*",
-                allowedMethods: cf.CloudFrontAllowedMethods.ALL,
-                viewerProtocolPolicy: cf.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-                defaultTtl: cdk.Duration.seconds(0),
-                forwardedValues: {
-                  queryString: true,
-                  headers: [
-                    "Referer",
-                    "Origin",
-                    "Authorization",
-                    "Content-Type",
-                    "x-forwarded-user",
-                    "Access-Control-Request-Headers",
-                    "Access-Control-Request-Method",
-                  ],
-                },
-              },
-            ],
-            s3OriginSource: {
-              s3BucketSource: props.websiteBucket,
-              originAccessIdentity,
-            },            
-          },
-        ],
-        
-        // geoRestriction: cfGeoRestrictEnable ? cf.GeoRestriction.allowlist(...cfGeoRestrictList): undefined,
-        errorConfigurations: [
-          {
-            errorCode: 404,
-            errorCachingMinTtl: 0,
-            responseCode: 200,
+            httpStatus: 404,
+            ttl: cdk.Duration.seconds(0),
+            responseHttpStatus: 200,
             responsePagePath: "/index.html",
           },
         ],
@@ -126,22 +167,19 @@ export class Website extends Construct {
       [
         {
           id: "AwsSolutions-S1",
-          reason: "Bucket is the server access logs bucket for websiteBucket.",
+          reason: "Bucket is the server access logs bucket for the CloudFront distribution.",
         },
       ]
     );
 
     NagSuppressions.addResourceSuppressions(props.websiteBucket, [
-      { id: "AwsSolutions-S5", reason: "OAI is configured for read." },
+      { id: "AwsSolutions-S5", reason: "OAI is configured via S3Origin for CloudFront read access." },
     ]);
 
     NagSuppressions.addResourceSuppressions(distribution, [
-      { id: "AwsSolutions-CFR1", reason: "No geo restrictions" },
-      {
-        id: "AwsSolutions-CFR2",
-        reason: "WAF not required due to configured Cognito auth.",
-      },
-      { id: "AwsSolutions-CFR4", reason: "TLS 1.2 is the default." },
+      { id: "AwsSolutions-CFR1", reason: "US-focused user base; no geo restrictions needed." },
+      { id: "AwsSolutions-CFR4", reason: "TLS 1.2 is the CloudFront default minimum protocol version." },
+      { id: "AwsSolutions-CFR5", reason: "S3 origins use AWS-internal HTTPS; origin SSL protocol is not configurable for S3 origin types." },
     ]);
     }
 
