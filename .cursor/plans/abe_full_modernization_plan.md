@@ -58,7 +58,7 @@ todos:
     status: completed
   - id: phase3-waf
     content: "Phase 3: Add WAF to CloudFront, migrate to modern Distribution + OAC"
-    status: pending
+    status: completed
   - id: phase3-monitoring
     content: "Phase 3: Create monitoring construct with alarms, dashboard, SNS alerts"
     status: pending
@@ -549,7 +549,17 @@ model_id = os.environ.get('FAST_MODEL_ID', 'us.anthropic.claude-haiku-4-5-202510
 
 **Verified:** `cdk synth` passed with zero cdk-nag errors. `cdk diff` confirmed no stateful resource replacements. Deployed successfully (145 resources, 540s). Chatbot functional at CloudFront URL.
 
-**Remaining for Phase 3:** 3.5 API Gateway hardening (access logging, throttling), 3.6 CloudFront WAF + OAC migration, 3.8 Monitoring construct.
+**Remaining for Phase 3:** 3.5 API Gateway hardening (access logging, throttling), 3.8 Monitoring construct.
+
+### Phase 3 WAF + CloudFront Modernization -- 2026-02-20
+
+**Deployed items (3.6):**
+
+- 3.6 CloudFront: Added WAFv2 WebACL with AWS Managed Rules (Common Rule Set, IP Reputation List, Known Bad Inputs) and rate limiting (1000 req/5min/IP). Migrated from legacy `CloudFrontWebDistribution` + manual OAI to modern `Distribution` API with `S3Origin` (auto-managed OAI). Changed price class from `PRICE_CLASS_ALL` to `PRICE_CLASS_100` (US/EU). Removed unnecessary S3 static website hosting config from website bucket (CloudFront handles SPA routing via `defaultRootObject` + `errorResponses`). Removed stale `AwsSolutions-CFR2` NagSuppression since WAF is now attached. OAC upgrade deferred to CDK version bump (current CDK 2.140.0 lacks `S3BucketOrigin`).
+
+**Files modified:** `lib/user-interface/generate-app.ts`, `lib/user-interface/index.ts`
+
+**Verified:** `cdk synth` passed with zero cdk-nag errors. `cdk diff` confirmed expected changes. Deployed successfully (573s). New CloudFront URL: `https://d39g9hl1ouzq6z.cloudfront.net`. Cognito callback URLs updated manually for SSO.
 
 ### 3.1 Enable CDK Nag
 
@@ -1242,7 +1252,7 @@ graph TD
 
 - **Phase 1** (Security + Critical Bugs): ~~1-2 weeks, 1-2 engineers~~ **COMPLETE -- deployed 2026-02-10** -- includes Issue #6, #7, tool-use crash fix
 - **Phase 2** (GenAI + Data Fixes): 2-3 weeks, 1 engineer with GenAI expertise -- includes Issue #1, #2, #5
-- **Phase 3** (CDK Hardening): ~~2-3 weeks, 1 infrastructure engineer~~ **PARTIAL -- deployed 2026-02-18** -- CDK Nag, Construct refactor, DynamoDB/S3/Lambda hardening, env parameterization. Remaining: WAF, OAC, monitoring construct.
+- **Phase 3** (CDK Hardening): ~~2-3 weeks, 1 infrastructure engineer~~ **PARTIAL -- deployed 2026-02-18, 2026-02-20** -- CDK Nag, Construct refactor, DynamoDB/S3/Lambda hardening, env parameterization, WAF + CloudFront modernization. Remaining: API Gateway hardening, monitoring construct.
 - **Phase 4** (Backend + Analytics): 2-3 weeks, 1-2 engineers -- includes Issue #3, #8
 - **Phase 5** (Frontend + Admin): 3-4 weeks, 1-2 frontend engineers -- includes Issue #9
 - **Phase 6** (Operations): 2-4 weeks, 1 engineer
