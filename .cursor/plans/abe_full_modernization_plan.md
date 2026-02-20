@@ -549,7 +549,17 @@ model_id = os.environ.get('FAST_MODEL_ID', 'us.anthropic.claude-haiku-4-5-202510
 
 **Verified:** `cdk synth` passed with zero cdk-nag errors. `cdk diff` confirmed no stateful resource replacements. Deployed successfully (145 resources, 540s). Chatbot functional at CloudFront URL.
 
-**Remaining for Phase 3:** 3.5 API Gateway hardening (access logging, throttling), 3.8 Monitoring construct.
+**Remaining for Phase 3:** 3.8 Monitoring construct.
+
+### Phase 3 API Gateway Hardening -- 2026-02-20
+
+**Deployed items (3.5):**
+
+- 3.5 API Gateway: Added CloudWatch access logging (JSON format, 1-month retention) to both HTTP API and WebSocket API stages via CfnStage escape hatches. Added throttling (burst: 50, rate: 100/sec) to both stages. Created account-level API Gateway CloudWatch Logs role (`CfnAccount`) with explicit dependency ordering to prevent race condition. Fixed open CORS handler that echoed back any `Origin` header -- replaced with static `*` and added `Access-Control-Max-Age` cache header.
+
+**Files modified:** `lib/chatbot-api/gateway/rest-api.ts`, `lib/chatbot-api/gateway/websocket-api.ts`, `lib/chatbot-api/index.ts`, `lib/gen-ai-mvp-stack.ts`
+
+**Verified:** `cdk synth` passed with zero cdk-nag errors. Deployed successfully (168s). Access logging and throttling confirmed in both API stages.
 
 ### Phase 3 WAF + CloudFront Modernization -- 2026-02-20
 
@@ -1252,7 +1262,7 @@ graph TD
 
 - **Phase 1** (Security + Critical Bugs): ~~1-2 weeks, 1-2 engineers~~ **COMPLETE -- deployed 2026-02-10** -- includes Issue #6, #7, tool-use crash fix
 - **Phase 2** (GenAI + Data Fixes): 2-3 weeks, 1 engineer with GenAI expertise -- includes Issue #1, #2, #5
-- **Phase 3** (CDK Hardening): ~~2-3 weeks, 1 infrastructure engineer~~ **PARTIAL -- deployed 2026-02-18, 2026-02-20** -- CDK Nag, Construct refactor, DynamoDB/S3/Lambda hardening, env parameterization, WAF + CloudFront modernization. Remaining: API Gateway hardening, monitoring construct.
+- **Phase 3** (CDK Hardening): ~~2-3 weeks, 1 infrastructure engineer~~ **PARTIAL -- deployed 2026-02-18, 2026-02-20** -- CDK Nag, Construct refactor, DynamoDB/S3/Lambda hardening, env parameterization, WAF + CloudFront modernization, API Gateway access logging + throttling. Remaining: monitoring construct.
 - **Phase 4** (Backend + Analytics): 2-3 weeks, 1-2 engineers -- includes Issue #3, #8
 - **Phase 5** (Frontend + Admin): 3-4 weeks, 1-2 frontend engineers -- includes Issue #9
 - **Phase 6** (Operations): 2-4 weeks, 1 engineer

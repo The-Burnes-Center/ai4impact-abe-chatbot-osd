@@ -14,8 +14,8 @@ import { Construct } from "constructs";
 import { OpenSearchStack } from "./opensearch/opensearch";
 import { KnowledgeBaseStack } from "./knowledge-base/knowledge-base"
 import * as lambda from "aws-cdk-lib/aws-lambda";
-
-// import { NagSuppressions } from "cdk-nag";
+import * as iam from "aws-cdk-lib/aws-iam";
+import * as apigateway from "aws-cdk-lib/aws-apigateway";
 
 export interface ChatBotApiProps {
   readonly authentication: AuthorizationStack; 
@@ -36,23 +36,31 @@ export class ChatBotApi extends Construct {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'index.handler',
       code: lambda.Code.fromInline(`
-        exports.handler = async (event) => {
-          const origin = event.headers?.origin || event.headers?.Origin || '*';
-          return {
-            statusCode: 200,
-            headers: {
-              "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-              "Access-Control-Allow-Methods": "OPTIONS,POST,GET",
-              "Access-Control-Allow-Origin": origin,
-              "Access-Control-Allow-Credentials": "true"
-            },
-            body: JSON.stringify({}),
-          };
-        };
+        exports.handler = async () => ({
+          statusCode: 200,
+          headers: {
+            "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+            "Access-Control-Allow-Methods": "OPTIONS,POST,GET",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Max-Age": "86400"
+          },
+          body: "",
+        });
       `),
     });
     
     const corsHandlerIntegration = new HttpLambdaIntegration('CorsHandlerIntegration', corsHandler);
+
+    const apiGwLogRole = new iam.Role(this, 'ApiGatewayCloudWatchRole', {
+      assumedBy: new iam.ServicePrincipal('apigateway.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromManagedPolicyArn(this, 'ApiGwCWPolicy',
+          'arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs'),
+      ],
+    });
+    const apiGwAccount = new apigateway.CfnAccount(this, 'ApiGatewayAccount', {
+      cloudWatchRoleArn: apiGwLogRole.roleArn,
+    });
 
     const tables = new TableStack(this, "TableStack");
     const buckets = new S3BucketStack(this, "BucketStack");
@@ -65,6 +73,10 @@ export class ChatBotApi extends Construct {
     this.httpAPI = restBackend;
     const websocketBackend = new WebsocketBackendAPI(this, "WebsocketBackend", {})
     this.wsAPI = websocketBackend;
+
+    // Stages must wait for the account-level CW Logs role before enabling access logging
+    restBackend.restAPI.defaultStage!.node.addDependency(apiGwAccount);
+    websocketBackend.wsAPIStage.node.addDependency(apiGwAccount);
 
     const lambdaFunctions = new LambdaFunctionStack(this, "LambdaFunctions",
       {

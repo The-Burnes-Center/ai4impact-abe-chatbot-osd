@@ -30,6 +30,11 @@ export class GenAiMvpStack extends cdk.Stack {
         appliesTo: ['Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'],
       },
       {
+        id: 'AwsSolutions-IAM4',
+        reason: 'AmazonAPIGatewayPushToCloudWatchLogs is the AWS-managed policy required for API Gateway access logging.',
+        appliesTo: ['Policy::arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs'],
+      },
+      {
         id: 'AwsSolutions-IAM5',
         reason: 'X-Ray tracing requires xray:PutTraceSegments/PutTelemetryRecords on Resource::* -- this is the standard pattern for X-Ray.',
         appliesTo: ['Resource::*'],
@@ -100,7 +105,7 @@ export class GenAiMvpStack extends cdk.Stack {
       },
       {
         id: 'AwsSolutions-APIG1',
-        reason: 'API Gateway access logging requires a log group and role configuration. Deferred to monitoring construct implementation.',
+        reason: 'Access logging is configured on both HTTP API and WebSocket API stages via CfnStage escape hatches. CDK Nag may not detect it on the L2 construct.',
       },
       {
         id: 'AwsSolutions-L1',

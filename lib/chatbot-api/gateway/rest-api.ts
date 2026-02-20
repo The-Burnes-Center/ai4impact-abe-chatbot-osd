@@ -1,25 +1,9 @@
-import * as path from "path";
 import * as cdk from "aws-cdk-lib";
-
 import { Construct } from "constructs";
 import { Duration, aws_apigatewayv2 as apigwv2 } from "aws-cdk-lib";
-
-import * as cognito from "aws-cdk-lib/aws-cognito";
-import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
-import * as ec2 from "aws-cdk-lib/aws-ec2";
-import * as iam from "aws-cdk-lib/aws-iam";
-import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
-import * as ssm from "aws-cdk-lib/aws-ssm";
-// import { Shared } from "../shared";
-import * as appsync from "aws-cdk-lib/aws-appsync";
-// import { parse } from "graphql";
-import { readFileSync } from "fs";
-import * as s3 from "aws-cdk-lib/aws-s3";
 
-export interface RestBackendAPIProps {
-
-}
+export interface RestBackendAPIProps {}
 
 export class RestBackendAPI extends Construct {
   public readonly restAPI: apigwv2.HttpApi;
@@ -40,6 +24,31 @@ export class RestBackendAPI extends Construct {
         maxAge: Duration.days(10),
       },
     });
-    this.restAPI = httpApi;    
+    this.restAPI = httpApi;
+
+    const accessLogGroup = new logs.LogGroup(this, 'AccessLogs', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const defaultStage = httpApi.defaultStage?.node.defaultChild as apigwv2.CfnStage;
+    defaultStage.accessLogSettings = {
+      destinationArn: accessLogGroup.logGroupArn,
+      format: JSON.stringify({
+        requestId: '$context.requestId',
+        ip: '$context.identity.sourceIp',
+        requestTime: '$context.requestTime',
+        httpMethod: '$context.httpMethod',
+        routeKey: '$context.routeKey',
+        status: '$context.status',
+        protocol: '$context.protocol',
+        responseLength: '$context.responseLength',
+        integrationError: '$context.integrationErrorMessage',
+      }),
+    };
+    defaultStage.defaultRouteSettings = {
+      throttlingBurstLimit: 50,
+      throttlingRateLimit: 100,
+    };
   }
 }
