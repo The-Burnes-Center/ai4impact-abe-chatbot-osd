@@ -35,7 +35,7 @@ jobs:
         npm install
     # Step 6: Bootstrap the AWS environment (from the root folder)
     - name: Bootstrap AWS environment
-      run: npx cdk bootstrap
+      run: npx cdk bootstrap || true
     # Step 7: Deploy the CDK stack (from the root folder)
     - name: Deploy CDK stack
       run: npx cdk deploy ABEStackNonProd --require-approval never  # Replace “My stack name” with your actual stack name
