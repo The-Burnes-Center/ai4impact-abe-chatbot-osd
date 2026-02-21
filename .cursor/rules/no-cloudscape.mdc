@@ -1,0 +1,28 @@
+---
+description: Ban Cloudscape components in new frontend code; use MUI instead
+globs: lib/user-interface/app/src/**/*.{tsx,ts}
+alwaysApply: false
+---
+
+# No Cloudscape in New Code
+
+All **new** pages, components, and features must use **MUI** (`@mui/material`, `@mui/x-charts`), not Cloudscape.
+
+## Rules
+
+- **Never** import from `@cloudscape-design/*` in new files
+- **Never** add new Cloudscape imports to existing files when building new features
+- Use `@mui/material` for layout, inputs, navigation, feedback (Box, Grid, Card, Tabs, TextField, Typography, Table, Alert, Button, etc.)
+- Use `@mui/x-charts` for data visualization (LineChart, BarChart, PieChart)
+- Existing pages may keep their current Cloudscape imports (migration is a separate effort)
+
+## Examples
+
+```tsx
+// BAD -- new code using Cloudscape
+import { Container, Header, SpaceBetween } from "@cloudscape-design/components";
+
+// GOOD -- new code using MUI
+import { Box, Card, CardContent, Typography, Stack } from "@mui/material";
+import { LineChart } from "@mui/x-charts/LineChart";
+```

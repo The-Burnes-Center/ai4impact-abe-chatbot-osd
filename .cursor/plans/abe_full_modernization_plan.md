@@ -69,8 +69,8 @@ todos:
     content: "Phase 4: Fix session race condition, metrics table scans, code duplication, hardcoded values"
     status: pending
   - id: phase4-analytics
-    content: "Phase 4 [Issue #3]: Build enhanced analytics -- FAQ tracking + advanced traffic stats"
-    status: pending
+    content: "Phase 4 [Issue #3]: Build enhanced analytics -- FAQ tracking + advanced traffic stats. Deployed: AnalyticsTable (DynamoDB), FAQ Classifier Lambda (async Haiku classification into 10 categories), enhanced metrics handler (overview/faq/traffic endpoints), MUI-based admin dashboard with LineChart, BarChart, KPI cards, FAQ Insights tab. Greetings filtered, low-confidence questions bucketed as Other."
+    status: completed
   - id: phase4-sync-timestamp
     content: "Phase 4 [Issue #8]: Fix incorrect document sync timestamp in Data dashboard -- backend returns ISO 8601 UTC timestamps with status, frontend converts to Eastern Time, removed fragile custom parsing"
     status: completed
@@ -580,6 +580,24 @@ model_id = os.environ.get('FAST_MODEL_ID', 'us.anthropic.claude-haiku-4-5-202510
 **Files created:** `lib/chatbot-api/monitoring/monitoring.ts`
 
 **Files modified:** `lib/chatbot-api/index.ts`, `lib/gen-ai-mvp-stack.ts`, `.github/workflows/deploy.yml`
+
+---
+
+## Phase 4: Backend Lambda Improvements
+
+### Phase 4 Analytics Deployment -- 2026-02-21
+
+**Deployed items (4.3 -- Issue #3):**
+
+- 4.3 Enhanced Analytics: New `AnalyticsTable` DynamoDB table (PK: `topic`, SK: `timestamp`, GSI `DateIndex` on `date_key`+`topic`). New `FAQClassifierFunction` Lambda that asynchronously classifies every user chat message using Claude Haiku into 10 procurement categories (General Procurement, Contract Search, Vendor Information, Bidding & Solicitation, Pricing & Cost, Compliance & Regulations, Forms & Documentation, IT Procurement, Greeting/Small Talk, Other). Greetings are filtered out; low-confidence (<0.6) questions bucketed as "Other". Classification is fire-and-forget (zero latency impact on chat). Enhanced `metrics-handler` with three query modes: `overview` (KPIs + daily breakdown + avg msgs/session + peak hour), `faq` (top topics + sample questions from AnalyticsTable), `traffic` (hourly distribution + enhanced stats). Frontend metrics page rebuilt with MUI components (Tabs, Cards, LineChart, BarChart, expandable FAQ table) inside existing `BaseAppLayout` shell for navigation continuity. New Cursor rule (`.cursor/rules/no-cloudscape.mdc`) bans Cloudscape in new code; MUI mandated for new features.
+
+**Files created:** `lib/chatbot-api/functions/faq-classifier/lambda_function.py`, `.cursor/rules/no-cloudscape.mdc`
+
+**Files modified:** `lib/chatbot-api/tables/tables.ts`, `lib/chatbot-api/functions/functions.ts`, `lib/chatbot-api/index.ts`, `lib/chatbot-api/functions/websocket-chat/index.mjs`, `lib/chatbot-api/functions/metrics-handler/lambda_function.py`, `lib/user-interface/app/src/pages/admin/metrics-page.tsx`, `lib/user-interface/app/src/common/api-client/metrics-client.ts`, `lib/user-interface/app/package.json`
+
+**New frontend dependencies:** `@mui/material@^6.4.8`, `@mui/x-charts@^7`
+
+**Verified:** `cdk synth` passed, `cdk diff` confirmed expected changes, TypeScript clean, Vite build clean, Python syntax clean. Deployed successfully (19 resources created/updated).
 
 ### 3.1 Enable CDK Nag
 
@@ -1188,7 +1206,7 @@ In [deploy.yml](.github/workflows/deploy.yml):
 | --- | ----------------------------------------------- | ------- | ------- | ---------------------------------------------------------------------- |
 | 1   | Excel file ingestion (Contract/Trade Index)     | Phase 2 | 2.1     | Needs Excel files from OSD team                                        |
 | 2   | Non-clickable hyperlinks                        | Phase 2 | 2.3     | Needs data verification                                                |
-| 3   | Enhanced analytics (FAQ, logs, traffic, agency) | Phase 4 | 4.3     | FAQ + traffic first, agency pending clarification                      |
+| 3   | Enhanced analytics (FAQ, logs, traffic, agency) | Phase 4 | 4.3     | **DEPLOYED 2026-02-21** -- FAQ tracking (Haiku classification), MUI dashboard with charts, enhanced traffic stats. Agency info pending OSD clarification. |
 | 4   | Plug-and-play chatbot                           | Phase 7 | 7.0     | Pending scoping call                                                   |
 | 5   | LLM evaluation fix                              | Phase 2 | 2.12    | Root cause identified                                                  |
 | 6   | Error page with acronyms                        | Phase 1 | 1.9     | **DEPLOYED 2026-02-10** -- sanitized error messages + replaced alert() |
@@ -1273,7 +1291,7 @@ graph TD
 - **Phase 1** (Security + Critical Bugs): ~~1-2 weeks, 1-2 engineers~~ **COMPLETE -- deployed 2026-02-10** -- includes Issue #6, #7, tool-use crash fix
 - **Phase 2** (GenAI + Data Fixes): 2-3 weeks, 1 engineer with GenAI expertise -- includes Issue #1, #2, #5
 - **Phase 3** (CDK Hardening): ~~2-3 weeks, 1 infrastructure engineer~~ **COMPLETE -- deployed 2026-02-18, 2026-02-20** -- CDK Nag, Construct refactor, DynamoDB/S3/Lambda hardening, env parameterization, WAF + CloudFront modernization, API Gateway access logging + throttling, monitoring construct with alarms + dashboard + SNS alerts.
-- **Phase 4** (Backend + Analytics): 2-3 weeks, 1-2 engineers -- includes Issue #3, #8
+- **Phase 4** (Backend + Analytics): ~~2-3 weeks, 1-2 engineers~~ **PARTIALLY COMPLETE -- deployed 2026-02-21** -- Issue #3 (enhanced analytics with FAQ tracking, MUI dashboard, Haiku classification) and Issue #8 (sync timestamp) deployed. Remaining: 4.1 shared Lambda Layer, 4.2 session race condition, 4.8 Pydantic/Zod validation.
 - **Phase 5** (Frontend + Admin): 3-4 weeks, 1-2 frontend engineers -- includes Issue #9
 - **Phase 6** (Operations): 2-4 weeks, 1 engineer
 - **Phase 7** (Plug-and-Play): TBD after scoping call -- includes Issue #4

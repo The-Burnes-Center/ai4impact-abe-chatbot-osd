@@ -93,6 +93,7 @@ export class ChatBotApi extends Construct {
         evalResutlsTable : tables.evalResultsTable,
         evalTestCasesBucket : buckets.evalTestCasesBucket,
         evalResultsBucket : buckets.evalResultsBucket,
+        analyticsTable : tables.analyticsTable,
       })
 
     const wsAuthorizer = new WebSocketLambdaAuthorizer('WebSocketAuthorizer', props.authentication.lambdaAuthorizer, {identitySource: ['route.request.querystring.Authorization']});
@@ -134,7 +135,14 @@ export class ChatBotApi extends Construct {
     //   "mvp_user_session_handler_api_gateway_endpoint", restBackend.restAPI.apiEndpoint + "/user-session")
     lambdaFunctions.chatFunction.addEnvironment(
       "SESSION_HANDLER", lambdaFunctions.sessionFunction.functionName)
-    
+
+    lambdaFunctions.chatFunction.addEnvironment(
+      "FAQ_CLASSIFIER_FUNCTION", lambdaFunctions.faqClassifierFunction.functionName)
+    lambdaFunctions.chatFunction.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['lambda:InvokeFunction'],
+      resources: [lambdaFunctions.faqClassifierFunction.functionArn],
+    }));
 
     const feedbackAPIIntegration = new HttpLambdaIntegration('FeedbackAPIIntegration', lambdaFunctions.feedbackFunction);
     restBackend.restAPI.addRoutes({
@@ -237,6 +245,7 @@ export class ChatBotApi extends Construct {
         tables.feedbackTable,
         tables.evalSummaryTable,
         tables.evalResultsTable,
+        tables.analyticsTable,
       ],
       restApi: restBackend.restAPI,
       webSocketApi: websocketBackend.wsAPI,

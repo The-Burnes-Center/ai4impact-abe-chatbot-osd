@@ -23,6 +23,8 @@
     "@fortawesome/free-solid-svg-icons": "^6.4.2",
     "@fortawesome/react-fontawesome": "^0.2.0",
     "@mui/icons-material": "^6.4.8",
+    "@mui/material": "^6.5.0",
+    "@mui/x-charts": "^7.29.1",
     "aws-amplify": "^5.3.12",
     "luxon": "^3.4.3",
     "react": "^18.2.0",

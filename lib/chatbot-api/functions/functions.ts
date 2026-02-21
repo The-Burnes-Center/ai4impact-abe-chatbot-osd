@@ -22,6 +22,7 @@ interface LambdaFunctionStackProps {
   readonly evalResutlsTable: Table;
   readonly evalTestCasesBucket: s3.Bucket;
   readonly evalResultsBucket: s3.Bucket;
+  readonly analyticsTable: Table;
 }
 
 const LAMBDA_DEFAULTS: Partial<lambda.FunctionProps> = {
@@ -44,6 +45,7 @@ export class LambdaFunctionStack extends Construct {
   public readonly uploadS3TestCasesFunction: lambda.Function;
   public readonly handleEvalResultsFunction: lambda.Function;
   public readonly metricsHandlerFunction: lambda.Function;
+  public readonly faqClassifierFunction: lambda.Function;
 
   constructor(scope: Construct, id: string, props: LambdaFunctionStackProps) {
     super(scope, id);
@@ -430,6 +432,7 @@ const metricsHandlerFunction = new lambda.Function(scope, 'MetricsHandlerFunctio
   handler: 'lambda_function.lambda_handler',
   environment: {
     "DDB_TABLE_NAME": props.sessionTable.tableName,
+    "ANALYTICS_TABLE_NAME": props.analyticsTable.tableName,
   },
   timeout: cdk.Duration.seconds(60),
 });
@@ -437,12 +440,47 @@ const metricsHandlerFunction = new lambda.Function(scope, 'MetricsHandlerFunctio
 metricsHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
   actions: [
-    'dynamodb:Scan'
+    'dynamodb:Scan',
+    'dynamodb:Query',
   ],
-  resources: [props.sessionTable.tableArn, props.sessionTable.tableArn + "/index/*"]
+  resources: [
+    props.sessionTable.tableArn,
+    props.sessionTable.tableArn + "/index/*",
+    props.analyticsTable.tableArn,
+    props.analyticsTable.tableArn + "/index/*",
+  ]
 }));
 
 this.metricsHandlerFunction = metricsHandlerFunction;
+
+const faqClassifierFunction = new lambda.Function(scope, 'FAQClassifierFunction', {
+  ...LAMBDA_DEFAULTS,
+  runtime: lambda.Runtime.PYTHON_3_12,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'faq-classifier')),
+  handler: 'lambda_function.lambda_handler',
+  environment: {
+    "ANALYTICS_TABLE_NAME": props.analyticsTable.tableName,
+    "FAST_MODEL_ID": process.env.FAST_MODEL_ID || "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+  },
+  timeout: cdk.Duration.seconds(30),
+});
+
+faqClassifierFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['bedrock:InvokeModel'],
+  resources: [
+    `arn:aws:bedrock:*::foundation-model/anthropic.*`,
+    `arn:aws:bedrock:*:${cdk.Stack.of(this).account}:inference-profile/*`,
+  ],
+}));
+
+faqClassifierFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['dynamodb:PutItem'],
+  resources: [props.analyticsTable.tableArn],
+}));
+
+this.faqClassifierFunction = faqClassifierFunction;
 
 this.stepFunctionsStack = new StepFunctionsStack(scope, 'StepFunctionsStack', {
   knowledgeBase: props.knowledgeBase,

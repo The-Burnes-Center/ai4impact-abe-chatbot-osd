@@ -267,4 +267,48 @@ export class MetricClient {
     }
   }
 
+  async getFAQInsights(days: number = 30) {
+    try {
+      const auth = await Utils.authenticate();
+      const response = await fetch(`${this.API}/metrics?type=faq&days=${days}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': auth,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch FAQ insights: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (err) {
+      console.log("Error retrieving FAQ insights:", err);
+      throw err;
+    }
+  }
+
+  async getTrafficDetails(days: number = 30) {
+    try {
+      const auth = await Utils.authenticate();
+      const response = await fetch(`${this.API}/metrics?type=traffic&days=${days}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': auth,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch traffic details: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (err) {
+      console.log("Error retrieving traffic details:", err);
+      throw err;
+    }
+  }
+
 }
