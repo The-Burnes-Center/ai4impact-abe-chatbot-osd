@@ -92,6 +92,9 @@ todos:
   - id: phase5-streaming-ux
     content: "Phase 5 [UX]: Fix streaming UX during tool-use pauses -- add backend status markers, blinking cursor during streaming, 'Searching knowledge base...' indicator during tool execution"
     status: pending
+  - id: phase5-help-tips-merge
+    content: "Phase 5 [UX]: Merge Help & Guide (navbar) and Tips & Questions (sidebar) into single tabbed Help page at /help, remove duplicate sidebar link"
+    status: completed
   - id: phase6-testing
     content: "Phase 6: Add Vitest + RTL frontend tests, pytest backend tests, Playwright E2E"
     status: pending
@@ -1031,16 +1034,27 @@ This prevents admin-only code from loading for regular users.
 - Add a proper 404 page instead of the catch-all redirect that creates empty sessions
 - Fix the `ChatScrollState` mutable static class -- convert to a React ref or context
 
-### 5.9 Mobile Responsiveness
+### 5.9 Help & Guide / Tips & Questions Consolidation — COMPLETED 2026-02-20
+
+**Done**: Merged the duplicate "Help & Guide" (navbar) and "Tips & Questions" (sidebar) into a single **Help & Guide** experience in the top navbar.
+
+- **Unified page**: Single tabbed page at `/help` with tabs: **Tips & Questions** (prompting tips + sample questions), **About ABE**, **Support**.
+- **Navbar**: Help icon now navigates to `/help`.
+- **Sidebar**: "Tips & Questions" link removed; all help content is reachable via the navbar.
+- **Redirects**: `/chatbot/tips` and `/faq-and-guide/*` redirect to `/help`.
+
+**Files**: `pages/help/how-to-use.tsx` (rewritten as tabbed Help page), `app.tsx` (routes), `navigation-panel.tsx` (sidebar link removed), `global-header.tsx` (Help → `/help`). Old pages `about-chatbot.tsx`, `support.tsx`, `tips-and-questions.tsx` are no longer routed but kept for reference.
+
+### 5.10 Mobile Responsiveness
 
 - Landing pages use fixed pixel sizes (90px font, 90px padding) with no media queries. Add responsive design using `clamp()`, viewport units, or media queries.
 - Test all chat and admin interfaces on mobile viewports
 
-### 5.10 S3 URL Security
+### 5.11 S3 URL Security
 
 - [chat-message.tsx](lib/user-interface/app/src/components/chatbot/chat-message.tsx) line 132: Converts `s3://` URIs to `https://s3.amazonaws.com/` public URLs on the client. This assumes public bucket access. All document links should use server-generated pre-signed URLs. (Overlaps with Issue #7 fix in Phase 1.)
 
-### 5.11 [Issue #9] SuperAdmin Add/Edit User Page
+### 5.12 [Issue #9] SuperAdmin Add/Edit User Page
 
 **Status**: Cannot be implemented due to SSO integration — needs clarity from OSD side.
 
@@ -1067,7 +1081,7 @@ This prevents admin-only code from loading for regular users.
   - Add `/admin/users` routes to [rest-api.ts](lib/chatbot-api/gateway/rest-api.ts) with JWT authorizer
   - Add the Lambda function to [functions.ts](lib/chatbot-api/functions/functions.ts)
 
-### 5.12 Streaming UX Indicators (Tool-Use Pause Fix)
+### 5.13 Streaming UX Indicators (Tool-Use Pause Fix)
 
 **Bug**: When the chatbot response involves a tool call (KB retrieval), the AI appears to finish its answer, then suddenly continues seconds later with no visual indicator that it was still working.
 
