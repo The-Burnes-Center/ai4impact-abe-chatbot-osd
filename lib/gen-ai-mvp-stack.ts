@@ -11,7 +11,8 @@ export class GenAiMvpStack extends cdk.Stack {
     super(scope, id, props);
 
     const authentication = new AuthorizationStack(this, "Authorization");
-    const chatbotAPI = new ChatBotApi(this, "ChatbotAPI", { authentication });
+    const alarmEmail = this.node.tryGetContext('alarmEmail') as string | undefined;
+    const chatbotAPI = new ChatBotApi(this, "ChatbotAPI", { authentication, alarmEmail });
     const userInterface = new UserInterface(this, "UserInterface", {
       userPoolId: authentication.userPool.userPoolId,
       userPoolClientId: authentication.userPoolClient.userPoolClientId,
@@ -110,6 +111,14 @@ export class GenAiMvpStack extends cdk.Stack {
       {
         id: 'AwsSolutions-L1',
         reason: 'CDK-managed custom resource Lambda runtimes (BucketDeployment, Provider framework) are controlled by CDK, not application code.',
+      },
+      {
+        id: 'AwsSolutions-SNS2',
+        reason: 'Monitoring SNS topic carries alarm notifications only (no sensitive data). SSE adds cost without security benefit here.',
+      },
+      {
+        id: 'AwsSolutions-SNS3',
+        reason: 'Monitoring SNS topic uses HTTPS subscriptions by default. Enforcing SSL transport is not configurable on L2 SNS Topic.',
       },
     ]);
   }

@@ -34,11 +34,26 @@ Clone the repository and check all pre-requisites.
 * `npx cdk synth`   emits the synthesized CloudFormation template
 * `npm i`  Install dependencies
 
-### Deployment Instructions:
+### Deployment Instructions
 
-1. Change the constants in lib/constants.ts!
-2. Deploy with `npm run build && npx cdk deploy [stack name from constants.ts]`
-3. Configure Cognito using the CDK outputs
+1. Change the constants in `lib/constants.ts`
+2. Install frontend dependencies: `cd lib/user-interface/app && npm install && cd ../../..`
+3. Deploy: `npx cdk deploy ABEStackNonProd`
+4. Configure Cognito using the CDK outputs
+
+### Monitoring & Alerts
+
+The stack deploys a CloudWatch monitoring construct with:
+
+- **Alarms** — Lambda errors/throttles, chat latency, DynamoDB throttles, API Gateway 5xx/4xx, WebSocket outage detection, eval pipeline failures
+- **Dashboard** — `ABEStackNonProd-Operations` in the CloudWatch console, consolidating Lambda, API Gateway, DynamoDB, and Step Functions metrics
+- **SNS Topic** — All alarms publish to an SNS topic. Subscribe an email for notifications by passing the `alarmEmail` context variable at deploy time:
+
+```bash
+npx cdk deploy ABEStackNonProd -c alarmEmail=you@example.com
+```
+
+In CI/CD, set the `ALARM_EMAIL` GitHub Actions secret — the workflow passes it automatically. To change the alert recipient, update the secret; no code change required.
 
 ## Architecture
 ![Architecture Flow](https://github.com/user-attachments/assets/e36f3313-b345-4e0d-8403-31e9b0473854)

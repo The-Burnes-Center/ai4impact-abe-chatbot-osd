@@ -61,7 +61,7 @@ todos:
     status: completed
   - id: phase3-monitoring
     content: "Phase 3: Create monitoring construct with alarms, dashboard, SNS alerts"
-    status: pending
+    status: completed
   - id: phase4-layer
     content: "Phase 4: Create shared Lambda Layer (logger, response builder, CORS, auth, validator)"
     status: pending
@@ -570,6 +570,16 @@ model_id = os.environ.get('FAST_MODEL_ID', 'us.anthropic.claude-haiku-4-5-202510
 **Files modified:** `lib/user-interface/generate-app.ts`, `lib/user-interface/index.ts`
 
 **Verified:** `cdk synth` passed with zero cdk-nag errors. `cdk diff` confirmed expected changes. Deployed successfully (573s). New CloudFront URL: `https://d39g9hl1ouzq6z.cloudfront.net`. Cognito callback URLs updated manually for SSO.
+
+### Phase 3 Monitoring Construct -- 2026-02-20
+
+**Deployed items (3.8):**
+
+- 3.8 Monitoring: Created `MonitoringConstruct` with CloudWatch alarms, dashboard, and SNS alert topic. Alarms cover: Lambda errors + throttles (all 10 functions), chat Lambda high duration (>60s avg), DynamoDB read/write throttles (all 4 tables), HTTP API 5xx/4xx error rates, WebSocket zero-connections (outage detection), Step Functions eval pipeline failures. CloudWatch Dashboard (`ABEStackNonProd-Operations`) consolidates Lambda invocations/errors/duration, API Gateway requests/latency/errors, WebSocket connections, DynamoDB throttles, and eval pipeline stats. SNS alarm email configured via CDK context (`-c alarmEmail=...`) passed at deploy time through GitHub Actions secret `ALARM_EMAIL`.
+
+**Files created:** `lib/chatbot-api/monitoring/monitoring.ts`
+
+**Files modified:** `lib/chatbot-api/index.ts`, `lib/gen-ai-mvp-stack.ts`, `.github/workflows/deploy.yml`
 
 ### 3.1 Enable CDK Nag
 
@@ -1262,7 +1272,7 @@ graph TD
 
 - **Phase 1** (Security + Critical Bugs): ~~1-2 weeks, 1-2 engineers~~ **COMPLETE -- deployed 2026-02-10** -- includes Issue #6, #7, tool-use crash fix
 - **Phase 2** (GenAI + Data Fixes): 2-3 weeks, 1 engineer with GenAI expertise -- includes Issue #1, #2, #5
-- **Phase 3** (CDK Hardening): ~~2-3 weeks, 1 infrastructure engineer~~ **PARTIAL -- deployed 2026-02-18, 2026-02-20** -- CDK Nag, Construct refactor, DynamoDB/S3/Lambda hardening, env parameterization, WAF + CloudFront modernization, API Gateway access logging + throttling. Remaining: monitoring construct.
+- **Phase 3** (CDK Hardening): ~~2-3 weeks, 1 infrastructure engineer~~ **COMPLETE -- deployed 2026-02-18, 2026-02-20** -- CDK Nag, Construct refactor, DynamoDB/S3/Lambda hardening, env parameterization, WAF + CloudFront modernization, API Gateway access logging + throttling, monitoring construct with alarms + dashboard + SNS alerts.
 - **Phase 4** (Backend + Analytics): 2-3 weeks, 1-2 engineers -- includes Issue #3, #8
 - **Phase 5** (Frontend + Admin): 3-4 weeks, 1-2 frontend engineers -- includes Issue #9
 - **Phase 6** (Operations): 2-4 weeks, 1 engineer

@@ -32,7 +32,11 @@ jobs:
       run: npx cdk bootstrap || true
     - name: Deploy CDK stack
       run: |
-        npx cdk deploy ABEStackNonProd --require-approval never 2>&1 | tee deploy.log
+        ALARM_FLAG=""
+        if [ -n "${{ secrets.ALARM_EMAIL }}" ]; then
+          ALARM_FLAG="-c alarmEmail=${{ secrets.ALARM_EMAIL }}"
+        fi
+        npx cdk deploy ABEStackNonProd $ALARM_FLAG --require-approval never 2>&1 | tee deploy.log
         if grep -q "ABEStackNonProd" deploy.log; then
           echo "Deploy succeeded"
           exit 0

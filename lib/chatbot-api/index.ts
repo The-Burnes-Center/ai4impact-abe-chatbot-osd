@@ -16,9 +16,11 @@ import { KnowledgeBaseStack } from "./knowledge-base/knowledge-base"
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
+import { MonitoringConstruct } from "./monitoring/monitoring";
 
 export interface ChatBotApiProps {
-  readonly authentication: AuthorizationStack; 
+  readonly authentication: AuthorizationStack;
+  readonly alarmEmail?: string;
 }
 
 export class ChatBotApi extends Construct {
@@ -216,8 +218,31 @@ export class ChatBotApi extends Construct {
       authorizer: httpAuthorizer,
     })
 
-      // this.wsAPI = websocketBackend.wsAPI;
-
+      new MonitoringConstruct(this, "Monitoring", {
+      lambdaFunctions: [
+        lambdaFunctions.chatFunction,
+        lambdaFunctions.sessionFunction,
+        lambdaFunctions.feedbackFunction,
+        lambdaFunctions.syncKBFunction,
+        lambdaFunctions.metadataHandlerFunction,
+        lambdaFunctions.metricsHandlerFunction,
+        lambdaFunctions.deleteS3Function,
+        lambdaFunctions.getS3Function,
+        lambdaFunctions.uploadS3Function,
+        lambdaFunctions.handleEvalResultsFunction,
+      ],
+      chatFunction: lambdaFunctions.chatFunction,
+      tables: [
+        tables.historyTable,
+        tables.feedbackTable,
+        tables.evalSummaryTable,
+        tables.evalResultsTable,
+      ],
+      restApi: restBackend.restAPI,
+      webSocketApi: websocketBackend.wsAPI,
+      evalStateMachine: lambdaFunctions.stepFunctionsStack.llmEvalStateMachine,
+      alarmEmail: props.alarmEmail,
+    });
 
 
 
