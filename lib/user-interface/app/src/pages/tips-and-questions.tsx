@@ -1,242 +1,156 @@
-import React, { useState } from "react";
-import {
-    BreadcrumbGroup,
-    ContentLayout,
-    Header,
-    SpaceBetween,
-    Alert,
-    Tabs,
-    Container
-  } from "@cloudscape-design/components";
-  import BaseAppLayout from "../components/base-app-layout";
-  import styled from 'styled-components';
-  import useOnFollow from "../common/hooks/use-on-follow";
-  import { CHATBOT_NAME } from "../common/constants";
-  import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
-  import ArrowDropUpIcon from '@mui/icons-material/ArrowDropUp';
+import { useState } from "react";
+import Typography from "@mui/material/Typography";
+import Stack from "@mui/material/Stack";
+import Paper from "@mui/material/Paper";
+import Box from "@mui/material/Box";
+import Breadcrumbs from "@mui/material/Breadcrumbs";
+import MuiLink from "@mui/material/Link";
+import List from "@mui/material/List";
+import ListItemButton from "@mui/material/ListItemButton";
+import ListItemText from "@mui/material/ListItemText";
+import Collapse from "@mui/material/Collapse";
+import Divider from "@mui/material/Divider";
+import ExpandMore from "@mui/icons-material/ExpandMore";
+import ExpandLess from "@mui/icons-material/ExpandLess";
+import { Link as RouterLink } from "react-router-dom";
+import { CHATBOT_NAME } from "../common/constants";
 
-  const OrderedList = styled.div`
-    margin: 0;
-    padding: 0;
-  `;
+const prompts = [
+  { title: "Spell out acronyms", details: "Avoid using abbreviations. For example, instead of 'RFP,' use 'Request for Proposal'." },
+  { title: "Be specific and concise", details: "Provide clear and precise questions to help ABE give accurate responses." },
+  { title: "Use keywords", details: "Include important terms in your query, such as 'vendor' or 'contract'." },
+  { title: "Ask one question at a time", details: "Breaking down complex questions ensures better answers." },
+  { title: "Include relevant details", details: "Specify important context, like names, dates, or locations, to guide the chatbot's response." },
+  { title: "Ask follow-up questions", details: "Build on previous responses by asking follow-ups to get further clarity or additional details." },
+];
 
-  const ListItem = styled.div`
-    padding: 10px 0;
-    display: flex;
-    align-items: center;
-    justify-content: start;
-    font-weight: bold;
-  `;
+const questions = [
+  {
+    topic: "General Procurement Questions",
+    items: [
+      "How can I get started with the procurement process?",
+      "What is large procurement?",
+      "What is the difference between an RFP and an RFQ?",
+      "What are statewide contracts, and how do they work?",
+    ],
+  },
+  {
+    topic: "Contracts and Vendors",
+    items: [
+      "What contracts are available for [some product or service]?",
+      "Where can I find a list of all vendors on this contract?",
+      "Where is the price list for a certain contract?",
+      "Can my agency use this contract?",
+      "How can I check if this company is a small business?",
+    ],
+  },
+  {
+    topic: "Training and Resources",
+    items: [
+      "Where can I download the best value procurement handbook?",
+      "Where can I locate job aids for executive agency buyers?",
+      "What training or resources are available for new buyers?",
+    ],
+  },
+];
 
-  const Separator = styled.hr`
-    background-color: lightgray; 
-    height: 1.5px;             
-    border: none;            
-    margin: 10px 0;
-  `;
+export default function TipsAndQuestions() {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  const Details = styled.div`
-    padding: 5px 29px 13px 29px;
-    font-size: 15px;
-  `;
+  const toggle = (key: string) => {
+    setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
-  const StyledDownIcon = styled(ArrowDropDownIcon)`
-    margin-bottom: -2px;
-    margin-right: 5px;
-    width: 24px;
-    height: 24px;
+  return (
+    <Box role="main">
+      <Breadcrumbs sx={{ mb: 2 }} aria-label="breadcrumb">
+        <MuiLink component={RouterLink} to="/" underline="hover" color="inherit" sx={{ fontSize: "0.8125rem" }}>
+          {CHATBOT_NAME}
+        </MuiLink>
+        <Typography color="text.primary" sx={{ fontSize: "0.8125rem" }}>
+          Getting Started
+        </Typography>
+      </Breadcrumbs>
 
-    &:hover {
-        cursor: pointer;
-    }
-  `;
+      <Typography variant="h2" component="h1" gutterBottom>
+        Getting Started
+      </Typography>
 
-  const StyledUpIcon = styled(ArrowDropUpIcon)`
-    margin-bottom: -2px;
-    margin-right: 5px;
-    width: 24px;
-    height: 24px;
+      <Stack spacing={3}>
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.7 }}>
+            This page provides tips and sample questions to help you get the most out of ABE.
+            Learn how to phrase your questions effectively and explore examples to guide your
+            interactions for quick and accurate procurement assistance.
+          </Typography>
+        </Paper>
 
-    &:hover {
-        cursor: pointer;
-    }
-  `;
-
-  const ListDetails = styled.li`
-  padding: 6px 0px 13px 0px;
-  font-size: 15px;
-`;
-  
-  export default function TipsAndQuestions() {
-    const onFollow = useOnFollow();
-    const [expanded, setExpanded] = useState({});
-
-    const toggleExpand = (index) => {
-        setExpanded((prev) => ({ ...prev, [index]: !prev[index] }));
-      };
-    
-    const prompts = [
-        { title: "Spell out acronyms", details: "Avoid using abbreviations. For example, instead of 'RFP,' use 'Request for Proposal'." },
-        { title: "Be specific and concise", details: "Provide clear and precise questions to help ABE give accurate responses." },
-        { title: "Use keywords", details: "Include important terms in your query, such as 'vendor' or 'contract'." },
-        { title: "Ask one question at a time", details: "Breaking down complex questions ensures better answers." },
-        { title: "Include relevant details", details: "Specify important context, like names, dates, or locations, to guide the chatbot's response." },
-        { title: "Ask follow-up questions", details: "Build on previous responses by asking follow-ups to get further clarity or additional details." },
-    ];
-
-    const questions = [
-        {
-          topic: "General Procurement Questions",
-          questions: [
-            "How can I get started with the procurement process?",
-            "What is large procurement?",
-            "What is the difference between an RFP and an RFQ?",
-            "What are statewide contracts, and how do they work?",
-          ],
-        },
-        {
-          topic: "Contracts and Vendors",
-          questions: [
-            "What contracts are available for \[some product or service\]?",
-            "Where can I find a list of all vendors on this contract?",
-            "Where is the price list for a certain contract?",
-            "Can my agency use this contract?",
-            "How can I check if this company is a small business?",
-          ],
-        },
-        {
-          topic: "Training and Resources",
-          questions: [
-            "Where can I download the best value procurement handbook?",
-            "Where can I locate job aids for executive agency buyers?",
-            "What training or resources are available for new buyers?",
-          ],
-        },
-      ];      
-  
-    return (
-        <BaseAppLayout
-          contentType="cards"
-          breadcrumbs={
-            <BreadcrumbGroup
-              onFollow={onFollow}
-              items={[
-                {
-                  text: CHATBOT_NAME,
-                  href: "/*",
-                },
-                {
-                  text: "Getting Started",
-                  href: "/chatbot/tips",
-                },
-              ]}
-            />
-          }
-          content={
-            <ContentLayout
-              header={
-                <Header
-                  variant="h1"
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h4" component="h2" sx={{ mb: 2 }}>
+            Prompting Tips
+          </Typography>
+          <Divider />
+          <List disablePadding>
+            {prompts.map((prompt, index) => (
+              <Box key={index}>
+                <ListItemButton
+                  onClick={() => toggle(`prompt-${index}`)}
+                  aria-expanded={!!expanded[`prompt-${index}`]}
+                  sx={{ px: 0.5, borderRadius: 1 }}
                 >
-                  Getting Started
-                </Header>
-              }
-            >
-              <SpaceBetween size="l">
-                <Container
-                  header={
-                    <div style={{marginBottom: "-10px"}}>
-                        <Header
-                        variant="h3"
-                        >
-                        About this page:
-                        </Header> 
-                    </div>               
-                  }
-                >
-                  <SpaceBetween size="xxs">
-                  <div style={{ lineHeight: "1.6" }}>
-                    This page provides tips and sample questions to help you get the most out of ABE. 
-                    Here, you can learn how to phrase your questions effectively and explore examples to guide your interactions for quick and accurate procurement assistance.
-                  </div>
-                  </SpaceBetween>
-                </Container>
+                  {expanded[`prompt-${index}`] ? <ExpandLess sx={{ mr: 1 }} /> : <ExpandMore sx={{ mr: 1 }} />}
+                  <ListItemText
+                    primary={prompt.title}
+                    primaryTypographyProps={{ fontWeight: 600, fontSize: "0.9375rem" }}
+                  />
+                </ListItemButton>
+                <Collapse in={!!expanded[`prompt-${index}`]} timeout={200}>
+                  <Typography variant="body2" color="text.secondary" sx={{ pl: 4.5, pb: 1.5 }}>
+                    {prompt.details}
+                  </Typography>
+                </Collapse>
+                {index < prompts.length - 1 && <Divider />}
+              </Box>
+            ))}
+          </List>
+        </Paper>
 
-                <Container
-                    header={
-                    <div style={{marginBottom: "-2px", marginTop: "2px"}}>
-                        <Header
-                        variant="h3"
-                        >
-                        Prompting Tips:
-                        </Header> 
-                    </div>               
-                  }
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h4" component="h2" sx={{ mb: 2 }}>
+            Sample Questions
+          </Typography>
+          <Divider />
+          <List disablePadding>
+            {questions.map((section, index) => (
+              <Box key={index}>
+                <ListItemButton
+                  onClick={() => toggle(`question-${index}`)}
+                  aria-expanded={!!expanded[`question-${index}`]}
+                  sx={{ px: 0.5, borderRadius: 1 }}
                 >
-                    <hr style={{
-                        backgroundColor: "lightgray", 
-                        height: "1.5px",              
-                        border: "none",             
-                        margin: "0 0 10px 0", 
-                    }} />
-                    <OrderedList>
-                        {prompts.map((prompt, index) => (
-                        <div key={index}>
-                            <ListItem>
-                                <span onClick={() => toggleExpand(index)}>{expanded[index] ? <StyledUpIcon /> : <StyledDownIcon />}</span>
-                                <span style={{fontSize: "15px"}}>{prompt.title}</span>
-                            </ListItem>
-                            {expanded[index] && <Details>{prompt.details}</Details>}
-                            {index < prompts.length - 1 && <Separator />}
-                        </div>
-                        ))}
-                    </OrderedList>
-                </Container>
-
-                <Container
-                    header={
-                    <div style={{marginBottom: "-2px", marginTop: "2px"}}>
-                        <Header
-                        variant="h3"
-                        >
-                        Sample Questions:
-                        </Header> 
-                    </div>               
-                  }
-                >
-                    <hr style={{
-                        backgroundColor: "lightgray", 
-                        height: "1.5px",              
-                        border: "none",             
-                        margin: "0 0 10px 0", 
-                    }} />
-                    <OrderedList>
-                    {questions.map((item, index) => (
-                        <div key={index}>
-                        <ListItem>
-                            <span onClick={() => toggleExpand(index)}>{expanded[index] ? <StyledUpIcon /> : <StyledDownIcon />}</span>
-                            <span style={{fontSize: "15px"}}>{item.topic}</span>
-                        </ListItem>
-
-                        {expanded[index] && (
-                            <ul style={{marginTop: "1px", paddingTop: "0"}}>
-                            {item.questions.map((question, qIndex) => (
-                                <ListDetails key={qIndex}>
-                                {question}
-                                </ListDetails>
-                            ))}
-                            </ul>
-                        )} 
-                        {index < questions.length - 1 && <Separator />}
-                        </div>
+                  {expanded[`question-${index}`] ? <ExpandLess sx={{ mr: 1 }} /> : <ExpandMore sx={{ mr: 1 }} />}
+                  <ListItemText
+                    primary={section.topic}
+                    primaryTypographyProps={{ fontWeight: 600, fontSize: "0.9375rem" }}
+                  />
+                </ListItemButton>
+                <Collapse in={!!expanded[`question-${index}`]} timeout={200}>
+                  <Stack component="ul" spacing={0.5} sx={{ pl: 4.5, pb: 1.5, m: 0, listStyle: "disc" }}>
+                    {section.items.map((q, qIndex) => (
+                      <li key={qIndex}>
+                        <Typography variant="body2" color="text.secondary">
+                          {q}
+                        </Typography>
+                      </li>
                     ))}
-                    </OrderedList>
-                </Container>
-                  
-              </SpaceBetween>
-            </ContentLayout>
-          }
-        />
-      );
-    }
-    
+                  </Stack>
+                </Collapse>
+                {index < questions.length - 1 && <Divider />}
+              </Box>
+            ))}
+          </List>
+        </Paper>
+      </Stack>
+    </Box>
+  );
+}

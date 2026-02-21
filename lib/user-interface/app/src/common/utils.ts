@@ -130,28 +130,19 @@ export class Utils {
 
   static async authenticate(): Promise<string> {
     try {
-      // const currentSession = await Auth.currentSession();
-      let token = '';
-      // console.log('Auth token:', currentSession.getAccessToken().getJwtToken());
-      // console.log('ID token:', currentSession.getAccessToken().getJwtToken());
-      // console.log(Auth.currentSession())
-      // console.log(await Auth.currentSession())
-      const currentUser = await Auth.currentAuthenticatedUser()
-      // currentUser.
-      // console.log(currentUser);
-      // console.log(currentSession);
-      // token = 'Bearer ' + currentUser.signInUserSession.idToken.jwtToken
-      
-      // for some reason
-      token = currentUser.signInUserSession.idToken.jwtToken //currentSession.getAccessToken().getJwtToken(); 
-
-      // currentUser.idToken.jwtToken
-      
-      // console.log("new token:", token)
-      // return currentSession.getAccessToken().getJwtToken();
-      return token
+      const session = await Auth.currentSession();
+      const token = session.getIdToken().getJwtToken();
+      if (!token) {
+        throw new Error('No ID token in session');
+      }
+      return token;
     } catch (error) {
       console.error('Error getting current user session:', error);
+      try {
+        Auth.federatedSignIn();
+      } catch (_) {
+        // ignore redirect errors
+      }
       throw new Error('Authentication failed');
     }
   }

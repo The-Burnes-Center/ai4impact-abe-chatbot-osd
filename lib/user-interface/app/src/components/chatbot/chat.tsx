@@ -1,46 +1,43 @@
 import { useContext, useEffect, useState } from "react";
-import {  
+import {
   ChatBotHistoryItem,
-  ChatBotMessageType,  
-  FeedbackData
+  ChatBotMessageType,
+  FeedbackData,
 } from "./types";
 import { Auth } from "aws-amplify";
-import { SpaceBetween, StatusIndicator, Alert, Flashbar } from "@cloudscape-design/components";
+import Stack from "@mui/material/Stack";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
+import Skeleton from "@mui/material/Skeleton";
+import SmartToyOutlinedIcon from "@mui/icons-material/SmartToyOutlined";
+import Avatar from "@mui/material/Avatar";
 import { v4 as uuidv4 } from "uuid";
 import { AppContext } from "../../common/app-context";
 import { ApiClient } from "../../common/api-client/api-client";
 import ChatMessage from "./chat-message";
 import ChatInputPanel, { ChatScrollState } from "./chat-input-panel";
 import styles from "../../styles/chat.module.scss";
-import { CHATBOT_NAME, WELCOME_PAGE } from "../../common/constants";
+import { CHATBOT_NAME, WELCOME_PAGE, SUGGESTED_PROMPTS } from "../../common/constants";
 import { useNotifications } from "../notif-manager";
 
-export default function Chat(props: { sessionId?: string}) {
+export default function Chat(props: { sessionId?: string }) {
   const appContext = useContext(AppContext);
   const [running, setRunning] = useState<boolean>(true);
   const [session, setSession] = useState<{ id: string; loading: boolean }>({
     id: props.sessionId ?? uuidv4(),
     loading: typeof props.sessionId !== "undefined",
-  });  
+  });
 
-  const { notifications, addNotification } = useNotifications();
+  const { addNotification } = useNotifications();
 
-  const [messageHistory, setMessageHistory] = useState<ChatBotHistoryItem[]>(
-    []
-  );
-  
+  const [messageHistory, setMessageHistory] = useState<ChatBotHistoryItem[]>([]);
 
-  /** Loads session history */
   useEffect(() => {
     if (!appContext) return;
     setMessageHistory([]);
 
     (async () => {
-      /** If there is no session ID, then this must be a new session
-       * and there is no need to load one from the backend.
-       * However, even if a session ID is set and there is no saved session in the 
-       * backend, there will be no errors - the API will simply return a blank session
-       */
       if (!props.sessionId) {
         setSession({ id: uuidv4(), loading: false });
         return;
@@ -49,17 +46,20 @@ export default function Chat(props: { sessionId?: string}) {
       setSession({ id: props.sessionId, loading: true });
       const apiClient = new ApiClient(appContext);
       try {
-        // const result = await apiClient.sessions.getSession(props.sessionId);
-        let username;
-        await Auth.currentAuthenticatedUser().then((value) => username = value.username);
+        let username: string | undefined;
+        await Auth.currentAuthenticatedUser().then(
+          (value) => (username = value.username)
+        );
         if (!username) return;
-        const hist = await apiClient.sessions.getSession(props.sessionId,username);
+        const hist = await apiClient.sessions.getSession(
+          props.sessionId,
+          username
+        );
 
         if (hist) {
-          
           ChatScrollState.skipNextHistoryUpdate = true;
           ChatScrollState.skipNextScrollEvent = true;
-          
+
           setMessageHistory(
             hist
               .filter((x) => x !== null)
@@ -70,89 +70,180 @@ export default function Chat(props: { sessionId?: string}) {
               }))
           );
 
-          window.scrollTo({
-            top: 0,
-            behavior: "instant",
-          });
+          window.scrollTo({ top: 0, behavior: "instant" });
         }
         setSession({ id: props.sessionId, loading: false });
         setRunning(false);
-      } catch (error) {
-        console.log(error);
-        addNotification("error",error.message)
-        addNotification("info","Please refresh the page")
+      } catch (error: any) {
+        console.error(error);
+        addNotification("error", error.message);
+        addNotification("info", "Please refresh the page");
       }
     })();
   }, [appContext, props.sessionId]);
 
-  /** Adds some metadata to the user's feedback */
-  const handleFeedback = (feedbackType: 1 | 0, idx: number, message: ChatBotHistoryItem, feedbackTopic? : string, feedbackProblem? : string, feedbackMessage? : string) => {
+  const handleFeedback = (
+    feedbackType: 1 | 0,
+    idx: number,
+    message: ChatBotHistoryItem,
+    feedbackTopic?: string,
+    feedbackProblem?: string,
+    feedbackMessage?: string
+  ) => {
     if (props.sessionId) {
-      console.log("submitting feedback...")
-      
-      const prompt = messageHistory[idx - 1].content
+      const prompt = messageHistory[idx - 1].content;
       const completion = message.content;
-      
       const feedbackData = {
-        sessionId: props.sessionId, 
+        sessionId: props.sessionId,
         feedback: feedbackType,
         prompt: prompt,
         completion: completion,
         topic: feedbackTopic,
         problem: feedbackProblem,
         comment: feedbackMessage,
-        sources: JSON.stringify(message.metadata.Sources)
+        sources: JSON.stringify(message.metadata.Sources),
       };
       addUserFeedback(feedbackData);
     }
   };
 
-  /** Makes the API call via the ApiClient to submit the feedback */
-  const addUserFeedback = async (feedbackData : FeedbackData) => {
+  const addUserFeedback = async (feedbackData: FeedbackData) => {
     if (!appContext) return;
     const apiClient = new ApiClient(appContext);
     await apiClient.userFeedback.sendUserFeedback(feedbackData);
-  }
+  };
+
+  const isEmpty = messageHistory.length === 0 && !session?.loading;
 
   return (
-    <div className={styles.chat_container}> 
-      <SpaceBetween direction="vertical" size="m">
-        
-      {messageHistory.length == 0 && !session?.loading && (
-       <Alert
-          statusIconAriaLabel="Info"
-          header=""
-       >
-        This tool is for Executive Office use only. While AI can assist, always validate critical information and confirm permissions before procuring goods or services.
-      </Alert> )}
+    <div className={styles.chat_container}>
+      {/* Scrollable message area with aria-live for screen readers */}
+      <Box aria-live="polite" aria-relevant="additions" sx={{ flex: 1 }}>
+        <Stack direction="column" spacing={2}>
+          {isEmpty && (
+            <Alert severity="info" sx={{ mb: 1 }}>
+              This tool is for Executive Office use only. While AI can assist,
+              always validate critical information and confirm permissions before
+              procuring goods or services.
+            </Alert>
+          )}
 
-      
-        {messageHistory.map((message, idx) => (
-          <ChatMessage
-            key={idx}
-            message={message}            
-            onThumbsUp={() => handleFeedback(1,idx, message)}
-            onThumbsDown={(feedbackTopic : string, feedbackType : string, feedbackMessage: string) => handleFeedback(0,idx, message,feedbackTopic, feedbackType, feedbackMessage)}                        
-          />
-        ))}
-      </SpaceBetween>
-      <div className={styles.welcome_text}>
-        {messageHistory.length == 0 && !session?.loading && (
-          <center>{WELCOME_PAGE}</center>
-        )}
-        {session?.loading && (
-          <center>
-            <StatusIndicator type="loading">Loading session</StatusIndicator>
-          </center>
-        )}
-      </div>
+          {messageHistory.map((message, idx) => (
+            <ChatMessage
+              key={idx}
+              message={message}
+              onThumbsUp={() => handleFeedback(1, idx, message)}
+              onThumbsDown={(
+                feedbackTopic: string,
+                feedbackType: string,
+                feedbackMessage: string
+              ) =>
+                handleFeedback(
+                  0,
+                  idx,
+                  message,
+                  feedbackTopic,
+                  feedbackType,
+                  feedbackMessage
+                )
+              }
+            />
+          ))}
+        </Stack>
+      </Box>
+
+      {/* Empty state */}
+      {isEmpty && (
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            py: 6,
+            textAlign: "center",
+          }}
+        >
+          <Avatar
+            sx={{
+              width: 56,
+              height: 56,
+              bgcolor: "primary.light",
+              color: "primary.main",
+              mb: 2.5,
+            }}
+          >
+            <SmartToyOutlinedIcon sx={{ fontSize: 28 }} />
+          </Avatar>
+          <Typography
+            variant="h2"
+            sx={{
+              color: "text.primary",
+              mb: 1,
+              fontSize: { xs: "1.25rem", sm: "1.5rem" },
+            }}
+          >
+            {WELCOME_PAGE}
+          </Typography>
+          <Typography
+            variant="body2"
+            sx={{ color: "text.secondary", mb: 3, maxWidth: 420 }}
+          >
+            Ask me about Massachusetts procurement processes, statewide
+            contracts, bidding, and more.
+          </Typography>
+          <div className={styles.suggestedPrompts}>
+            {SUGGESTED_PROMPTS.map((prompt, idx) => (
+              <button
+                key={idx}
+                className={styles.suggestedPromptCard}
+                onClick={() => {
+                  const textarea = document.querySelector(
+                    "textarea"
+                  ) as HTMLTextAreaElement | null;
+                  if (textarea) {
+                    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                      window.HTMLTextAreaElement.prototype,
+                      "value"
+                    )?.set;
+                    nativeInputValueSetter?.call(textarea, prompt);
+                    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+                    textarea.focus();
+                  }
+                }}
+                aria-label={`Suggested question: ${prompt}`}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        </Box>
+      )}
+
+      {/* Loading state */}
+      {session?.loading && (
+        <Box sx={{ py: 4 }}>
+          <Stack spacing={2}>
+            {[1, 2, 3].map((i) => (
+              <Box key={i} sx={{ display: "flex", gap: 1.5 }}>
+                <Skeleton variant="circular" width={32} height={32} />
+                <Box sx={{ flex: 1 }}>
+                  <Skeleton variant="rounded" height={60 + i * 20} />
+                </Box>
+              </Box>
+            ))}
+          </Stack>
+        </Box>
+      )}
+
+      {/* Input panel */}
       <div className={styles.input_container}>
         <ChatInputPanel
           session={session}
           running={running}
           setRunning={setRunning}
           messageHistory={messageHistory}
-          setMessageHistory={(history) => setMessageHistory(history)}          
+          setMessageHistory={(history) => setMessageHistory(history)}
         />
       </div>
     </div>

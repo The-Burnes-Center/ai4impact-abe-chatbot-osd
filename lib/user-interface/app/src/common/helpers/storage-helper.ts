@@ -1,4 +1,3 @@
-import { Mode, applyMode } from "@cloudscape-design/global-styles";
 import { NavigationPanelState } from "../types";
 
 const PREFIX = "aws-genai-llm-chatbot";
@@ -7,23 +6,18 @@ const SELECTED_MODEL_STORAGE_NAME = `${PREFIX}-selected-model`;
 const SELECTED_WORKSPACE_STORAGE_NAME = `${PREFIX}-selected-workspace`;
 const NAVIGATION_PANEL_STATE_STORAGE_NAME = `${PREFIX}-navigation-panel-state`;
 
-export abstract class StorageHelper {
-  static getTheme() {
-    const value = localStorage.getItem(THEME_STORAGE_NAME) ?? Mode.Light;
-    const theme = value === Mode.Dark ? Mode.Dark : Mode.Light;
+export type ThemeMode = "light" | "dark";
 
-    return theme;
+export abstract class StorageHelper {
+  static getTheme(): ThemeMode {
+    const value = localStorage.getItem(THEME_STORAGE_NAME) ?? "light";
+    return value === "dark" ? "dark" : "light";
   }
 
-  static applyTheme(theme: Mode) {
+  static applyTheme(theme: ThemeMode): ThemeMode {
     localStorage.setItem(THEME_STORAGE_NAME, theme);
-    applyMode(theme);
-
-    document.documentElement.style.setProperty(
-      "--app-color-scheme",
-      theme === Mode.Dark ? "dark" : "light"
-    );
-
+    document.documentElement.style.setProperty("--app-color-scheme", theme);
+    document.documentElement.setAttribute("data-theme", theme);
     return theme;
   }
 
@@ -55,7 +49,6 @@ export abstract class StorageHelper {
 
   static getSelectedLLM() {
     const value = localStorage.getItem(SELECTED_MODEL_STORAGE_NAME) ?? null;
-
     return value;
   }
 
@@ -65,7 +58,6 @@ export abstract class StorageHelper {
 
   static getSelectedWorkspaceId() {
     const value = localStorage.getItem(SELECTED_WORKSPACE_STORAGE_NAME) ?? null;
-
     return value;
   }
 

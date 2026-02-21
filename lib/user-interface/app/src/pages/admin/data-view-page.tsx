@@ -1,30 +1,17 @@
-import {
-  BreadcrumbGroup,
-  ContentLayout,
-  Header,
-  SpaceBetween,
-  Alert,
-  Tabs,
-  Container
-} from "@cloudscape-design/components";
-import useOnFollow from "../../common/hooks/use-on-follow";
-import BaseAppLayout from "../../components/base-app-layout";
-import DocumentsTab from "./documents-tab";
-import { CHATBOT_NAME } from "../../common/constants";
+import { Typography, Paper, Alert, Tabs, Tab, Box, Stack } from "@mui/material";
 import { useState, useEffect, useContext } from "react";
-import { Auth } from "aws-amplify";
+import DocumentsTab from "./documents-tab";
 import DataFileUpload from "./file-upload-tab";
 import { ApiClient } from "../../common/api-client/api-client";
 import { AppContext } from "../../common/app-context";
 import { Utils } from "../../common/utils";
+import AdminPageLayout from "../../components/admin-page-layout";
 
 export default function DataPage() {
-  const onFollow = useOnFollow();
-  const [admin, setAdmin] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState("file");
+  const [activeTab, setActiveTab] = useState(0);
   const appContext = useContext(AppContext);
   const apiClient = new ApiClient(appContext);
-  const [lastSyncTime, setLastSyncTime] = useState("")
+  const [lastSyncTime, setLastSyncTime] = useState("");
   const [lastSyncData, setLastSyncData] = useState<{
     status: string;
     startedAt: string | null;
@@ -32,178 +19,77 @@ export default function DataPage() {
   } | null>(null);
   const [showUnsyncedAlert, setShowUnsyncedAlert] = useState(false);
 
-  /** Function to get the last synced time */
   const refreshSyncTime = async () => {
     try {
-      console.log("🔄 refreshSyncTime() called - fetching last sync time from API...");
       const syncData = await apiClient.knowledgeManagement.lastKendraSync();
-      console.log("📅 Received last sync data from API:", syncData);
       setLastSyncData(syncData);
-      
-      // Format the completed timestamp for display (convert UTC to Eastern Time)
-      if (syncData.status === 'COMPLETE' && syncData.completedAt) {
-        const formattedTime = Utils.formatToEasternTime(syncData.completedAt);
-        setLastSyncTime(formattedTime);
-        console.log("✅ Updated lastSyncTime state to:", formattedTime);
-      } else if (syncData.status === 'NO_SYNC_HISTORY') {
-        setLastSyncTime('No sync history available');
+      if (syncData.status === "COMPLETE" && syncData.completedAt) {
+        setLastSyncTime(Utils.formatToEasternTime(syncData.completedAt));
+      } else if (syncData.status === "NO_SYNC_HISTORY") {
+        setLastSyncTime("No sync history available");
       } else {
-        setLastSyncTime('Unknown');
+        setLastSyncTime("Unknown");
       }
     } catch (e) {
-      console.error("❌ Error in refreshSyncTime():", e);
-      setLastSyncTime('Error loading sync time');
+      console.error("Error in refreshSyncTime():", e);
+      setLastSyncTime("Error loading sync time");
     }
-  }
+  };
 
-  /** Checks for admin status */
   useEffect(() => {
-    (async () => {
-      try {
-        const result = await Auth.currentAuthenticatedUser();
-        if (!result || Object.keys(result).length === 0) {
-          console.log("Signed out!")
-          Auth.signOut();
-          return;
-        }
-        const admin = result?.signInUserSession?.idToken?.payload["custom:role"]
-        if (admin) {
-          const data = JSON.parse(admin);
-          if (data.some(role => role.includes("Admin"))) {
-            setAdmin(true);
-          }
-        }
-      }
-      /** If there is some issue checking for admin status, just do nothing and the
-       * error page will show up
-        */
-      catch (e) {
-        console.log(e);
-      }
-    })();
+    refreshSyncTime();
   }, []);
 
-  /** Load sync time when admin is confirmed */
-  useEffect(() => {
-    if (admin) {
-      refreshSyncTime();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [admin]);
-
-  /** If the admin status check fails, just show an access denied page*/
-  if (!admin) {
-    return (
-      <div
-        style={{
-          height: "90vh",
-          width: "100%",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <Alert header="Configuration error" type="error">
-          You are not authorized to view this page!
-        </Alert>
-      </div>
-    );
-  }
-
   return (
-    <BaseAppLayout
-      contentType="cards"
-      breadcrumbs={
-        <BreadcrumbGroup
-          onFollow={onFollow}
-          items={[
-            {
-              text: CHATBOT_NAME,
-              href: "/*",
-            },
-            {
-              text: "View Data",
-              href: "/admin/data",
-            },
-          ]}
-        />
-      }
-      content={
-        <ContentLayout
-          header={
-            <Header
-              variant="h1"
-            >
-              Data Dashboard
-            </Header>
-          }
+    <AdminPageLayout
+      title="Data Dashboard"
+      description="Manage the chatbot's knowledge base files."
+      breadcrumbLabel="Data"
+    >
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="subtitle1" gutterBottom>
+          {lastSyncData?.status === "COMPLETE"
+            ? `Last successful sync: ${lastSyncTime}`
+            : lastSyncTime}
+        </Typography>
+        <Stack spacing={1}>
+          <Typography variant="body2" color="text.secondary">
+            View, add, or remove files for the chatbot to reference. Sync data
+            when finished adding or removing files.
+          </Typography>
+          {showUnsyncedAlert && (
+            <Alert severity="warning" onClose={() => setShowUnsyncedAlert(false)}>
+              Some files may have been added or modified since the last sync.
+              Please sync with the &apos;Sync data now&apos; button.
+            </Alert>
+          )}
+        </Stack>
+      </Paper>
+
+      <Box>
+        <Tabs
+          value={activeTab}
+          onChange={(_, newValue) => setActiveTab(newValue)}
+          sx={{ borderBottom: 1, borderColor: "divider" }}
         >
-          <SpaceBetween size="l">
-            <Container
-              header={
-                <Header
-                  variant="h3"
-                  // description="Container description"
-                >
-                  {lastSyncData?.status === 'COMPLETE' 
-                    ? `Last successful sync: ${lastSyncTime}` 
-                    : lastSyncTime}
-                </Header>                
-              }
-            >
-              <SpaceBetween size="xxs">
-              Manage the chatbot's data here. You can view, add, or remove data for the chatbot to reference.
-
-              Please make sure to sync data with the chatbot when you are done adding or removing new files.
-              <br></br>
-              {showUnsyncedAlert && (
-                <Alert
-                  type="warning"
-                  dismissAriaLabel="Close alert"
-                  // dismissible
-                  onDismiss={() => setShowUnsyncedAlert(false)}
-                >
-                  Some files may have been added or modified since the last sync.
-                  Please sync the data with the 'Sync data now' button to ensure that the chatbot
-                  has access to the latest information.
-                </Alert>
-              )}
-              </SpaceBetween>
-            </Container>
-            <Tabs
-              tabs={[
-                {
-                  label: "Current Files",
-                  id: "file",
-                  content: (
-                    <DocumentsTab
-                      tabChangeFunction={() => setActiveTab("add-data")}
-                      documentType="file"
-                      statusRefreshFunction={refreshSyncTime}
-                      lastSyncTime={lastSyncData?.completedAt || null}
-                      setShowUnsyncedAlert={setShowUnsyncedAlert}
-                    />
-                  ),
-                },
-                {
-                  label: "Add Files",
-                  id: "add-data",
-                  content: (
-                    <DataFileUpload 
-                      tabChangeFunction={() => setActiveTab("file")}
-                    />
-                  ),
-                },
-              ]}
-              activeTabId={activeTab}
-              onChange={({ detail: { activeTabId } }) => {
-                setActiveTab(activeTabId);
-              }}
+          <Tab label="Current Files" />
+          <Tab label="Add Files" />
+        </Tabs>
+        <Box sx={{ pt: 2 }}>
+          {activeTab === 0 && (
+            <DocumentsTab
+              tabChangeFunction={() => setActiveTab(1)}
+              documentType="file"
+              statusRefreshFunction={refreshSyncTime}
+              lastSyncTime={lastSyncData?.completedAt || null}
+              setShowUnsyncedAlert={setShowUnsyncedAlert}
             />
-
-          </SpaceBetween>
-        </ContentLayout>
-      }
-    />
+          )}
+          {activeTab === 1 && (
+            <DataFileUpload tabChangeFunction={() => setActiveTab(0)} />
+          )}
+        </Box>
+      </Box>
+    </AdminPageLayout>
   );
 }

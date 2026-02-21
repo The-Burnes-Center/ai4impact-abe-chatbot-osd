@@ -1,260 +1,76 @@
-import {
-    BreadcrumbGroup,
-    ContentLayout,
-    Header,
-    SpaceBetween,
-    Alert,
-    Tabs,
-    Container
-  } from "@cloudscape-design/components";
-  import useOnFollow from "../../common/hooks/use-on-follow";
-  import BaseAppLayout from "../../components/base-app-layout";
-  import CurrentEvalTab from "./current-eval-tab";
-  import NewEvalTab from "./new-eval-tab.tsx";
-  import PastEvalsTab from "./past-evals-tab.tsx";
-  import TestCasesTab from "./test-cases-tab.tsx";
-  import { CHATBOT_NAME } from "../../common/constants";
-  import { useState, useEffect, useContext } from "react";
-  import { Auth } from "aws-amplify";
-  import { ApiClient } from "../../common/api-client/api-client";
-  import { AppContext } from "../../common/app-context";
-  import { useNavigate, useLocation } from "react-router-dom";
-  import { Utils } from "../../common/utils";
+import { Tabs, Tab, Box } from "@mui/material";
+import { useNavigate, useLocation } from "react-router-dom";
+import CurrentEvalTab from "./current-eval-tab";
+import NewEvalTab from "./new-eval-tab.tsx";
+import PastEvalsTab from "./past-evals-tab.tsx";
+import TestCasesTab from "./test-cases-tab.tsx";
+import { useState, useEffect } from "react";
+import AdminPageLayout from "../../components/admin-page-layout";
 
-  export default function LlmEvaluationPage() {
-    const onFollow = useOnFollow();
-    const [admin, setAdmin] = useState<boolean>(false);
-    const [activeTab, setActiveTab] = useState("current-eval");
-    const appContext = useContext(AppContext);
-    const apiClient = new ApiClient(appContext);
-    const [lastSyncTime, setLastSyncTime] = useState<string>("")
-    const [lastSyncData, setLastSyncData] = useState<{
-      status: string;
-      startedAt: string | null;
-      completedAt: string | null;
-    } | null>(null);
-    const [showUnsyncedAlert, setShowUnsyncedAlert] = useState(false);
-    const navigate = useNavigate();
-    const location = useLocation();
+const TAB_IDS = ["current-eval", "past-evals", "add-test-cases", "new-eval"];
 
-    /** Function to get the last synced time */
-    const refreshSyncTime = async () => {
-      try {
-        const syncData = await apiClient.knowledgeManagement.lastKendraSync();
-        setLastSyncData(syncData);
-        
-        // Format the completed timestamp for display (convert UTC to Eastern Time)
-        if (syncData.status === 'COMPLETE' && syncData.completedAt) {
-          const formattedTime = Utils.formatToEasternTime(syncData.completedAt);
-          setLastSyncTime(formattedTime);
-        } else if (syncData.status === 'NO_SYNC_HISTORY') {
-          setLastSyncTime('No sync history available');
-        } else {
-          setLastSyncTime('Unknown');
-        }
-      } catch (e) {
-        console.log(e);
-        setLastSyncTime('Error loading sync time');
-      }
-    }
+export default function LlmEvaluationPage() {
+  const [activeTab, setActiveTab] = useState(0);
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  // fix broken aria menu
   useEffect(() => {
-    const fixAriaMenus = () => {
-      const problematicMenus = document.querySelectorAll('ul.awsui_options-list_19gcf_1hl2l_141');
-  
-      problematicMenus.forEach((menu) => {
-        if (menu.getAttribute('role') === 'menu') {
-          menu.removeAttribute('role');
-        }
-      });
-    };
-  
-    // runs this initally
-    fixAriaMenus();
-  
-    const observer = new MutationObserver(() => {
-      fixAriaMenus();
-    });
-  
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-  
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
-
-  // Set active tab based on URL hash on component mount
-  useEffect(() => {
-    const hash = location.hash.replace('#', '');
-    if (hash === 'current-eval' || hash === 'past-evals' || hash === 'add-test-cases' || hash === 'new-eval') {
-      setActiveTab(hash);
+    const hash = location.hash.replace("#", "");
+    const tabIndex = TAB_IDS.indexOf(hash);
+    if (tabIndex >= 0) {
+      setActiveTab(tabIndex);
     } else if (!location.hash) {
-      // If no hash, set the URL to include the default tab
       navigate(`/admin/llm-evaluation#current-eval`, { replace: true });
     }
   }, [location, navigate]);
-      
-    /** Checks for admin status */
-    useEffect(() => {
-      (async () => {
-        try {
-          const result = await Auth.currentAuthenticatedUser();
-          if (!result || Object.keys(result).length === 0) {
-            console.log("Signed out!")
-            Auth.signOut();
-            return;
-          }
-          const admin = result?.signInUserSession?.idToken?.payload["custom:role"]
-          if (admin) {
-            const data = JSON.parse(admin);
-            if (data.includes("Admin")) {
-              setAdmin(true);
-            }
-          }
-        }
-        /** If there is some issue checking for admin status, just do nothing and the
-         * error page will show up
-          */
-        catch (e) {
-          console.log(e);
-        }
-      })();
-    }, []);
 
-    /** Handler for tab changes to update URL */
-    const handleTabChange = (tabId) => {
-      setActiveTab(tabId);
-      // Use replace:true to avoid adding to browser history stack
-      navigate(`/admin/llm-evaluation#${tabId}`, { replace: true });
-    };
+  const handleTabChange = (tabIndex: number) => {
+    setActiveTab(tabIndex);
+    navigate(`/admin/llm-evaluation#${TAB_IDS[tabIndex]}`, { replace: true });
+  };
 
-    // Create direct tab change handlers for each tab to avoid nested function issues
-    const handleCurrentEvalTab = () => handleTabChange("current-eval");
-    const handlePastEvalsTab = () => handleTabChange("past-evals");
-    const handleAddTestCasesTab = () => handleTabChange("add-test-cases");
-    const handleNewEvalTab = () => handleTabChange("new-eval");
-
-    /** If the admin status check fails, just show an access denied page*/
-    if (!admin) {
-      return (
-        <div
-          style={{
-            height: "90vh",
-            width: "100%",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
+  return (
+    <AdminPageLayout
+      title="LLM Evaluation"
+      description="Evaluate and track the performance of the AI system."
+      breadcrumbLabel="LLM Evaluation"
+    >
+      <Box>
+        <Tabs
+          value={activeTab}
+          onChange={(_, newValue) => handleTabChange(newValue)}
+          sx={{ borderBottom: 1, borderColor: "divider" }}
         >
-          <Alert header="Configuration error" type="error">
-            You are not authorized to view this page!
-          </Alert>
-        </div>
-      );
-    }
-
-    return (
-      <BaseAppLayout
-        contentType="cards"
-        breadcrumbs={
-          <BreadcrumbGroup
-            onFollow={onFollow}
-            items={[
-              {
-                text: CHATBOT_NAME,
-                href: "/",
-              },
-              {
-                text: "View Data",
-                href: "/admin/llm-evaluation",
-              },
-            ]}
-          />
-        }
-        content={
-          <ContentLayout
-            header={
-              <Header
-                variant="h1"
-              >
-                Llm Evaluation Dashboard
-              </Header>
-            }
-          >
-            <SpaceBetween size="l">
-              <Container
-                header={
-                  <Header
-                    variant="h3"
-                    // description="Container description"
-                  >
-                    Giving Insight Into The Performance of Our AI System
-                  </Header>                
-                }
-              >
-                <SpaceBetween size="xxs">
-                Look at evaluation trends, performance on individual test cases, or create new evaluation instances with dynamic sets of test cases.
-
-                <br></br>
-
-                </SpaceBetween>
-              </Container>
-              <Tabs
-                tabs={[
-                    {
-                    label: "Current Evaluation",
-                    id: "current-eval",
-                    content: (
-                        <CurrentEvalTab
-                        tabChangeFunction={handleCurrentEvalTab}
-                        addTestCasesHandler={handleAddTestCasesTab}
-                        newEvalHandler={handleNewEvalTab}
-                        />
-                    ),
-                    },
-                    {
-                    label: "Past Evaluations",
-                    id: "past-evals",
-                    content: (
-                      <PastEvalsTab 
-                        tabChangeFunction={handlePastEvalsTab}
-                        documentType="evaluationSummary"
-                      />
-                    ),
-                    },
-                    {
-                    label: "Add Test Cases",
-                    id: "add-test-cases",
-                    content: (
-                        <TestCasesTab 
-                        tabChangeFunction={handleAddTestCasesTab}
-                        />
-                    ),
-                    },
-                    { 
-                      label: "New Evaluation",
-                      id: "new-eval",
-                      content: (
-                          <NewEvalTab 
-                          tabChangeFunction={handleNewEvalTab}
-                          documentType="file"
-                          />
-                      ),
-                      },
-                ]}
-                activeTabId={activeTab}
-                onChange={({ detail: { activeTabId } }) => {
-                    handleTabChange(activeTabId);
-                }}
-                />
-
-            </SpaceBetween>
-          </ContentLayout>
-        }
-      />
-    );
-  }
+          <Tab label="Current Evaluation" />
+          <Tab label="Past Evaluations" />
+          <Tab label="Add Test Cases" />
+          <Tab label="New Evaluation" />
+        </Tabs>
+        <Box sx={{ pt: 2 }}>
+          {activeTab === 0 && (
+            <CurrentEvalTab
+              tabChangeFunction={() => handleTabChange(0)}
+              addTestCasesHandler={() => handleTabChange(2)}
+              newEvalHandler={() => handleTabChange(3)}
+            />
+          )}
+          {activeTab === 1 && (
+            <PastEvalsTab
+              tabChangeFunction={() => handleTabChange(1)}
+              documentType="evaluationSummary"
+            />
+          )}
+          {activeTab === 2 && (
+            <TestCasesTab tabChangeFunction={() => handleTabChange(2)} />
+          )}
+          {activeTab === 3 && (
+            <NewEvalTab
+              tabChangeFunction={() => handleTabChange(3)}
+              documentType="file"
+            />
+          )}
+        </Box>
+      </Box>
+    </AdminPageLayout>
+  );
+}

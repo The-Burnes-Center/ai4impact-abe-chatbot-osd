@@ -1,8 +1,8 @@
 .global-header-styling {
-    zIndex: 1002;
-    top: 0;
-    left: 0;
-    right: 0;
-    position: "fixed";
-    background-color: black;
+  z-index: 1002;
+  top: 0;
+  left: 0;
+  right: 0;
+  position: fixed;
+  background-color: var(--abe-headerBg, #0b2847);
 }

@@ -1,7 +1,15 @@
-import { SelectProps } from "@cloudscape-design/components";
+export interface SelectOption {
+  label: string;
+  value: string;
+}
+
+export interface SelectOptionGroup {
+  label: string;
+  options: SelectOption[];
+}
 
 export abstract class OptionsHelper {
-  static getSelectOption(model?: string): SelectProps.Option | null {
+  static getSelectOption(model?: string): SelectOption | null {
     if (!model) return null;
     const [, name] = model.split("::") ?? [];
     if (!name) return null;
@@ -49,7 +57,7 @@ export abstract class OptionsHelper {
     const keys = [...modelsMap.keys()];
     keys.sort((a, b) => a.localeCompare(b));
 
-    const options: SelectProps.OptionGroup[] = keys.map((key) => {
+    const options: SelectOptionGroup[] = keys.map((key) => {
       const items = modelsMap.get(key);
       items?.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -69,7 +77,7 @@ export abstract class OptionsHelper {
   static getSelectOptions<T extends { id: string; name: string }>(data: T[]) {
     data?.sort((a, b) => a.name.localeCompare(b.name));
 
-    const options: SelectProps.Option[] = data.map((item) => {
+    const options: SelectOption[] = data.map((item) => {
       return {
         label: item.name,
         value: item.id,

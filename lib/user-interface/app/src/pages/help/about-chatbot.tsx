@@ -1,42 +1,39 @@
-import {
-    BreadcrumbGroup,
-    ContentLayout,
-    Header,
-    SpaceBetween,
-    Alert,
-    Tabs,
-    Container
-  } from "@cloudscape-design/components";
-  import useOnFollow from "../../common/hooks/use-on-follow";
-  import BaseAppLayout from "../../components/base-app-layout";
-  import { CHATBOT_NAME } from "../../common/constants";
-  import { useState, useEffect, useContext } from "react";
-  import { Auth } from "aws-amplify";
-  import { ApiClient } from "../../common/api-client/api-client";
-  import { AppContext } from "../../common/app-context";
-  import styled from "styled-components";
+import Typography from "@mui/material/Typography";
+import Stack from "@mui/material/Stack";
+import Paper from "@mui/material/Paper";
+import Box from "@mui/material/Box";
 
-  const PageContainer = styled.div`
-    box-sizing: border-box;
-    padding: 20px 0;
-  `;
-  
-  export default function AboutChatbot() {
-    const onFollow = useOnFollow();
-    const [activeTab, setActiveTab] = useState("file");
-    const appContext = useContext(AppContext);
+export default function AboutChatbot() {
+  return (
+    <Box role="main">
+      <Typography variant="h2" component="h1" gutterBottom>
+        About ABE
+      </Typography>
 
-  
- 
-  
-    return (
-        <BaseAppLayout
-          contentType="cards"
-          content={
-            <PageContainer>
-                Hello
-            </PageContainer>
-          }
-        />
-      );
-    }
+      <Stack spacing={3}>
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h4" component="h2" gutterBottom>
+            Assistive Buyer Engine
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            ABE is an AI-powered assistant designed for the Massachusetts Executive Office
+            to provide guidance on state procurement processes. It uses advanced language
+            models and a curated knowledge base of procurement documentation to help users
+            find answers quickly and accurately.
+          </Typography>
+        </Paper>
+
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h4" component="h2" gutterBottom>
+            How It Works
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            ABE uses Retrieval-Augmented Generation (RAG) to search through official
+            procurement documents and provide contextually relevant answers. Source
+            documents are linked with each response so you can verify the information.
+          </Typography>
+        </Paper>
+      </Stack>
+    </Box>
+  );
+}

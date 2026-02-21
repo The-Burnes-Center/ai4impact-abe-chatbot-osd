@@ -1,20 +1,30 @@
 import {
   Box,
-  SpaceBetween,
+  Stack,
   Table,
-  Pagination,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  TableContainer,
+  Paper,
   Button,
-  Header,
-  Modal,
-  Spinner,
-} from "@cloudscape-design/components";
+  Typography,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  CircularProgress,
+  Checkbox,
+  IconButton,
+} from "@mui/material";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { useCallback, useContext, useEffect, useState, useRef } from "react";
 import { AdminDataType } from "../../common/types";
 import { ApiClient } from "../../common/api-client/api-client";
 import { AppContext } from "../../common/app-context";
 import { getColumnDefinition } from "./columns";
 import { Utils } from "../../common/utils";
-import { useCollection } from "@cloudscape-design/collection-hooks";
 import { useNotifications } from "../../components/notif-manager";
 
 export interface DocumentsTabProps {
@@ -37,50 +47,21 @@ export default function DocumentsTab(props: DocumentsTabProps) {
   const { addNotification, removeNotification } = useNotifications();
   const previousSyncStatusRef = useRef<boolean>(false);
 
-  /** Pagination, but this is currently not working.
-   * You will likely need to take the items object from useCollection in the
-   * Cloudscape component, but it currently just takes in pages directly.
-   */
-  const { items, collectionProps, paginationProps } = useCollection(pages, {
-    filtering: {
-      empty: (
-        <Box margin={{ vertical: "xs" }} textAlign="center" color="inherit">
-          <SpaceBetween size="m">
-            <b>No files</b>
-          </SpaceBetween>
-        </Box>
-      ),
-    },
-    pagination: { pageSize: 5 },
-    sorting: {
-      defaultState: {
-        sortingColumn: {
-          sortingField: "Key",
-        },
-        isDescending: true,
-      },
-    },
-    selection: {},
-  });
-
   useEffect(() => {
-    // If no sync time available, don't show unsynced alert
     if (!props.lastSyncTime) {
       props.setShowUnsyncedAlert(false);
       return;
     }
 
     try {
-      // Parse ISO 8601 UTC timestamp (e.g., "2026-02-20T14:17:00Z")
       const lastSyncDate = new Date(props.lastSyncTime);
-      
+
       if (isNaN(lastSyncDate.getTime())) {
-        console.error('Invalid lastSyncTime format:', props.lastSyncTime);
+        console.error("Invalid lastSyncTime format:", props.lastSyncTime);
         props.setShowUnsyncedAlert(false);
         return;
       }
 
-      // Check if any files have a LastModified date newer than the lastSyncTime
       const hasUnsyncedFiles = pages.some((page) =>
         page.Contents?.some((file) => {
           const fileDate = new Date(file.LastModified);
@@ -90,7 +71,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
 
       props.setShowUnsyncedAlert(hasUnsyncedFiles);
     } catch (error) {
-      console.error('Error comparing sync time:', error);
+      console.error("Error comparing sync time:", error);
       props.setShowUnsyncedAlert(false);
     }
   }, [pages, props.lastSyncTime, props.setShowUnsyncedAlert]);
@@ -100,7 +81,10 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     async (params: { continuationToken?: string; pageIndex?: number }) => {
       setLoading(true);
       try {
-        const result = await apiClient.knowledgeManagement.getDocuments(params?.continuationToken, params?.pageIndex)
+        const result = await apiClient.knowledgeManagement.getDocuments(
+          params?.continuationToken,
+          params?.pageIndex
+        );
         await props.statusRefreshFunction();
         setPages((current) => {
           if (typeof params.pageIndex !== "undefined") {
@@ -120,44 +104,42 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     [appContext, props.documentType]
   );
 
-  /** Whenever the memoized function changes, call it again */
   useEffect(() => {
     getDocuments({});
   }, [getDocuments]);
 
-  /** Handle clicks on the next page button, as well as retrievals of new pages if needed*/
   const onNextPageClick = async () => {
-    const continuationToken = pages[currentPageIndex - 1]?.NextContinuationToken;
+    const continuationToken =
+      pages[currentPageIndex - 1]?.NextContinuationToken;
 
     if (continuationToken) {
       if (pages.length <= currentPageIndex) {
         await getDocuments({ continuationToken });
       }
-      setCurrentPageIndex((current) => Math.min(pages.length + 1, current + 1));
+      setCurrentPageIndex((current) =>
+        Math.min(pages.length + 1, current + 1)
+      );
     }
   };
 
-  /** Handle clicks on the previous page button */
   const onPreviousPageClick = async () => {
     setCurrentPageIndex((current) =>
       Math.max(1, Math.min(pages.length - 1, current - 1))
     );
   };
 
-  /** Handle refreshes */
   const refreshPage = async () => {
-    // console.log(pages[Math.min(pages.length - 1, currentPageIndex - 1)]?.Contents!)
     if (currentPageIndex <= 1) {
       await getDocuments({ pageIndex: currentPageIndex });
     } else {
-      const continuationToken = pages[currentPageIndex - 2]?.NextContinuationToken!;
+      const continuationToken =
+        pages[currentPageIndex - 2]?.NextContinuationToken!;
       await getDocuments({ continuationToken });
     }
   };
 
   const columnDefinitions = getColumnDefinition(props.documentType, () => {});
 
-  /** Deletes selected files */
   const deleteSelectedFiles = async () => {
     if (!appContext) return;
     setLoading(true);
@@ -166,23 +148,20 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     const apiClient = new ApiClient(appContext);
     try {
       await Promise.all(
-        selectedItems.map((s) => apiClient.knowledgeManagement.deleteFile(s.Key!))
+        selectedItems.map((s) =>
+          apiClient.knowledgeManagement.deleteFile(s.Key!)
+        )
       );
     } catch (e) {
-      addNotification("error", "Error deleting files")
+      addNotification("error", "Error deleting files");
       console.error(e);
     }
-    // refresh the documents after deletion
     await getDocuments({ pageIndex: currentPageIndex });
 
-    setSelectedItems([])
+    setSelectedItems([]);
     setLoading(false);
   };
 
-  /** Start a polling interval to check sync status and disable the button if 
-   * syncing is not completed. Also refreshes the last sync time when sync completes.
-   * Uses a dynamic interval that polls more frequently (5s) when syncing is active.
-   */
   useEffect(() => {
     if (!appContext) return;
     const apiClient = new ApiClient(appContext);
@@ -194,52 +173,42 @@ export default function DocumentsTab(props: DocumentsTabProps) {
         console.log("Sync status check:", result);
         const isCurrentlySyncing = result != "DONE SYNCING";
         const wasSyncing = previousSyncStatusRef.current;
-        
-        console.log(`Sync status: wasSyncing=${wasSyncing}, isCurrentlySyncing=${isCurrentlySyncing}`);
-        
-        /** Always update the syncing state based on current status */
+
+        console.log(
+          `Sync status: wasSyncing=${wasSyncing}, isCurrentlySyncing=${isCurrentlySyncing}`
+        );
+
         setSyncing(isCurrentlySyncing);
-        
-        /** If sync just completed (transitioned from syncing to done), refresh the last sync time */
+
         if (wasSyncing && !isCurrentlySyncing) {
-          console.log("✅ Sync completed! Transition detected: wasSyncing=true -> isCurrentlySyncing=false");
-          console.log("Calling statusRefreshFunction() to update last sync time...");
+          console.log(
+            "Sync completed! Transition detected: wasSyncing=true -> isCurrentlySyncing=false"
+          );
           try {
-            // Add a small delay to ensure backend has updated the sync job status
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise((resolve) => setTimeout(resolve, 1000));
             await props.statusRefreshFunction();
-            console.log("✅ statusRefreshFunction() completed");
           } catch (error) {
-            console.error("❌ Error calling statusRefreshFunction():", error);
+            console.error("Error calling statusRefreshFunction():", error);
           }
-        } else if (wasSyncing && isCurrentlySyncing) {
-          console.log("⏳ Still syncing...");
-        } else if (!wasSyncing && !isCurrentlySyncing) {
-          console.log("✅ No sync in progress");
         }
-        
-        // Update the ref AFTER checking for transition
+
         previousSyncStatusRef.current = isCurrentlySyncing;
-        
-        // Adjust polling frequency based on sync status
+
         if (intervalId) {
           clearInterval(intervalId);
         }
-        // Poll every 5 seconds when syncing, 10 seconds when idle
         const pollInterval = isCurrentlySyncing ? 5000 : 10000;
-        console.log(`Setting poll interval to ${pollInterval}ms (syncing: ${isCurrentlySyncing})`);
         intervalId = setInterval(getStatus, pollInterval);
       } catch (error) {
-        addNotification("error", "Error checking sync status, please try again later.")
+        addNotification(
+          "error",
+          "Error checking sync status, please try again later."
+        );
         console.error("Error checking sync status:", error);
-        // On error, keep current polling interval
       }
     };
 
-    // Initial check - set the ref based on current status
-    getStatus().then(() => {
-      // After first check, the ref will be set correctly
-    });
+    getStatus();
 
     return () => {
       if (intervalId) {
@@ -248,145 +217,228 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     };
   }, [appContext, props]);
 
-  /** Function to run a sync */
   const syncKendra = async () => {
-    if (syncing) {
-      // setSyncing(false)
-      return;
-    }
+    if (syncing) return;
     console.log("Starting sync...");
     setSyncing(true);
-    previousSyncStatusRef.current = true; // Track that sync has started
-    console.log("Set previousSyncStatusRef.current to true");
+    previousSyncStatusRef.current = true;
     try {
       const state = await apiClient.knowledgeManagement.syncKendra();
       console.log("Sync started, response:", state);
       if (state != "STARTED SYNCING") {
-        addNotification("error", "Error running sync, please try again later.")
-        setSyncing(false)
+        addNotification(
+          "error",
+          "Error running sync, please try again later."
+        );
+        setSyncing(false);
         previousSyncStatusRef.current = false;
         return;
       }
-      // Sync started successfully - polling will detect when it completes
-      // Force an immediate status check after a short delay to catch quick syncs
       setTimeout(async () => {
         try {
           const result = await apiClient.knowledgeManagement.kendraIsSyncing();
           const isCurrentlySyncing = result != "DONE SYNCING";
-          console.log("Immediate status check (2s after start):", result, "isSyncing:", isCurrentlySyncing);
           setSyncing(isCurrentlySyncing);
           previousSyncStatusRef.current = isCurrentlySyncing;
           if (!isCurrentlySyncing) {
-            console.log("Sync completed quickly, refreshing last sync time");
             await props.statusRefreshFunction();
           }
         } catch (error) {
           console.error("Error in immediate status check:", error);
         }
-      }, 2000); // Check after 2 seconds
+      }, 2000);
     } catch (error) {
       console.log(error);
-      addNotification("error", "Error running sync, please try again later.")
-      setSyncing(false)
+      addNotification(
+        "error",
+        "Error running sync, please try again later."
+      );
+      setSyncing(false);
       previousSyncStatusRef.current = false;
     }
-  }
+  };
+
+  const currentItems =
+    pages[Math.min(pages.length - 1, currentPageIndex - 1)]?.Contents || [];
+
+  const isSelected = (item: any) =>
+    selectedItems.some((s) => s.Key === item.Key);
+
+  const toggleSelection = (item: any) => {
+    setSelectedItems((prev) =>
+      isSelected(item)
+        ? prev.filter((s) => s.Key !== item.Key)
+        : [...prev, item]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedItems.length === currentItems.length) {
+      setSelectedItems([]);
+    } else {
+      setSelectedItems([...currentItems]);
+    }
+  };
 
   return (
-    <><Modal
-      onDismiss={() => setShowModalDelete(false)}
-      visible={showModalDelete}
-      footer={
-        <Box float="right">
-          <SpaceBetween direction="horizontal" size="xs">
-            {" "}
-            <Button variant="link" onClick={() => setShowModalDelete(false)}>
-              Cancel
+    <>
+      <Dialog
+        open={showModalDelete}
+        onClose={() => setShowModalDelete(false)}
+      >
+        <DialogTitle>
+          {"Delete file" + (selectedItems.length > 1 ? "s" : "")}
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            Do you want to delete{" "}
+            {selectedItems.length == 1
+              ? `file ${selectedItems[0]?.Key}?`
+              : `${selectedItems.length} files?`}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowModalDelete(false)}>Cancel</Button>
+          <Button onClick={deleteSelectedFiles} variant="contained">
+            Ok
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Stack spacing={2}>
+        <Stack
+          direction="row"
+          justifyContent="space-between"
+          alignItems="center"
+        >
+          <Box>
+            <Typography variant="h6">Files</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Please expect a delay for your changes to be reflected. Press the
+              refresh button to see the latest changes.
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={1}>
+            <IconButton onClick={refreshPage} aria-label="Refresh">
+              <RefreshIcon />
+            </IconButton>
+            <Button onClick={props.tabChangeFunction} variant="outlined" size="small">
+              Add Files
             </Button>
-            <Button variant="primary" onClick={deleteSelectedFiles}>
-              Ok
+            <Button
+              variant="contained"
+              color="error"
+              size="small"
+              disabled={selectedItems.length === 0}
+              onClick={() => {
+                if (selectedItems.length > 0) setShowModalDelete(true);
+              }}
+            >
+              Delete
             </Button>
-          </SpaceBetween>{" "}
-        </Box>
-      }
-      header={"Delete file" + (selectedItems.length > 1 ? "s" : "")}
-    >
-      Do you want to delete{" "}
-      {selectedItems.length == 1
-        ? `file ${selectedItems[0].Key!}?`
-        : `${selectedItems.length} files?`}
-    </Modal>
-      <Table
-        {...collectionProps}
-        loading={loading}
-        loadingText={`Loading files`}
-        columnDefinitions={columnDefinitions}
-        selectionType="multi"
-        onSelectionChange={({ detail }) => {
-          console.log(detail);
-          setSelectedItems(detail.selectedItems);
-        }}
-        selectedItems={selectedItems}
-        items={pages[Math.min(pages.length - 1, currentPageIndex - 1)]?.Contents!}
-        trackBy="Key"
-        header={
-          <Header
-            actions={
-              <SpaceBetween direction="horizontal" size="xs">
-                <Button iconName="refresh" onClick={refreshPage} />
-                <Button
-                  onClick={props.tabChangeFunction}
-                >
-                  {'Add Files'}
-                </Button>
-                <Button
-                  variant="primary"
-                  disabled={selectedItems.length == 0}
-                  onClick={() => {
-                    if (selectedItems.length > 0) setShowModalDelete(true);
-                  }}
-                  data-testid="submit">
-                  Delete
-                </Button>
-                <Button
-                  variant="primary"
-                  disabled={syncing}
-                  onClick={() => {
-                    syncKendra();
-                  }}
-                // data-testid="submit"
-                >
-                  {syncing ? (
-                    <>
-                      Syncing data...&nbsp;&nbsp;
-                      <Spinner />
-                    </>
-                  ) : (
-                    "Sync data now"
-                  )}
-                </Button>
-              </SpaceBetween>
-            }
-            description="Please expect a delay for your changes to be reflected. Press the refresh button to see the latest changes."
+            <Button
+              variant="contained"
+              size="small"
+              disabled={syncing}
+              onClick={syncKendra}
+            >
+              {syncing ? (
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <span>Syncing data...</span>
+                  <CircularProgress size={16} color="inherit" />
+                </Stack>
+              ) : (
+                "Sync data now"
+              )}
+            </Button>
+          </Stack>
+        </Stack>
+
+        {loading ? (
+          <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
+            <CircularProgress />
+          </Box>
+        ) : currentItems.length === 0 ? (
+          <Box sx={{ textAlign: "center", p: 4 }}>
+            <Typography color="text.secondary">No files available</Typography>
+          </Box>
+        ) : (
+          <TableContainer component={Paper}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      indeterminate={
+                        selectedItems.length > 0 &&
+                        selectedItems.length < currentItems.length
+                      }
+                      checked={
+                        currentItems.length > 0 &&
+                        selectedItems.length === currentItems.length
+                      }
+                      onChange={toggleSelectAll}
+                    />
+                  </TableCell>
+                  {columnDefinitions.map((col) => (
+                    <TableCell key={col.id} sx={{ fontWeight: "bold" }}>
+                      {col.header}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {currentItems.map((item, index) => (
+                  <TableRow
+                    key={item.Key || index}
+                    hover
+                    selected={isSelected(item)}
+                  >
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        checked={isSelected(item)}
+                        onChange={() => toggleSelection(item)}
+                      />
+                    </TableCell>
+                    {columnDefinitions.map((col) => (
+                      <TableCell key={col.id}>{col.cell(item)}</TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+
+        {pages.length > 0 && (
+          <Stack
+            direction="row"
+            justifyContent="center"
+            spacing={2}
+            sx={{ py: 1 }}
           >
-            {"Files"}
-          </Header>
-        }
-        empty={
-          <Box textAlign="center">No files available</Box>
-        }
-        pagination={
-          pages.length === 0 ? null : (
-            <Pagination
-              openEnd={true}
-              pagesCount={pages.length}
-              currentPageIndex={currentPageIndex}
-              onNextPageClick={onNextPageClick}
-              onPreviousPageClick={onPreviousPageClick}
-            />
-          )
-        }
-      />
+            <Button
+              size="small"
+              disabled={currentPageIndex <= 1}
+              onClick={onPreviousPageClick}
+            >
+              Previous
+            </Button>
+            <Typography variant="body2" sx={{ alignSelf: "center" }}>
+              Page {currentPageIndex}
+            </Typography>
+            <Button
+              size="small"
+              disabled={
+                !pages[currentPageIndex - 1]?.NextContinuationToken
+              }
+              onClick={onNextPageClick}
+            >
+              Next
+            </Button>
+          </Stack>
+        )}
+      </Stack>
     </>
   );
 }

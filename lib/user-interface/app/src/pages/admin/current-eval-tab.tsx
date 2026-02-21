@@ -1,390 +1,361 @@
 import {
-    BreadcrumbGroup,
-    ContentLayout,
-    Header,
-    SpaceBetween,
-    Container,
-    Alert,
-    ProgressBar,
-    Grid,
-    LineChart,
-  } from "@cloudscape-design/components";
-  import { Authenticator, Heading, useTheme } from "@aws-amplify/ui-react";
-  import { Utils } from "../../common/utils";
-  import useOnFollow from "../../common/hooks/use-on-follow";
-  import FeedbackTab from "./feedback-tab";
-  import FeedbackPanel from "../../components/feedback-panel";
-  import { CHATBOT_NAME } from "../../common/constants";
-  import { getColumnDefinition } from "./columns";
-  import { useCollection } from "@cloudscape-design/collection-hooks";
-  import { useState, useEffect, useMemo, useContext, useCallback, useRef } from "react";
-  import { useNotifications } from "../../components/notif-manager";
-  import { Auth } from "aws-amplify";
-  import { ApiClient } from "../../common/api-client/api-client"; 
-  import { AppContext } from "../../common/app-context";
-  
-  // Add CSS for loading animation
-  const loadingAnimationStyle = `
-    @keyframes loading {
-      0% {
-        left: -30%;
-      }
-      100% {
-        left: 100%;
-      }
-    }
-  `;
-  
-  export interface CurrentEvalTabProps {
-    tabChangeFunction: () => void;
-    addTestCasesHandler?: () => void;
-    newEvalHandler?: () => void;
-  }
-  
-  
-  export default function CurrentEvalTab(props: CurrentEvalTabProps) {
-    const appContext = useContext(AppContext)
-    const onFollow = useOnFollow();
-    const { tokens } = useTheme();
-    const [metrics, setMetrics] = useState<any>({});
-    const [admin, setAdmin] = useState<boolean>(false);
-    const apiClient = useMemo(() => new ApiClient(appContext), [appContext])
-    const [currentPageIndex, setCurrentPageIndex] = useState(1);
-    const [evaluations, setEvaluations] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const { addNotification } = useNotifications();
-    const needsRefresh = useRef(false);
-    const [pages, setPages] = useState([]);
-    const [error, setError] = useState<string | null>(null);
-  
-    const { items, collectionProps, paginationProps } = useCollection(evaluations, {
-      pagination: { pageSize: 10 },
-      sorting: {
-        defaultState: {
-          sortingColumn: {
-            sortingField: "timestamp",
-          },
-          isDescending: true,
-        },
-      },
-    });
-  
-  
-    const getEvaluations = useCallback(async () => {
-      setLoading(true);
-      try {
-        const result = await apiClient.evaluations.getEvaluationSummaries();
+  Typography,
+  Stack,
+  Paper,
+  Alert,
+  LinearProgress,
+  Box,
+  Button,
+  CircularProgress,
+} from "@mui/material";
+import Grid from "@mui/material/Grid2";
+import { LineChart } from "@mui/x-charts/LineChart";
+import { useState, useEffect, useMemo, useContext, useCallback } from "react";
+import { useNotifications } from "../../components/notif-manager";
+import { Auth } from "aws-amplify";
+import { ApiClient } from "../../common/api-client/api-client";
+import { AppContext } from "../../common/app-context";
+import { Utils } from "../../common/utils";
 
-        // Check if there's an error in the result
-        if (result.error) {
-          console.error("Error from API:", result.error);
-          setError(result.error);
-          setEvaluations([]);
-          setLoading(false);
-          return;
-        }
-        
-        // Check if result exists and has Items property
-        if (result && result.Items) {
-          // Take only the first 10 evaluations
-          const firstTenEvaluations = result.Items.slice(0, 10);
-          
-          // Map the evaluations to the expected format if needed
-          const processedEvaluations = firstTenEvaluations.map(evaluation => ({
-            ...evaluation,
-            // Ensure we have the required fields for the UI
-            EvaluationId: evaluation.EvaluationId,
-            evaluation_name: evaluation.evaluation_name || "Unnamed Evaluation",
-            Timestamp: evaluation.Timestamp,
-            average_similarity: typeof evaluation.average_similarity === 'number' ? evaluation.average_similarity : 0,
-            average_relevance: typeof evaluation.average_relevance === 'number' ? evaluation.average_relevance : 0,
-            average_correctness: typeof evaluation.average_correctness === 'number' ? evaluation.average_correctness : 0,
-            total_questions: evaluation.total_questions || 0
-          }));
-          
-          // Update state with just these evaluations
-          setEvaluations(processedEvaluations);
-          
-          // Clear any previous errors
-          setError(null);
-        } else {
-          // Handle case where result doesn't have expected structure
-          setEvaluations([]);
-          setError("No evaluation data available. This could be due to an empty database or a configuration issue.");
-        }
-      } catch (error) {
-        console.error("Error fetching evaluations:", error);
-        const errorMessage = Utils.getErrorMessage(error);
-        console.error("Error details:", errorMessage);
-        setError(`Failed to load evaluations: ${errorMessage}`);
+export interface CurrentEvalTabProps {
+  tabChangeFunction: () => void;
+  addTestCasesHandler?: () => void;
+  newEvalHandler?: () => void;
+}
+
+export default function CurrentEvalTab(props: CurrentEvalTabProps) {
+  const appContext = useContext(AppContext);
+  const [admin, setAdmin] = useState<boolean>(false);
+  const apiClient = useMemo(() => new ApiClient(appContext), [appContext]);
+  const [evaluations, setEvaluations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const { addNotification } = useNotifications();
+  const [error, setError] = useState<string | null>(null);
+
+  const getEvaluations = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await apiClient.evaluations.getEvaluationSummaries();
+
+      if (result.error) {
+        console.error("Error from API:", result.error);
+        setError(result.error);
         setEvaluations([]);
-      } finally {
         setLoading(false);
+        return;
       }
-    }, [apiClient.evaluations]);
-  
-  // add text to dropdown
-  useEffect(() => {
-    const addAriaLabelToButton = () => {
-      // Selects all buttons within the parent container
-      const buttons = document.querySelectorAll('div.awsui_child_18582_1wlz1_145 button');
-  
-      buttons.forEach((button) => {
-        if (!button.hasAttribute('aria-label')) {
-          console.log('Button found, adding aria-label');
-          button.setAttribute('aria-label', 'Open dropdown');
-        }
-      });
-    };
-  
-    // initial run
-    addAriaLabelToButton();
-  
-    const observer = new MutationObserver(() => {
-      addAriaLabelToButton();
-    });
-  
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-  
-    return () => observer.disconnect();
-  }, []);
-  
-  
+
+      if (result && result.Items) {
+        const firstTenEvaluations = result.Items.slice(0, 10);
+
+        const processedEvaluations = firstTenEvaluations.map(
+          (evaluation) => ({
+            ...evaluation,
+            EvaluationId: evaluation.EvaluationId,
+            evaluation_name:
+              evaluation.evaluation_name || "Unnamed Evaluation",
+            Timestamp: evaluation.Timestamp,
+            average_similarity:
+              typeof evaluation.average_similarity === "number"
+                ? evaluation.average_similarity
+                : 0,
+            average_relevance:
+              typeof evaluation.average_relevance === "number"
+                ? evaluation.average_relevance
+                : 0,
+            average_correctness:
+              typeof evaluation.average_correctness === "number"
+                ? evaluation.average_correctness
+                : 0,
+            total_questions: evaluation.total_questions || 0,
+          })
+        );
+
+        setEvaluations(processedEvaluations);
+        setError(null);
+      } else {
+        setEvaluations([]);
+        setError(
+          "No evaluation data available. This could be due to an empty database or a configuration issue."
+        );
+      }
+    } catch (error) {
+      console.error("Error fetching evaluations:", error);
+      const errorMessage = Utils.getErrorMessage(error);
+      console.error("Error details:", errorMessage);
+      setError(`Failed to load evaluations: ${errorMessage}`);
+      setEvaluations([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [apiClient.evaluations]);
+
   useEffect(() => {
     getEvaluations();
   }, [getEvaluations]);
-  
-    useEffect(() => {
-      (async () => {
+
+  useEffect(() => {
+    (async () => {
+      const result = await Auth.currentAuthenticatedUser();
+      if (!result || Object.keys(result).length === 0) {
+        console.log("Signed out!");
+        Auth.signOut();
+        return;
+      }
+
+      try {
         const result = await Auth.currentAuthenticatedUser();
-        if (!result || Object.keys(result).length === 0) {
-          console.log("Signed out!")
-          Auth.signOut();
-          return;
-        }
-  
-        try {
-          const result = await Auth.currentAuthenticatedUser();
-          const admin = result?.signInUserSession?.idToken?.payload["custom:role"];
-          if (admin) {
-            const data = JSON.parse(admin);
-            if (data.includes("Admin")) {
-              setAdmin(true);
-            }
+        const admin =
+          result?.signInUserSession?.idToken?.payload["custom:role"];
+        if (admin) {
+          const data = JSON.parse(admin);
+          if (data.includes("Admin")) {
+            setAdmin(true);
           }
         }
-        catch (e){
-          console.log(e);
-        }
-      })();
-    }, []);
-  
-    if (!admin) {
-      return (
-        <div
-          style={{
-            height: "90vh",
-            width: "100%",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <Alert header="Configuration error" type="error">
-            You are not authorized to view this page!
-          </Alert>
-        </div>
-      );
-    }
-  
-    if (loading) {
-      return (
-        <Container header={<Header variant="h2">Loading Evaluations</Header>}>
-          <style>{loadingAnimationStyle}</style>
-          <SpaceBetween size="l">
-            <div style={{ padding: "20px", textAlign: "center" }}>
-              <div style={{ marginBottom: "20px" }}>
-                <div style={{ 
-                  width: "100%", 
-                  height: "4px", 
-                  backgroundColor: "#eaeded",
-                  borderRadius: "4px",
-                  overflow: "hidden",
-                  position: "relative"
-                }}>
-                  <div style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    height: "100%",
-                    width: "30%",
-                    backgroundColor: "#0972d3",
-                    animation: "loading 1.5s infinite ease-in-out",
-                    borderRadius: "4px"
-                  }}></div>
-                </div>
-              </div>
-              <p>Fetching evaluation data...</p>
-            </div>
-          </SpaceBetween>
-        </Container>
-      );
-    }
-  
-    if (items.length === 0) {
-      console.log("items: ", items);
-      return (
-        <Container header={<Header variant="h2">No Evaluations Found</Header>}>
-          <SpaceBetween size="l">
-            <Alert
-              type="info"
-              header="No evaluation data available"
-            >
-              {error ? (
-                <p>{error}</p>
-              ) : (
-                <>
-                  <p>There are no LLM evaluations in the database yet. This is expected for new deployments. Follow these steps to get started:</p>
-                  <ol style={{ marginLeft: "20px", lineHeight: "1.5" }}>
-                    <li><strong>Ensure backend deployment</strong> - Make sure the backend API and Lambda functions are properly deployed</li>
-                    <li><strong>Check CORS configuration</strong> - Ensure the API Gateway has CORS enabled with appropriate origins</li>
-                    <li><strong>Upload test cases</strong> - Go to the "Add Test Cases" tab to upload JSON files containing test questions and expected answers</li>
-                    <li><strong>Run an evaluation</strong> - Navigate to the "New Evaluation" tab to start a new evaluation run using your test cases</li>
-                    <li><strong>View results</strong> - Once complete, return to this tab to view performance metrics and trends</li>
-                  </ol>
-                  <p style={{ marginTop: "10px" }}>If you're seeing a "Cross-Origin Request Blocked" message, you need to update the CORS configuration in your API Gateway. Add your frontend origin to the allowed origins list.</p>
-                </>
-              )}
-            </Alert>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <button 
-                onClick={props.addTestCasesHandler || props.tabChangeFunction} 
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#0972d3',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                  boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
-                }}
-              >
-                Upload Test Cases
-              </button>
-              <button 
-                onClick={props.newEvalHandler || props.tabChangeFunction} 
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#0972d3',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                  boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
-                }}
-              >
-                Start New Evaluation
-              </button>
-            </div>
-          </SpaceBetween>
-        </Container>
-      );
-    }
-  
-    // Sample scores
-    const last_entry = items[0];
-    const acc_score = last_entry['average_correctness'] * 100; // Score out of 100
-    const rel_score = last_entry['average_relevance'] * 100; // Score out of 100
-    const sim_score = last_entry['average_similarity'] * 100; // Score out of 100
-  
-    // Create arrays for accuracy, relevancy, and similarity data based on items
-    const accuracyData = items.map((item, index) => ({
-      x: new Date(item.Timestamp).getTime(),
-      y: item['average_correctness'] * 100 // Score out of 100
-    }));
-  
-    const relevancyData = items.map((item, index) => ({
-      x: new Date(item.Timestamp).getTime(),
-      y: item['average_relevance'] * 100
-    }));
-  
-    const similarityData = items.map((item, index) => ({
-      x: new Date(item.Timestamp).getTime(),
-      y: item['average_similarity'] * 100
-    }));
-  
-    return (    
-            <SpaceBetween size="xxl" direction="vertical">
-              <Grid
-                gridDefinition={[
-                  { colspan: { default: 12, xs: 4 } },
-                  { colspan: { default: 12, xs: 4 } },
-                  { colspan: { default: 12, xs: 4 } },
-                ]}
-              >
-                <Container header={<Header variant="h3">Accuracy</Header>}>
-                  <ProgressBar
-                    value={acc_score}
-                    description="Answer Correctness breaks down answers into different factual statements and looks at the overlap of statements in the expected answer given in a test case and the generated answer from the LLM"
-                    resultText={`${acc_score}%`}
-                  />
-                </Container>
-                <Container header={<Header variant="h3">Relevancy</Header>}>
-                  <ProgressBar
-                    value={rel_score}
-                    description="Answer Relevancy looks at the generated answer and uses an LLM to guess what questions it may be answering. The better the LLM guesses the original question, the more relevant the generated answer is"
-                    resultText={`${rel_score}%`}
-                  />
-                </Container>
-                <Container header={<Header variant="h3">Similarity</Header>}>
-                  <ProgressBar
-                    value={sim_score}
-                    description="Answer Similarity looks only at the semantic similarity of the expected answer and the LLM generated answer by finding the cosine similarity between the two answers and converting it into a score"
-                    resultText={`${sim_score}%`}
-                  />
-                </Container>
-              </Grid>
-  
-              {/* Combined Line Chart for All Metrics */}
-              <Container header={<Header variant="h3">Performance Trends</Header>}>
-                <LineChart
-                  series={[
-                    { title: "Accuracy", type: "line", data: accuracyData },
-                    { title: "Relevancy", type: "line", data: relevancyData },
-                    { title: "Similarity", type: "line", data: similarityData },
-                  ]}
-                  xDomain={[
-                    Math.min(...items.map(i => new Date(i.Timestamp).getTime())), 
-                    Math.max(...items.map(i => new Date(i.Timestamp).getTime()))
-                  ]}
-                  yDomain={[50, 100]}// Adjust based on the data range
-                  //xTickValues={[1, 2, 3, 4, 5]}
-                  i18nStrings={{
-                    legendAriaLabel: "Legend",
-                    chartAriaRoleDescription: "line chart",
-                    xTickFormatter: value =>
-                      new Date(value)
-                        .toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          hour: "numeric",
-                          minute: "numeric",
-                          hour12: false
-                        })
-                        .split(",")
-                        .join("\n"),
-                    yTickFormatter: value => `${value.toFixed(0)}%`,
-                  }}
-                  ariaLabel="Metrics over time"
-                />
-              </Container>
-            </SpaceBetween>
-    )
+      } catch (e) {
+        console.log(e);
+      }
+    })();
+  }, []);
+
+  if (!admin) {
+    return (
+      <Box
+        sx={{
+          height: "90vh",
+          width: "100%",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        <Alert severity="error">
+          You are not authorized to view this page!
+        </Alert>
+      </Box>
+    );
   }
+
+  if (loading) {
+    return (
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Loading Evaluations
+        </Typography>
+        <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+          <CircularProgress />
+        </Box>
+        <Typography variant="body2" align="center" color="text.secondary">
+          Fetching evaluation data...
+        </Typography>
+      </Paper>
+    );
+  }
+
+  if (evaluations.length === 0) {
+    return (
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          No Evaluations Found
+        </Typography>
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {error ? (
+            <Typography variant="body2">{error}</Typography>
+          ) : (
+            <>
+              <Typography variant="body2" gutterBottom>
+                There are no LLM evaluations in the database yet. This is
+                expected for new deployments. Follow these steps to get started:
+              </Typography>
+              <ol style={{ marginLeft: "20px", lineHeight: "1.5" }}>
+                <li>
+                  <strong>Ensure backend deployment</strong> - Make sure the
+                  backend API and Lambda functions are properly deployed
+                </li>
+                <li>
+                  <strong>Check CORS configuration</strong> - Ensure the API
+                  Gateway has CORS enabled with appropriate origins
+                </li>
+                <li>
+                  <strong>Upload test cases</strong> - Go to the "Add Test
+                  Cases" tab to upload JSON files containing test questions and
+                  expected answers
+                </li>
+                <li>
+                  <strong>Run an evaluation</strong> - Navigate to the "New
+                  Evaluation" tab to start a new evaluation run using your test
+                  cases
+                </li>
+                <li>
+                  <strong>View results</strong> - Once complete, return to this
+                  tab to view performance metrics and trends
+                </li>
+              </ol>
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                If you're seeing a "Cross-Origin Request Blocked" message, you
+                need to update the CORS configuration in your API Gateway. Add
+                your frontend origin to the allowed origins list.
+              </Typography>
+            </>
+          )}
+        </Alert>
+        <Stack direction="row" justifyContent="space-between">
+          <Button
+            onClick={props.addTestCasesHandler || props.tabChangeFunction}
+            variant="contained"
+          >
+            Upload Test Cases
+          </Button>
+          <Button
+            onClick={props.newEvalHandler || props.tabChangeFunction}
+            variant="contained"
+          >
+            Start New Evaluation
+          </Button>
+        </Stack>
+      </Paper>
+    );
+  }
+
+  const last_entry = evaluations[0];
+  const acc_score = last_entry["average_correctness"] * 100;
+  const rel_score = last_entry["average_relevance"] * 100;
+  const sim_score = last_entry["average_similarity"] * 100;
+
+  const sortedEvals = [...evaluations].sort(
+    (a, b) =>
+      new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime()
+  );
+
+  const timestamps = sortedEvals.map((i) => new Date(i.Timestamp));
+  const accuracyValues = sortedEvals.map(
+    (i) => i["average_correctness"] * 100
+  );
+  const relevancyValues = sortedEvals.map(
+    (i) => i["average_relevance"] * 100
+  );
+  const similarityValues = sortedEvals.map(
+    (i) => i["average_similarity"] * 100
+  );
+
+  return (
+    <Stack spacing={3}>
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Accuracy
+            </Typography>
+            <LinearProgress
+              variant="determinate"
+              value={acc_score}
+              sx={{ height: 8, borderRadius: 4, mb: 1 }}
+            />
+            <Typography variant="h5" fontWeight="bold">
+              {acc_score.toFixed(1)}%
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Answer Correctness breaks down answers into different factual
+              statements and looks at the overlap of statements in the expected
+              answer given in a test case and the generated answer from the LLM
+            </Typography>
+          </Paper>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Relevancy
+            </Typography>
+            <LinearProgress
+              variant="determinate"
+              value={rel_score}
+              sx={{ height: 8, borderRadius: 4, mb: 1 }}
+            />
+            <Typography variant="h5" fontWeight="bold">
+              {rel_score.toFixed(1)}%
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Answer Relevancy looks at the generated answer and uses an LLM to
+              guess what questions it may be answering. The better the LLM
+              guesses the original question, the more relevant the generated
+              answer is
+            </Typography>
+          </Paper>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Similarity
+            </Typography>
+            <LinearProgress
+              variant="determinate"
+              value={sim_score}
+              sx={{ height: 8, borderRadius: 4, mb: 1 }}
+            />
+            <Typography variant="h5" fontWeight="bold">
+              {sim_score.toFixed(1)}%
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Answer Similarity looks only at the semantic similarity of the
+              expected answer and the LLM generated answer by finding the cosine
+              similarity between the two answers and converting it into a score
+            </Typography>
+          </Paper>
+        </Grid>
+      </Grid>
+
+      <Paper sx={{ p: 2 }}>
+        <Typography variant="h6" gutterBottom>
+          Performance Trends
+        </Typography>
+        {timestamps.length > 1 ? (
+          <Box sx={{ width: "100%", height: 350 }}>
+            <LineChart
+              xAxis={[
+                {
+                  data: timestamps,
+                  scaleType: "time",
+                  valueFormatter: (date: Date) =>
+                    date.toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "numeric",
+                      hour12: false,
+                    }),
+                },
+              ]}
+              yAxis={[
+                {
+                  min: 50,
+                  max: 100,
+                  valueFormatter: (v) => `${v}%`,
+                },
+              ]}
+              series={[
+                {
+                  data: accuracyValues,
+                  label: "Accuracy",
+                },
+                {
+                  data: relevancyValues,
+                  label: "Relevancy",
+                },
+                {
+                  data: similarityValues,
+                  label: "Similarity",
+                },
+              ]}
+              height={320}
+            />
+          </Box>
+        ) : (
+          <Typography variant="body2" color="text.secondary" align="center">
+            Need at least 2 evaluations to show trends
+          </Typography>
+        )}
+      </Paper>
+    </Stack>
+  );
+}

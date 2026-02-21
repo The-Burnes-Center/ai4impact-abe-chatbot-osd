@@ -1,13 +1,23 @@
-import { Link, LinkProps } from "@cloudscape-design/components";
-import useOnFollow from "../../common/hooks/use-on-follow";
+import MuiLink, { LinkProps as MuiLinkProps } from "@mui/material/Link";
+import { Link as RouterDomLink } from "react-router-dom";
 
-interface CustomLinkProps extends LinkProps {
-  style?: React.CSSProperties;
-  className?: string;
+interface RouterLinkProps extends MuiLinkProps {
+  href?: string;
+  external?: boolean;
 }
 
-export default function RouterLink(props: CustomLinkProps) {
-  const onFollow = useOnFollow();
+export default function RouterLink({ href, external, children, ...rest }: RouterLinkProps) {
+  if (external || !href) {
+    return (
+      <MuiLink href={href} target="_blank" rel="noopener noreferrer" {...rest}>
+        {children}
+      </MuiLink>
+    );
+  }
 
-  return <Link {...props} onFollow={onFollow} />;
+  return (
+    <MuiLink component={RouterDomLink} to={href} {...rest}>
+      {children}
+    </MuiLink>
+  );
 }

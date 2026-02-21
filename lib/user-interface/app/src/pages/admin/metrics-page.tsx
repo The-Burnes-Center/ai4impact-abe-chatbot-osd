@@ -2,10 +2,6 @@ import { useState, useEffect, useContext } from "react";
 import { Auth } from "aws-amplify";
 import { ApiClient } from "../../common/api-client/api-client";
 import { AppContext } from "../../common/app-context";
-import BaseAppLayout from "../../components/base-app-layout";
-import { BreadcrumbGroup } from "@cloudscape-design/components";
-import useOnFollow from "../../common/hooks/use-on-follow";
-import { CHATBOT_NAME } from "../../common/constants";
 import {
   Box,
   Card,
@@ -19,13 +15,14 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   CircularProgress,
   Alert,
   IconButton,
   Chip,
   Collapse,
   Stack,
+  Skeleton,
+  Tooltip,
 } from "@mui/material";
 import Grid from "@mui/material/Grid2";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -38,6 +35,7 @@ import ForumIcon from "@mui/icons-material/Forum";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import { LineChart } from "@mui/x-charts/LineChart";
 import { BarChart } from "@mui/x-charts/BarChart";
+import AdminPageLayout from "../../components/admin-page-layout";
 
 interface MetricsData {
   unique_users: number;
@@ -66,34 +64,32 @@ function KPICard({
   title,
   value,
   icon,
-  color,
 }: {
   title: string;
   value: string | number;
   icon: React.ReactNode;
-  color: string;
 }) {
   return (
     <Card sx={{ height: "100%" }}>
-      <CardContent>
+      <CardContent sx={{ p: 2.5 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
           <Box>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
               {title}
             </Typography>
-            <Typography variant="h4" fontWeight="bold">
+            <Typography variant="h3" sx={{ mt: 0.5 }}>
               {typeof value === "number" ? value.toLocaleString() : value}
             </Typography>
           </Box>
           <Box
             sx={{
-              bgcolor: `${color}15`,
+              bgcolor: "primary.light",
               borderRadius: 2,
               p: 1,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: color,
+              color: "primary.main",
             }}
           >
             {icon}
@@ -105,9 +101,10 @@ function KPICard({
 }
 
 function OverviewTab({ metrics }: { metrics: MetricsData }) {
-  const daily = [...metrics.daily_breakdown].sort((a, b) => a.date.localeCompare(b.date));
+  const daily = [...metrics.daily_breakdown].sort((a, b) =>
+    a.date.localeCompare(b.date)
+  );
   const recentDaily = daily.slice(-30);
-
   const dates = recentDaily.map((d) => d.date);
   const sessions = recentDaily.map((d) => d.sessions);
   const messages = recentDaily.map((d) => d.messages);
@@ -115,38 +112,18 @@ function OverviewTab({ metrics }: { metrics: MetricsData }) {
 
   return (
     <Box sx={{ mt: 3 }}>
-      <Grid container spacing={3} sx={{ mb: 4 }}>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <KPICard
-            title="Total Users"
-            value={metrics.unique_users}
-            icon={<PeopleIcon />}
-            color="#1976d2"
-          />
+          <KPICard title="Total Users" value={metrics.unique_users} icon={<PeopleIcon />} />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <KPICard
-            title="Total Sessions"
-            value={metrics.total_sessions}
-            icon={<ChatIcon />}
-            color="#2e7d32"
-          />
+          <KPICard title="Total Sessions" value={metrics.total_sessions} icon={<ChatIcon />} />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <KPICard
-            title="Total Messages"
-            value={metrics.total_messages}
-            icon={<ForumIcon />}
-            color="#ed6c02"
-          />
+          <KPICard title="Total Messages" value={metrics.total_messages} icon={<ForumIcon />} />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <KPICard
-            title="Avg Msgs/Session"
-            value={metrics.avg_messages_per_session}
-            icon={<TrendingUpIcon />}
-            color="#9c27b0"
-          />
+          <KPICard title="Avg Msgs/Session" value={metrics.avg_messages_per_session} icon={<TrendingUpIcon />} />
         </Grid>
       </Grid>
 
@@ -159,8 +136,11 @@ function OverviewTab({ metrics }: { metrics: MetricsData }) {
       {recentDaily.length > 1 && (
         <Card sx={{ mb: 3 }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Activity Over Time (Last 30 Days)
+            <Typography variant="h4" gutterBottom>
+              Activity Over Time
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Last 30 days
             </Typography>
             <Box sx={{ width: "100%", height: 350 }}>
               <LineChart
@@ -172,9 +152,9 @@ function OverviewTab({ metrics }: { metrics: MetricsData }) {
                   },
                 ]}
                 series={[
-                  { data: sessions, label: "Sessions", color: "#2e7d32" },
-                  { data: messages, label: "Messages", color: "#ed6c02" },
-                  { data: users, label: "Unique Users", color: "#1976d2" },
+                  { data: sessions, label: "Sessions" },
+                  { data: messages, label: "Messages" },
+                  { data: users, label: "Unique Users" },
                 ]}
                 height={320}
               />
@@ -185,17 +165,17 @@ function OverviewTab({ metrics }: { metrics: MetricsData }) {
 
       <Card>
         <CardContent>
-          <Typography variant="h6" gutterBottom>
+          <Typography variant="h4" gutterBottom>
             Daily Breakdown
           </Typography>
           <TableContainer>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell><strong>Date</strong></TableCell>
-                  <TableCell align="right"><strong>Sessions</strong></TableCell>
-                  <TableCell align="right"><strong>Messages</strong></TableCell>
-                  <TableCell align="right"><strong>Unique Users</strong></TableCell>
+                  <TableCell>Date</TableCell>
+                  <TableCell align="right">Sessions</TableCell>
+                  <TableCell align="right">Messages</TableCell>
+                  <TableCell align="right">Unique Users</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -223,9 +203,14 @@ function FAQRow({ topic }: { topic: FAQData["topics"][0] }) {
 
   return (
     <>
-      <TableRow hover sx={{ cursor: "pointer" }} onClick={() => setOpen(!open)}>
+      <TableRow
+        hover
+        sx={{ cursor: "pointer" }}
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
         <TableCell>
-          <IconButton size="small">
+          <IconButton size="small" aria-label={open ? "Collapse" : "Expand"}>
             {open ? <ExpandLessIcon /> : <ExpandMoreIcon />}
           </IconButton>
         </TableCell>
@@ -238,8 +223,8 @@ function FAQRow({ topic }: { topic: FAQData["topics"][0] }) {
       </TableRow>
       <TableRow>
         <TableCell colSpan={3} sx={{ py: 0, borderBottom: open ? undefined : "none" }}>
-          <Collapse in={open} timeout="auto" unmountOnExit>
-            <Box sx={{ py: 1, pl: 6 }}>
+          <Collapse in={open} timeout={200} unmountOnExit>
+            <Box sx={{ py: 1.5, pl: 6 }}>
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Sample questions:
               </Typography>
@@ -259,13 +244,13 @@ function FAQRow({ topic }: { topic: FAQData["topics"][0] }) {
 function FAQTab({ faqData }: { faqData: FAQData | null }) {
   if (!faqData || faqData.topics.length === 0) {
     return (
-      <Box sx={{ mt: 3, textAlign: "center", py: 6 }}>
-        <Typography variant="h6" color="text.secondary">
+      <Box sx={{ mt: 3, textAlign: "center", py: 8 }}>
+        <Typography variant="h4" color="text.secondary">
           No FAQ data yet
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          FAQ insights will appear here once users start chatting. Questions are automatically
-          classified by topic.
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 400, mx: "auto" }}>
+          FAQ insights will appear here once users start chatting. Questions are
+          automatically classified by topic.
         </Typography>
       </Box>
     );
@@ -276,32 +261,21 @@ function FAQTab({ faqData }: { faqData: FAQData | null }) {
   return (
     <Box sx={{ mt: 3 }}>
       <Alert severity="info" sx={{ mb: 3 }}>
-        <strong>{faqData.total_classified}</strong> questions classified in the last 30 days across{" "}
-        <strong>{faqData.topics.length}</strong> topics
+        <strong>{faqData.total_classified}</strong> questions classified in the
+        last 30 days across <strong>{faqData.topics.length}</strong> topics
       </Alert>
 
       {chartTopics.length > 0 && (
         <Card sx={{ mb: 3 }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h4" gutterBottom>
               Top Topics
             </Typography>
             <Box sx={{ width: "100%", height: 350 }}>
               <BarChart
-                yAxis={[
-                  {
-                    data: chartTopics.map((t) => t.topic),
-                    scaleType: "band",
-                  },
-                ]}
+                yAxis={[{ data: chartTopics.map((t) => t.topic), scaleType: "band" }]}
                 xAxis={[{ label: "Questions" }]}
-                series={[
-                  {
-                    data: chartTopics.map((t) => t.count),
-                    label: "Questions",
-                    color: "#1976d2",
-                  },
-                ]}
+                series={[{ data: chartTopics.map((t) => t.count), label: "Questions" }]}
                 layout="horizontal"
                 height={320}
                 margin={{ left: 160 }}
@@ -313,7 +287,7 @@ function FAQTab({ faqData }: { faqData: FAQData | null }) {
 
       <Card>
         <CardContent>
-          <Typography variant="h6" gutterBottom>
+          <Typography variant="h4" gutterBottom>
             All Topics
           </Typography>
           <TableContainer>
@@ -321,8 +295,8 @@ function FAQTab({ faqData }: { faqData: FAQData | null }) {
               <TableHead>
                 <TableRow>
                   <TableCell width={50} />
-                  <TableCell><strong>Topic</strong></TableCell>
-                  <TableCell align="right"><strong>Count</strong></TableCell>
+                  <TableCell>Topic</TableCell>
+                  <TableCell align="right">Count</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -339,7 +313,6 @@ function FAQTab({ faqData }: { faqData: FAQData | null }) {
 }
 
 export default function MetricsPage() {
-  const [admin, setAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState<MetricsData | null>(null);
   const [faqData, setFaqData] = useState<FAQData | null>(null);
@@ -347,28 +320,6 @@ export default function MetricsPage() {
   const [tabIndex, setTabIndex] = useState(0);
   const appContext = useContext(AppContext);
   const apiClient = new ApiClient(appContext);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const result = await Auth.currentAuthenticatedUser();
-        if (!result || Object.keys(result).length === 0) {
-          Auth.signOut();
-          return;
-        }
-        const adminRole = result?.signInUserSession?.idToken?.payload["custom:role"];
-        if (adminRole) {
-          const data = JSON.parse(adminRole);
-          if (data.some((role: string) => role.includes("Admin"))) {
-            setAdmin(true);
-            loadAllData();
-          }
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    })();
-  }, []);
 
   const loadAllData = async () => {
     try {
@@ -388,76 +339,54 @@ export default function MetricsPage() {
     }
   };
 
-  const onFollow = useOnFollow();
-
-  if (!admin) {
-    return (
-      <BaseAppLayout
-        content={
-          <Box
-            sx={{
-              height: "90vh",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-            }}
-          >
-            <Alert severity="error">You are not authorized to view this page.</Alert>
-          </Box>
-        }
-      />
-    );
-  }
+  useEffect(() => {
+    loadAllData();
+  }, []);
 
   return (
-    <BaseAppLayout
-      breadcrumbs={
-        <BreadcrumbGroup
-          onFollow={onFollow}
-          items={[
-            { text: CHATBOT_NAME, href: "/" },
-            { text: "Analytics", href: "/admin/metrics" },
-          ]}
-        />
+    <AdminPageLayout
+      title="Analytics"
+      description="Usage metrics and FAQ insights for the chatbot."
+      breadcrumbLabel="Analytics"
+      actions={
+        <Tooltip title="Refresh data">
+          <IconButton onClick={loadAllData} disabled={loading} aria-label="Refresh analytics">
+            <RefreshIcon />
+          </IconButton>
+        </Tooltip>
       }
-      content={
-        <Box sx={{ maxWidth: 1200, mx: "auto", p: 3 }}>
-          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-            <Typography variant="h4" fontWeight="bold">
-              Analytics Dashboard
-            </Typography>
-            <IconButton onClick={loadAllData} disabled={loading} title="Refresh">
-              <RefreshIcon />
-            </IconButton>
-          </Stack>
+    >
+      {error && (
+        <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
-          {error && (
-            <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
-
-          {loading ? (
-            <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-              <CircularProgress />
-            </Box>
-          ) : (
-            <>
-              <Tabs
-                value={tabIndex}
-                onChange={(_, v) => setTabIndex(v)}
-                sx={{ borderBottom: 1, borderColor: "divider" }}
-              >
-                <Tab label="Overview" />
-                <Tab label="FAQ Insights" />
-              </Tabs>
-
-              {tabIndex === 0 && metrics && <OverviewTab metrics={metrics} />}
-              {tabIndex === 1 && <FAQTab faqData={faqData} />}
-            </>
-          )}
-        </Box>
-      }
-    />
+      {loading ? (
+        <Stack spacing={2}>
+          <Grid container spacing={2}>
+            {[1, 2, 3, 4].map((i) => (
+              <Grid key={i} size={{ xs: 12, sm: 6, md: 3 }}>
+                <Skeleton variant="rounded" height={100} />
+              </Grid>
+            ))}
+          </Grid>
+          <Skeleton variant="rounded" height={350} />
+        </Stack>
+      ) : (
+        <>
+          <Tabs
+            value={tabIndex}
+            onChange={(_, v) => setTabIndex(v)}
+            sx={{ borderBottom: 1, borderColor: "divider" }}
+          >
+            <Tab label="Overview" />
+            <Tab label="FAQ Insights" />
+          </Tabs>
+          {tabIndex === 0 && metrics && <OverviewTab metrics={metrics} />}
+          {tabIndex === 1 && <FAQTab faqData={faqData} />}
+        </>
+      )}
+    </AdminPageLayout>
   );
 }

@@ -1,4 +1,3 @@
-import { SelectProps } from "@cloudscape-design/components";
 import { CognitoHostedUIIdentityProvider } from "@aws-amplify/auth";
 
 export interface AppConfig {
@@ -10,7 +9,6 @@ export interface AppConfig {
           domain: string,
           scope: string[],
           redirectSignIn: string,
-          // redirectSignOut: "https://myapplications.microsoft.com/",
           responseType: string,
         }
       },

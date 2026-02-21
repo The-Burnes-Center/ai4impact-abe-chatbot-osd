@@ -1,57 +1,54 @@
-import React, { useEffect, useState } from "react";
-import { Box, Link, Modal, TextContent } from "@cloudscape-design/components";
+import React, { useState } from "react";
+import {
+  Box,
+  Typography,
+  Link,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+} from "@mui/material";
 
 export function TruncatedTextCell({ text, maxLength = 50 }) {
   const [showModal, setShowModal] = useState(false);
 
-  const handleShowMore = () => {
-    setShowModal(true);
-  };
+  const truncatedText =
+    text.length > maxLength ? text.slice(0, maxLength) + "..." : text;
 
-  const handleClose = () => {
-    setShowModal(false);
-  };
-
-  const truncatedText = text.length > maxLength ? text.slice(0, maxLength) + "..." : text;
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const dismissButtons = document.querySelectorAll('button.awsui_dismiss-control_1d2i7_11r6m_431');
-  
-      dismissButtons.forEach((button) => {
-        if (!button.hasAttribute('aria-label')) {
-          button.setAttribute('aria-label', 'Close modal');
-        }
-      });
-  
-      if (dismissButtons.length > 0) {
-        clearInterval(interval);
-      }
-    }, 500); // check every 500ms
-  
-    return () => clearInterval(interval);
-  }, []);
-  
   return (
     <>
       <Box>
-        <TextContent>{truncatedText}</TextContent>
+        <Typography variant="body2" component="span">
+          {truncatedText}
+        </Typography>
         {text.length > maxLength && (
-          <Link onFollow={handleShowMore}>Show More</Link>
+          <Link
+            component="button"
+            variant="body2"
+            onClick={() => setShowModal(true)}
+            sx={{ ml: 0.5 }}
+          >
+            Show More
+          </Link>
         )}
       </Box>
-      <Modal
-        onDismiss={handleClose}
-        visible={showModal}
-        header="Full Text"
-        footer={
-          <Box float="right">
-            <Link onFollow={handleClose}>Close</Link>
-          </Box>
-        }
+      <Dialog
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        maxWidth="md"
+        fullWidth
       >
-        <TextContent>{text}</TextContent>
-      </Modal>
+        <DialogTitle>Full Text</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+            {text}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowModal(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

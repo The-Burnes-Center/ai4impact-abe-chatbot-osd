@@ -1,414 +1,339 @@
 import {
-    Box,
-    Button,
-    Container,
-    Form,
-    Header,
-    Input,
-    Pagination,
-    SpaceBetween,
-    Table,
-  } from "@cloudscape-design/components";
-  import { useCallback, useContext, useEffect, useState } from "react";
-  import { AppContext } from "../../common/app-context";
-  import { ApiClient } from "../../common/api-client/api-client";
-  import { Utils } from "../../common/utils";
-  import { useNotifications } from "../../components/notif-manager";
-  import { useCollection } from "@cloudscape-design/collection-hooks";
-  import { getColumnDefinition } from "./columns";
-  import { AdminDataType } from "../../common/types";
-  import { useNavigate } from "react-router-dom";
+  Box,
+  Button,
+  Paper,
+  Stack,
+  Typography,
+  TextField,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  TableContainer,
+  Radio,
+  CircularProgress,
+  Alert,
+  IconButton,
+} from "@mui/material";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import { useCallback, useContext, useEffect, useState } from "react";
+import { AppContext } from "../../common/app-context";
+import { ApiClient } from "../../common/api-client/api-client";
+import { Utils } from "../../common/utils";
+import { useNotifications } from "../../components/notif-manager";
+import { getColumnDefinition } from "./columns";
+import { AdminDataType } from "../../common/types";
+import { useNavigate } from "react-router-dom";
 
-  export interface FileUploadTabProps {
-    tabChangeFunction: () => void;
-    documentType: AdminDataType;
-  }
+export interface FileUploadTabProps {
+  tabChangeFunction: () => void;
+  documentType: AdminDataType;
+}
 
-  export default function NewEvalTab(props: FileUploadTabProps) {
-    const appContext = useContext(AppContext);
-    const apiClient = new ApiClient(appContext);
-    const { addNotification } = useNotifications();
-    const navigate = useNavigate();
+export default function NewEvalTab(props: FileUploadTabProps) {
+  const appContext = useContext(AppContext);
+  const apiClient = new ApiClient(appContext);
+  const { addNotification } = useNotifications();
+  const navigate = useNavigate();
 
-    const [evalName, setEvalName] = useState<string>("SampleEvalName");
-    const [globalError, setGlobalError] = useState<string | undefined>(undefined);
+  const [evalName, setEvalName] = useState<string>("SampleEvalName");
+  const [globalError, setGlobalError] = useState<string | undefined>(undefined);
 
-    const [loading, setLoading] = useState(true);
-    const [currentPageIndex, setCurrentPageIndex] = useState(1);
-    const [pages, setPages] = useState<any[]>([]);
-    const [selectedFile, setSelectedFile] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [currentPageIndex, setCurrentPageIndex] = useState(1);
+  const [pages, setPages] = useState<any[]>([]);
+  const [selectedFile, setSelectedFile] = useState<any | null>(null);
 
-    const onProblemClick = (newEvaluationItem) => {
-      console.log("New Evaluation item: ", newEvaluationItem);
-      if (newEvaluationItem && newEvaluationItem.EvaluationId) {
-        navigate(`/admin/llm-evaluation/${newEvaluationItem.EvaluationId}`, { replace: true });
-      }
-    };
-
-    const { items, collectionProps, paginationProps } = useCollection(pages, {
-      filtering: {
-        empty: (
-          <Box margin={{ vertical: "xs" }} textAlign="center" color="inherit">
-            <SpaceBetween size="m">
-              <b>No files</b>
-            </SpaceBetween>
-          </Box>
-        ),
-      },
-      pagination: { pageSize: 5 },
-      sorting: {
-        defaultState: {
-          sortingColumn: {
-            sortingField: "Key",
-          },
-          isDescending: true,
-        },
-      },
-      selection: {},
-    });
-
-  // add text to header column for radio inputs
-  useEffect(() => {
-    const divs = document.querySelectorAll('div.awsui_child_18582_1wlz1_145');
-    let div2;
-    let input;
-    for (const div of divs) {
-      div2 = div.querySelector('div.awsui_root_2rhyz_137vc_141');
-      input = div2?.querySelector('input');
-      if (input) {
-        input.setAttribute('title', 'Evaluation Name');
-        break;
-      }
-    }
-  }, []);
-
-  // add text to refresh btn
-  useEffect(() => {
-    const divs = document.querySelectorAll('div.awsui_child_18582_1wlz1_145');
-    let btn;
-    for (const div of divs) {
-      btn = div.querySelector('button.awsui_button_vjswe_1tt9v_153');
-      if (btn) {
-        btn.setAttribute('aria-label', 'Refresh test case documents');
-      }
-    }
-  }, []);  
-  
-  // add text to arrow buttons that navigate through the pages
-  useEffect(() => {
-    const addPaginationLabels = () => {
-      const ls = document.querySelector('ul.awsui_root_fvjdu_chz9p_141');
-      if (ls) {
-        const listItems = ls.querySelectorAll('li');
-        
-        // all the buttons in between are the page numbers and already have text
-        if (listItems.length !== 0) {
-          const leftArrow = listItems[0].querySelector('button');
-          const rightArrow = listItems[listItems.length - 1].querySelector('button');
-          rightArrow.setAttribute('aria-label', 'Go to next page');
-          leftArrow.setAttribute('aria-label', 'Go to previous page');
-        }
-      }
-    };
-  
-    // iniital run
-    addPaginationLabels();
-  
-    const observer = new MutationObserver(() => {
-      addPaginationLabels();
-    });
-  
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-  
-    return () => observer.disconnect();
-  }, []);
-
-  // make table accessible by adding text to checkbox column
-  useEffect(() => {
-    const updateLabels = () => {
-      // select all labels of checkbox inputs
-      const labels = document.querySelectorAll('label.awsui_label_1s55x_1iop1_145');
-  
-      labels.forEach((label, index) => {
-        const labelElement = label as HTMLLabelElement;
-        const checkbox = label.querySelector('input[type="radio"]'); // finds radio input under label tag
-    
-        if (checkbox instanceof HTMLInputElement) {
-          // add a span of hidden text
-          let hiddenSpan = label.querySelector('.hidden-span') as HTMLSpanElement;
-          if (!hiddenSpan) {
-            hiddenSpan = document.createElement('span');
-            hiddenSpan.className = 'hidden-span';
-            hiddenSpan.innerText = checkbox.checked
-              ? `Unselect row ${index + 1}`
-              : `Select row ${index + 1}`;
-  
-            hiddenSpan.style.position = 'absolute';
-            hiddenSpan.style.width = '1px';
-            hiddenSpan.style.height = '1px';
-            hiddenSpan.style.padding = '0';
-            hiddenSpan.style.margin = '-1px';
-            hiddenSpan.style.overflow = 'hidden';
-            hiddenSpan.style.whiteSpace = 'nowrap';
-            hiddenSpan.style.border = '0';
-  
-            labelElement.appendChild(hiddenSpan);
-          }
-  
-          // handles checkbox status changes
-          const onChangeHandler = () => {
-            if (index === 0) {
-              hiddenSpan.innerText = checkbox.checked
-                ? `Unselect all rows`
-                : `Select all rows`;
-            } else {
-              hiddenSpan.innerText = checkbox.checked
-                ? `Unselect row ${index + 1}`
-                : `Select row ${index + 1}`;
-            }
-          };
-  
-          if (!checkbox.dataset.listenerAdded) {
-            checkbox.addEventListener('change', onChangeHandler);
-            checkbox.dataset.listenerAdded = 'true';
-          }
-        }
+  const onProblemClick = (newEvaluationItem) => {
+    console.log("New Evaluation item: ", newEvaluationItem);
+    if (newEvaluationItem && newEvaluationItem.EvaluationId) {
+      navigate(`/admin/llm-evaluation/${newEvaluationItem.EvaluationId}`, {
+        replace: true,
       });
-    };
-  
-    // first call
-    updateLabels();
-  
-    // monitor changes to table (table items render after the header does)
-    const table = document.querySelector('table');
-    if (table) {
-      const observer = new MutationObserver(() => {
-        updateLabels();
-      });
-  
-      observer.observe(table, {
-        childList: true,
-        subtree: true,
-      });
-  
-      return () => observer.disconnect();
     }
-  }, []);
+  };
 
-  // add text to header column for radio inputs
-  useEffect(() => {
-    const btn = document.querySelector('th.awsui_header-cell_1spae_r2f6t_145');
-    
-    if (btn) {
-      const hiddenSpan = document.createElement('span');
-      hiddenSpan.innerText = 'Selection';
-  
-      // makes text invisible
-      hiddenSpan.style.position = 'absolute';
-      hiddenSpan.style.width = '1px';
-      hiddenSpan.style.height = '1px';
-      hiddenSpan.style.padding = '0';
-      hiddenSpan.style.margin = '-1px';
-      hiddenSpan.style.overflow = 'hidden';
-      hiddenSpan.style.whiteSpace = 'nowrap';
-      hiddenSpan.style.border = '0';
-  
-      btn.appendChild(hiddenSpan);
+  const onNewEvaluation = async () => {
+    setGlobalError(undefined);
+
+    if (evalName === "SampleEvalName" || evalName.trim() === "") {
+      setGlobalError("Please enter a name for the evaluation");
+      return;
     }
-  
-  }, []);
 
-    const onNewEvaluation = async () => {
-      // Clear any previous error
-      setGlobalError(undefined);
-      
-      // Validate evaluation name
-      if (evalName === "SampleEvalName" || evalName.trim() === "") {
-        setGlobalError("Please enter a name for the evaluation");
-        return;
-      }
-      
-      // Validate file selection
-      if (!selectedFile) {
-        setGlobalError("Please select a file for evaluation");
-        return;
-      }
-      
-      // Improved debugging for file validation
-      console.log("Selected file:", selectedFile);
-      const fileExtension = selectedFile.Key.toLowerCase().split('.').pop();
-      console.log("Detected file extension:", fileExtension);
-      
-      if (fileExtension !== 'json' && fileExtension !== 'csv') {
-        console.log("Invalid file extension:", fileExtension);
-        setGlobalError(`Please select a valid test case file (.json or .csv). Got: ${fileExtension}`);
-        return;
-      }
-      
-      try {
-        // Show loading state
-        setLoading(true);
-        
-        // Start the evaluation
-        console.log("Starting evaluation with file:", selectedFile.Key);
-        const result = await apiClient.evaluations.startNewEvaluation(evalName, selectedFile.Key);
-        console.log("Evaluation result:", result);
-        
-        // Show success notification
-        addNotification("success", "Evaluation started successfully. It may take a few minutes to complete.");
-        
-        // Navigate to the current evaluations tab without causing URL duplication
-        props.tabChangeFunction();
-      } catch (error) {
-        console.error("Error starting evaluation:", error);
-        const errorMessage = Utils.getErrorMessage(error);
-        
-        // Show a more specific error message
-        if (errorMessage.includes("NetworkError") || errorMessage.includes("Failed to fetch")) {
-          setGlobalError("Network error: Unable to connect to the evaluation service");
-          addNotification("error", "Network error: Unable to connect to the evaluation service");
-        } else if (errorMessage.includes("Unauthorized") || errorMessage.includes("403")) {
-          setGlobalError("Authorization error: You don't have permission to start evaluations");
-          addNotification("error", "Authorization error: You don't have permission to start evaluations");
-        } else {
-          setGlobalError(`Error starting evaluation: ${errorMessage}`);
-          addNotification("error", `Error starting evaluation: ${errorMessage}`);
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
+    if (!selectedFile) {
+      setGlobalError("Please select a file for evaluation");
+      return;
+    }
 
-    /** Function to get documents */
-    const getDocuments = useCallback(
-        async (params: { continuationToken?: string; pageIndex?: number }) => {
-        setLoading(true);
-        try {
-            const result = await apiClient.evaluations.getDocuments(params?.continuationToken, params?.pageIndex)
-            // await props.statusRefreshFunction();
-            setPages((current) => {
-            if (typeof params.pageIndex !== "undefined") {
-                current[params.pageIndex - 1] = result;
-                return [...current];
-            } else {
-                return [...current, result];
-            }
-            });
-        } catch (error) {
-            console.error(Utils.getErrorMessage(error));
-        }
+    console.log("Selected file:", selectedFile);
+    const fileExtension = selectedFile.Key.toLowerCase().split(".").pop();
+    console.log("Detected file extension:", fileExtension);
 
-        console.log(pages);
-        setLoading(false);
-        },
-        [appContext, props.documentType]
-    );
+    if (fileExtension !== "json" && fileExtension !== "csv") {
+      console.log("Invalid file extension:", fileExtension);
+      setGlobalError(
+        `Please select a valid test case file (.json or .csv). Got: ${fileExtension}`
+      );
+      return;
+    }
 
-    /** Whenever the memoized function changes, call it again */
-    useEffect(() => {
-        getDocuments({});
-    }, [getDocuments]);
+    try {
+      setLoading(true);
 
-    /** Handle clicks on the next page button, as well as retrievals of new pages if needed*/
-    const onNextPageClick = async () => {
-        const continuationToken = pages[currentPageIndex - 1]?.NextContinuationToken;
+      console.log("Starting evaluation with file:", selectedFile.Key);
+      const result = await apiClient.evaluations.startNewEvaluation(
+        evalName,
+        selectedFile.Key
+      );
+      console.log("Evaluation result:", result);
 
-        if (continuationToken) {
-        if (pages.length <= currentPageIndex) {
-            await getDocuments({ continuationToken });
-        }
-        setCurrentPageIndex((current) => Math.min(pages.length + 1, current + 1));
-        }
-    };
+      addNotification(
+        "success",
+        "Evaluation started successfully. It may take a few minutes to complete."
+      );
 
-    /** Handle clicks on the previous page button */
-    const onPreviousPageClick = async () => {
-        setCurrentPageIndex((current) =>
-        Math.max(1, Math.min(pages.length - 1, current - 1))
+      props.tabChangeFunction();
+    } catch (error) {
+      console.error("Error starting evaluation:", error);
+      const errorMessage = Utils.getErrorMessage(error);
+
+      if (
+        errorMessage.includes("NetworkError") ||
+        errorMessage.includes("Failed to fetch")
+      ) {
+        setGlobalError(
+          "Network error: Unable to connect to the evaluation service"
         );
-    };
+        addNotification(
+          "error",
+          "Network error: Unable to connect to the evaluation service"
+        );
+      } else if (
+        errorMessage.includes("Unauthorized") ||
+        errorMessage.includes("403")
+      ) {
+        setGlobalError(
+          "Authorization error: You don't have permission to start evaluations"
+        );
+        addNotification(
+          "error",
+          "Authorization error: You don't have permission to start evaluations"
+        );
+      } else {
+        setGlobalError(`Error starting evaluation: ${errorMessage}`);
+        addNotification(
+          "error",
+          `Error starting evaluation: ${errorMessage}`
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    /** Handle refreshes */
-    const refreshPage = async () => {
-        // console.log(pages[Math.min(pages.length - 1, currentPageIndex - 1)]?.Contents!)
-        if (currentPageIndex <= 1) {
-        await getDocuments({ pageIndex: currentPageIndex });
-        } else {
-        const continuationToken = pages[currentPageIndex - 2]?.NextContinuationToken!;
+  /** Function to get documents */
+  const getDocuments = useCallback(
+    async (params: { continuationToken?: string; pageIndex?: number }) => {
+      setLoading(true);
+      try {
+        const result = await apiClient.evaluations.getDocuments(
+          params?.continuationToken,
+          params?.pageIndex
+        );
+        setPages((current) => {
+          if (typeof params.pageIndex !== "undefined") {
+            current[params.pageIndex - 1] = result;
+            return [...current];
+          } else {
+            return [...current, result];
+          }
+        });
+      } catch (error) {
+        console.error(Utils.getErrorMessage(error));
+      }
+
+      console.log(pages);
+      setLoading(false);
+    },
+    [appContext, props.documentType]
+  );
+
+  useEffect(() => {
+    getDocuments({});
+  }, [getDocuments]);
+
+  const onNextPageClick = async () => {
+    const continuationToken =
+      pages[currentPageIndex - 1]?.NextContinuationToken;
+
+    if (continuationToken) {
+      if (pages.length <= currentPageIndex) {
         await getDocuments({ continuationToken });
-        }
-    };
+      }
+      setCurrentPageIndex((current) =>
+        Math.min(pages.length + 1, current + 1)
+      );
+    }
+  };
 
-    const columnDefinitions = getColumnDefinition(props.documentType, onProblemClick);
-
-    return (
-      <>
-        <Form errorText={globalError}>
-          <SpaceBetween size="l">
-            <Container>
-              <SpaceBetween direction="horizontal" size="s">
-                <label style={{ alignSelf: 'center' }}>Evaluation Name:</label>
-                <Input
-                  value={evalName}
-                  placeholder="SampleEvalName"
-                  onChange={(event) => setEvalName(event.detail.value)}
-                />
-                <Button
-                  data-testid="new-evaluation"
-                  variant="primary"
-                  onClick={onNewEvaluation}
-                  disabled={!selectedFile}
-                >
-                  Create New Evaluation
-                </Button>
-              </SpaceBetween>
-            </Container>
-
-            {/* Adding space between the container and table */}
-            <Box padding={{ top: "xxs" }} />
-
-            {/* Table Section */}
-            <Table
-              {...collectionProps}
-              loading={loading}
-              loadingText={`Loading files`}
-              columnDefinitions={columnDefinitions}
-              selectionType="single"
-              onSelectionChange={({ detail }) => {
-                const clickedFile = detail.selectedItems[0];
-                setSelectedFile((prev) => (clickedFile && prev && clickedFile.Key === prev.Key ? null : clickedFile));
-              }}
-              selectedItems={selectedFile ? [selectedFile] : []}
-              items={pages[Math.min(pages.length - 1, currentPageIndex - 1)]?.Contents!}
-              trackBy="Key"
-              header={
-                <Header
-                  actions={
-                    <Button iconName="refresh" onClick={refreshPage} />
-                  }
-                  description="Please select a test case file for your next evaluation. Press the refresh button to see the latest test case files."
-                >
-                  {"Files"}
-                </Header>
-              }
-              empty={<Box textAlign="center">No test case files uploaded. Please upload a test case file before running an evaluation.</Box>}
-              pagination={
-                pages.length > 0 && (
-                  <Pagination
-                    openEnd={true}
-                    pagesCount={pages.length}
-                    currentPageIndex={currentPageIndex}
-                    onNextPageClick={onNextPageClick}
-                    onPreviousPageClick={onPreviousPageClick}
-                  />
-                )
-              }
-            />
-          </SpaceBetween>
-        </Form>
-      </>
+  const onPreviousPageClick = async () => {
+    setCurrentPageIndex((current) =>
+      Math.max(1, Math.min(pages.length - 1, current - 1))
     );
-  }
+  };
+
+  const refreshPage = async () => {
+    if (currentPageIndex <= 1) {
+      await getDocuments({ pageIndex: currentPageIndex });
+    } else {
+      const continuationToken =
+        pages[currentPageIndex - 2]?.NextContinuationToken!;
+      await getDocuments({ continuationToken });
+    }
+  };
+
+  const columnDefinitions = getColumnDefinition(
+    props.documentType,
+    onProblemClick
+  );
+
+  const currentItems =
+    pages[Math.min(pages.length - 1, currentPageIndex - 1)]?.Contents || [];
+
+  return (
+    <Stack spacing={2}>
+      {globalError && <Alert severity="error">{globalError}</Alert>}
+
+      <Paper sx={{ p: 2 }}>
+        <Stack direction="row" spacing={2} alignItems="center">
+          <Typography variant="body1">Evaluation Name:</Typography>
+          <TextField
+            value={evalName}
+            placeholder="SampleEvalName"
+            onChange={(e) => setEvalName(e.target.value)}
+            size="small"
+          />
+          <Button
+            variant="contained"
+            onClick={onNewEvaluation}
+            disabled={!selectedFile}
+          >
+            Create New Evaluation
+          </Button>
+        </Stack>
+      </Paper>
+
+      <Stack spacing={1}>
+        <Stack
+          direction="row"
+          justifyContent="space-between"
+          alignItems="center"
+        >
+          <Box>
+            <Typography variant="h6">Files</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Please select a test case file for your next evaluation. Press the
+              refresh button to see the latest test case files.
+            </Typography>
+          </Box>
+          <IconButton
+            onClick={refreshPage}
+            aria-label="Refresh test case documents"
+          >
+            <RefreshIcon />
+          </IconButton>
+        </Stack>
+
+        {loading ? (
+          <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
+            <CircularProgress />
+          </Box>
+        ) : currentItems.length === 0 ? (
+          <Box sx={{ textAlign: "center", p: 4 }}>
+            <Typography color="text.secondary">
+              No test case files uploaded. Please upload a test case file before
+              running an evaluation.
+            </Typography>
+          </Box>
+        ) : (
+          <TableContainer component={Paper}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell padding="checkbox" sx={{ fontWeight: "bold" }}>
+                    Select
+                  </TableCell>
+                  {columnDefinitions.map((col) => (
+                    <TableCell key={col.id} sx={{ fontWeight: "bold" }}>
+                      {col.header}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {currentItems.map((item, index) => (
+                  <TableRow
+                    key={item.Key || index}
+                    hover
+                    selected={selectedFile?.Key === item.Key}
+                    onClick={() =>
+                      setSelectedFile((prev) =>
+                        prev?.Key === item.Key ? null : item
+                      )
+                    }
+                    sx={{ cursor: "pointer" }}
+                  >
+                    <TableCell padding="checkbox">
+                      <Radio
+                        checked={selectedFile?.Key === item.Key}
+                        onChange={() =>
+                          setSelectedFile((prev) =>
+                            prev?.Key === item.Key ? null : item
+                          )
+                        }
+                      />
+                    </TableCell>
+                    {columnDefinitions.map((col) => (
+                      <TableCell key={col.id}>{col.cell(item)}</TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+
+        {pages.length > 0 && (
+          <Stack
+            direction="row"
+            justifyContent="center"
+            spacing={2}
+            sx={{ py: 1 }}
+          >
+            <Button
+              size="small"
+              disabled={currentPageIndex <= 1}
+              onClick={onPreviousPageClick}
+            >
+              Previous
+            </Button>
+            <Typography variant="body2" sx={{ alignSelf: "center" }}>
+              Page {currentPageIndex}
+            </Typography>
+            <Button
+              size="small"
+              disabled={
+                !pages[currentPageIndex - 1]?.NextContinuationToken
+              }
+              onClick={onNextPageClick}
+            >
+              Next
+            </Button>
+          </Stack>
+        )}
+      </Stack>
+    </Stack>
+  );
+}

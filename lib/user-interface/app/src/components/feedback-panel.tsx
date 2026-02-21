@@ -1,6 +1,14 @@
 import React, { useRef, useState } from 'react';
 import { useEffect } from 'react';
-import { Box, ColumnLayout, Container, ContentLayout, ExpandableSection, Header, Link, SpaceBetween, SplitPanel, TextContent, } from '@cloudscape-design/components';
+import Box from "@mui/material/Box";
+import Grid from "@mui/material/Grid";
+import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
+import Accordion from "@mui/material/Accordion";
+import AccordionSummary from "@mui/material/AccordionSummary";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { Auth } from 'aws-amplify';
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -18,72 +26,64 @@ export default function EmailPanel(props: FeedbackPanelProps) {
 
   return (
     <div>
-      <SplitPanel header="Selected Feedback" hidePreferencesButton={true}>
-        <ColumnLayout columns={2}>
-          <SpaceBetween size="m">
-            <Container
-              header={
-                <Header
-                  variant="h2"
-                >
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Typography variant="h6" sx={{ mb: 2 }}>Selected Feedback</Typography>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={6}>
+            <Stack spacing={2}>
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
                   User Prompt
-                </Header>
-              }
-            >
-              {props.selectedFeedback.UserPrompt ? props.selectedFeedback.UserPrompt : "No feedback selected"}
-            </Container>
+                </Typography>
+                {props.selectedFeedback.UserPrompt ? props.selectedFeedback.UserPrompt : "No feedback selected"}
+              </Paper>
 
-            <Container
-              header={
-                <Header
-                  variant="h2"
-                >
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
                   User Comments
-                </Header>
-              }
-            >
-              {props.selectedFeedback.FeedbackComments ? props.selectedFeedback.FeedbackComments : "No feedback selected"}
-            </Container>
-            
-          </SpaceBetween>
-          <Container
-            header={
-              <Header
-                variant="h2"
-              >
+                </Typography>
+                {props.selectedFeedback.FeedbackComments ? props.selectedFeedback.FeedbackComments : "No feedback selected"}
+              </Paper>
+            </Stack>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
                 Chatbot Response
-              </Header>
-            }
-          >
-            {props.selectedFeedback.ChatbotMessage ? props.selectedFeedback.ChatbotMessage : "No feedback selected"}
-            {props.selectedFeedback.Sources ?
-                
-                <ExpandableSection headerText="Sources">
-                  <ColumnLayout columns={2} variant="text-grid">
-                    <SpaceBetween size="l">
-                      <Box variant="h3" padding="n">
-                        Title
-                      </Box>
-                      {(JSON.parse(props.selectedFeedback.Sources) as any[]).map((item) =>
-                        item.title)}
-                    </SpaceBetween>
-                    <SpaceBetween size="l">
-                      <Box variant="h3" padding="n">
-                        URL
-                      </Box>
-                      
-                      {/* {(JSON.parse(props.selectedFeedback.Sources) as any[]).map((item) =>
-                        <Link href={item.uri} external={true} variant="primary">
-                          {item.uri.match(/^(?:https?:\/\/)?([\w-]+(\.[\w-]+)+)/)[1]}
-                        </Link>)} */}
-                    </SpaceBetween>
-                  </ColumnLayout>
-                </ExpandableSection>
-
-                : "No feedback selected"}
-          </Container>
-        </ColumnLayout>
-      </SplitPanel>
+              </Typography>
+              {props.selectedFeedback.ChatbotMessage ? props.selectedFeedback.ChatbotMessage : "No feedback selected"}
+              {props.selectedFeedback.Sources ? (
+                <Accordion sx={{ mt: 2 }}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography>Sources</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Stack spacing={1}>
+                          <Typography variant="subtitle2" fontWeight="bold">
+                            Title
+                          </Typography>
+                          {(JSON.parse(props.selectedFeedback.Sources) as any[]).map((item, idx) => (
+                            <Typography key={idx} variant="body2">{item.title}</Typography>
+                          ))}
+                        </Stack>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Stack spacing={1}>
+                          <Typography variant="subtitle2" fontWeight="bold">
+                            URL
+                          </Typography>
+                        </Stack>
+                      </Grid>
+                    </Grid>
+                  </AccordionDetails>
+                </Accordion>
+              ) : "No feedback selected"}
+            </Paper>
+          </Grid>
+        </Grid>
+      </Paper>
     </div>
   );
 }

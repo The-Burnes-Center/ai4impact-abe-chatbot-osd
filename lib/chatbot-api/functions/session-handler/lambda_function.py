@@ -9,7 +9,7 @@ DDB_TABLE_NAME = os.environ["DDB_TABLE_NAME"]
 # DDB_SECONDARY_INDEX_NAME = os.environ["DDB_SECONDARY_INDEX_NAME"]
 
 # Initialize a DynamoDB resource using boto3 with a specific AWS region
-dynamodb = boto3.resource("dynamodb", region_name='us-east-1')
+dynamodb = boto3.resource("dynamodb", region_name=os.environ.get('AWS_REGION', 'us-east-1'))
 # Connect to the specified DynamoDB table
 table = dynamodb.Table(DDB_TABLE_NAME)
 
@@ -82,57 +82,42 @@ def get_session(session_id, user_id):
             
 def update_session(session_id, user_id, new_chat_entry):
     try:
-        # Fetch current session details
-        session_response = get_session(session_id, user_id)
-        if 'statusCode' in session_response and session_response['statusCode'] != 200:
-            return session_response  # Return the error from get_session if any
-
-        session_data = json.loads(session_response['body'])
-        
-        # Check if 'chat_history' exists in the session data
-        current_chat_history = session_data.get('chat_history', [])
-        
-        # Append the new chat entry to the existing chat history
-        updated_chat_history = current_chat_history + [new_chat_entry]
-        
-        # Update the item in DynamoDB
         response = table.update_item(
             Key={"session_id": session_id, "user_id": user_id},
-            UpdateExpression="set chat_history = :chat_history",
-            ExpressionAttributeValues={":chat_history": updated_chat_history},
+            UpdateExpression="SET chat_history = list_append(if_not_exists(chat_history, :empty), :new_entry), time_stamp = :ts",
+            ExpressionAttributeValues={
+                ':new_entry': [new_chat_entry],
+                ':empty': [],
+                ':ts': str(datetime.now())
+            },
             ReturnValues="UPDATED_NEW"
         )
         return {
             'statusCode': 200,
-            'headers': {'Access-Control-Allow-Origin': '*' },
+            'headers': {'Access-Control-Allow-Origin': '*'},
             'body': response.get("Attributes", {})
         }
     except ClientError as error:
         print("Caught error: DynamoDB error - could not update session")
-        # Return a structured error message and status code
         error_code = error.response['Error']['Code']
         if error_code == "ResourceNotFoundException":
             return {
                 'statusCode': 404,
                 'headers': {'Access-Control-Allow-Origin': '*'},
-                'error': str(error),
-                'body': f"No record found with session id: {session_id}"
+                'body': json.dumps(f"No record found with session id: {session_id}")
             }
         else:
             return {
                 'statusCode': 500,
                 'headers': {'Access-Control-Allow-Origin': '*'},
-                'error': str(error),
-                'body': 'Failed to update the session due to a database error.'
+                'body': json.dumps('Failed to update the session due to a database error.')
             }
     except Exception as general_error:
-        print("Caught error: DynamoDB error - could not update session")
-        # Return a generic error response for unexpected errors
+        print(f"Caught error: could not update session - {general_error}")
         return {
             'statusCode': 500,
             'headers': {'Access-Control-Allow-Origin': '*'},
-            'error': str(general_error),
-            'body': 'An unexpected error occurred while updating the se.'
+            'body': json.dumps('An unexpected error occurred while updating the session.')
         }
 
 

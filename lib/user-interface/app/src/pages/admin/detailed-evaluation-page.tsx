@@ -1,47 +1,47 @@
-// src/pages/admin/detailed-evaluation-page.js
-
-import React, { useState, useEffect, useContext, useRef } from "react";
+import React, { useState, useEffect, useContext, useRef, useMemo } from "react";
 import {
   Table,
-  Header,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  TableContainer,
+  TableSortLabel,
+  Paper,
+  Typography,
   Button,
-  BreadcrumbGroup,
   Box,
-  Pagination,
-  StatusIndicator,
-  Modal,
-  SpaceBetween,
-} from "@cloudscape-design/components";
+  Breadcrumbs,
+  Link,
+  CircularProgress,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Stack,
+} from "@mui/material";
 import { useParams, useNavigate } from "react-router-dom";
-import BaseAppLayout from "../../components/base-app-layout";
 import { AppContext } from "../../common/app-context";
 import { ApiClient } from "../../common/api-client/api-client";
 import { Utils } from "../../common/utils";
 import { getColumnDefinition } from "./columns";
 import { useNotifications } from "../../components/notif-manager";
-import { useCollection } from "@cloudscape-design/collection-hooks";
 import { AdminDataType } from "../../common/types";
-import { NonCancelableCustomEvent } from "@cloudscape-design/components";
-import { TableProps } from "@cloudscape-design/components";
-import { on } from "events";
-
-
 
 export interface DetailedEvalProps {
-    documentType: AdminDataType;
-  }
+  documentType: AdminDataType;
+}
 
-  const findFirstSortableColumn = (columns) => {
-    return columns.find(col => col.sortingField) || columns[0];
-  };
-
+const findFirstSortableColumn = (columns) => {
+  return columns.find((col) => col.sortingField) || columns[0];
+};
 
 function DetailedEvaluationPage(props: DetailedEvalProps) {
   const { evaluationId } = useParams();
   const navigate = useNavigate();
   const appContext = useContext(AppContext);
   const apiClient = new ApiClient(appContext);
-  const [evaluationDetails, setEvaluationDetails] = useState([]);
   const [loading, setLoading] = useState(true);
   const { addNotification } = useNotifications();
   const [evaluationName, setEvaluationName] = useState("");
@@ -49,11 +49,11 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
   const [pages, setPages] = useState([]);
   const needsRefresh = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  // Add state for context dialog
   const [isContextModalVisible, setContextModalVisible] = useState(false);
   const [selectedContext, setSelectedContext] = useState("");
   const [selectedQuestion, setSelectedQuestion] = useState("");
-  
+  const [sortField, setSortField] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   useEffect(() => {
     setCurrentPageIndex(1);
@@ -62,22 +62,28 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
 
   const onProblemClick = (ProblemItem): void => {
     console.log("ProblemItem: ", ProblemItem);
-    navigate(`/admin/llm-evaluation/${evaluationId}/problem/${ProblemItem.question_id}`);
+    navigate(
+      `/admin/llm-evaluation/${evaluationId}/problem/${ProblemItem.question_id}`
+    );
   };
 
-  // Add function to handle clicking on a context cell
   const handleContextClick = (item) => {
     setSelectedContext(item.retrieved_context || "No context available");
     setSelectedQuestion(item.question || "Unknown question");
     setContextModalVisible(true);
   };
 
-  const fetchEvaluationDetails = async (params : { pageIndex?: number, nextPageToken? }) => {
+  const fetchEvaluationDetails = async (params: {
+    pageIndex?: number;
+    nextPageToken?;
+  }) => {
     setLoading(true);
     try {
-      const result = await apiClient.evaluations.getEvaluationResults(evaluationId, params.nextPageToken);
-      
-      // Check if there's an error in the result
+      const result = await apiClient.evaluations.getEvaluationResults(
+        evaluationId,
+        params.nextPageToken
+      );
+
       if (result.error) {
         console.error("Error from API:", result.error);
         setError(result.error);
@@ -85,10 +91,9 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
         setLoading(false);
         return;
       }
-      
-      // Clear any previous errors
+
       setError(null);
-      
+
       setPages((current) => {
         if (needsRefresh.current) {
           needsRefresh.current = false;
@@ -102,11 +107,9 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
         }
       });
       if (result.Items && result.Items.length > 0) {
-        // Try to get evaluation_name from the first item
         const name = result.Items[0].evaluation_name || "Unnamed Evaluation";
         setEvaluationName(name);
       } else {
-        // Handle case where no items were returned
         console.warn("No evaluation details found");
         setError("No details found for this evaluation.");
         addNotification("warning", "No details found for this evaluation.");
@@ -127,9 +130,13 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
     const continuationToken = pages[currentPageIndex - 1]?.NextPageToken;
     if (continuationToken) {
       if (pages.length <= currentPageIndex || needsRefresh.current) {
-        await fetchEvaluationDetails({ nextPageToken: continuationToken });
+        await fetchEvaluationDetails({
+          nextPageToken: continuationToken,
+        });
       }
-      setCurrentPageIndex((current) => Math.min(pages.length + 1, current + 1));
+      setCurrentPageIndex((current) =>
+        Math.min(pages.length + 1, current + 1)
+      );
     }
   };
 
@@ -137,71 +144,74 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
     setCurrentPageIndex((current) => Math.max(1, current - 1));
   };
 
-  const breadcrumbItems = [
-    { text: "LLM Evaluation", href: "/admin/llm-evaluation" },
-    { text: `Evaluation ${evaluationName || evaluationId}`, href: "#" },
-  ];
-
-  // Update column definitions to include handler for context clicks
   const getCustomColumnDefinitions = () => {
-    const baseColumns = getColumnDefinition(props.documentType, onProblemClick);
-    
-    // Find and update the context column to be clickable
-    const updatedColumns = baseColumns.map(column => {
+    const baseColumns = getColumnDefinition(
+      props.documentType,
+      onProblemClick
+    );
+
+    const updatedColumns = baseColumns.map((column) => {
       if (column.id === "retrievedContext") {
         return {
           ...column,
           cell: (item) => (
-            <Button 
-              onClick={() => handleContextClick(item)} 
-              variant="link"
+            <Button
+              onClick={() => handleContextClick(item)}
+              variant="text"
+              size="small"
             >
               View Context
             </Button>
-          )
+          ),
         };
       }
       return column;
     });
-    
+
     return updatedColumns;
   };
-  
-  const columnDefinitions = getCustomColumnDefinitions();
-  const defaultSortingColumn = findFirstSortableColumn(columnDefinitions);
-  const currentPageItems = pages[Math.min(pages.length - 1, currentPageIndex - 1)]?.Items || [];
 
-  const { items, collectionProps, filterProps, paginationProps } = useCollection(
-    currentPageItems,
-    {
-      sorting: {
-        defaultState: {
-          sortingColumn: defaultSortingColumn,
-          isDescending: false,
-        },
-      },
-      filtering: {},
+  const columnDefinitions = getCustomColumnDefinitions();
+  const currentPageItems =
+    pages[Math.min(pages.length - 1, currentPageIndex - 1)]?.Items || [];
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
     }
-  );
+  };
+
+  const sortedItems = useMemo(() => {
+    if (!sortField || !currentPageItems.length) return currentPageItems;
+    const col = columnDefinitions.find((c) => c.sortingField === sortField);
+    if (!col || !col.sortingComparator) {
+      return [...currentPageItems].sort((a, b) => {
+        const aVal = a[sortField] ?? "";
+        const bVal = b[sortField] ?? "";
+        const cmp = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+        return sortDirection === "asc" ? cmp : -cmp;
+      });
+    }
+    const sorted = [...currentPageItems].sort(col.sortingComparator);
+    return sortDirection === "desc" ? sorted.reverse() : sorted;
+  }, [currentPageItems, sortField, sortDirection, columnDefinitions]);
 
   const handleDownload = () => {
-    // Convert your table data to CSV
-    const csvContent = convertToCSV(items);
-
-    // Add Byte Order Mark for UTF-8
-    const BOM = '\uFEFF';
+    const csvContent = convertToCSV(sortedItems);
+    const BOM = "\uFEFF";
     const csvContentWithBOM = BOM + csvContent;
-
-    // Create a Blob with the CSV data
-    const blob = new Blob([csvContentWithBOM], { type: 'text/csv;charset=utf-8;' });
-
-    // Create a download link and trigger the download
+    const blob = new Blob([csvContentWithBOM], {
+      type: "text/csv;charset=utf-8;",
+    });
     const link = document.createElement("a");
     if (link.download !== undefined) {
       const url = URL.createObjectURL(blob);
       link.setAttribute("href", url);
       link.setAttribute("download", "table_data.csv");
-      link.style.visibility = 'hidden';
+      link.style.visibility = "hidden";
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -210,106 +220,172 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
 
   const convertToCSV = (data: readonly unknown[]): string => {
     if (data.length === 0) {
-      return '';
+      return "";
     }
-
-    const headers = Object.keys(data[0] as object).join(',');
-    const rows = data.map(item => 
-      Object.values(item as object).map(value => 
-        typeof value === 'string' ? `"${value.replace(/"/g, '""')}"` : String(value)
-      ).join(',')
+    const headers = Object.keys(data[0] as object).join(",");
+    const rows = data.map((item) =>
+      Object.values(item as object)
+        .map((value) =>
+          typeof value === "string"
+            ? `"${value.replace(/"/g, '""')}"`
+            : String(value)
+        )
+        .join(",")
     );
-    return [headers, ...rows].join('\n');
+    return [headers, ...rows].join("\n");
   };
 
   return (
-    <BaseAppLayout
-      content={
-        <>
-          <BreadcrumbGroup items={breadcrumbItems} />
-          <Header
-            variant="h1"
-            actions={
-              <Button onClick={() => navigate(-1)} variant="link">
-                Back to Evaluations
-              </Button>
-            }
-          >
-            Evaluation Details
-          </Header>
-          <Table
-            loading={loading}
-            loadingText="Loading evaluation details"
-            items={items}
-            columnDefinitions={columnDefinitions}
-            trackBy="question_id"
-            sortingColumn={collectionProps.sortingColumn || defaultSortingColumn}
-            sortingDescending={collectionProps.sortingDescending}
-            onSortingChange={(event) => {
-            collectionProps.onSortingChange(event);
-            }}
-            empty={
-              <Box textAlign="center">
-                <StatusIndicator type={error ? "error" : "warning"}>
-                  {error || "No details found for this evaluation."}
-                </StatusIndicator>
-              </Box>
-            }
-            header={
-              <Header
-                variant="h2"
-                actions={
-                  <Button onClick={handleDownload}>Download Table</Button>
-                }
-              >
-                Detailed Results
-              </Header>
-            }
-            pagination={
-              pages.length === 0 ? null : (
-                <Pagination
-                  openEnd={true}
-                  pagesCount={pages.length}
-                  currentPageIndex={currentPageIndex}
-                  onNextPageClick={onNextPageClick}
-                  onPreviousPageClick={onPreviousPageClick}
-                />
-              )
-            }
+    <Stack spacing={2}>
+      <Breadcrumbs>
+        <Link
+          component="button"
+          underline="hover"
+          onClick={() => navigate("/admin/llm-evaluation")}
+        >
+          LLM Evaluation
+        </Link>
+        <Typography color="text.primary">
+          Evaluation {evaluationName || evaluationId}
+        </Typography>
+      </Breadcrumbs>
+
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        alignItems="center"
+      >
+        <Typography variant="h4">Evaluation Details</Typography>
+        <Button onClick={() => navigate(-1)} variant="text">
+          Back to Evaluations
+        </Button>
+      </Stack>
+
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        alignItems="center"
+      >
+        <Typography variant="h5">Detailed Results</Typography>
+        <Button onClick={handleDownload} variant="outlined" size="small">
+          Download Table
+        </Button>
+      </Stack>
+
+      {loading ? (
+        <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : sortedItems.length === 0 ? (
+        <Box sx={{ textAlign: "center", p: 4 }}>
+          <Chip
+            label={error || "No details found for this evaluation."}
+            color={error ? "error" : "warning"}
+            variant="outlined"
           />
-          
-          {/* Context Modal */}
-          <Modal
-            visible={isContextModalVisible}
-            onDismiss={() => setContextModalVisible(false)}
-            header={<Header variant="h2">Retrieved Context</Header>}
-            footer={
-              <Box float="right">
-                <SpaceBetween direction="horizontal" size="xs">
-                  <Button variant="primary" onClick={() => setContextModalVisible(false)}>
-                    Close
-                  </Button>
-                </SpaceBetween>
-              </Box>
-            }
-            size="large"
+        </Box>
+      ) : (
+        <TableContainer component={Paper}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                {columnDefinitions.map((col) => (
+                  <TableCell
+                    key={col.id}
+                    sx={{ fontWeight: "bold", ...(col.width ? { width: col.width } : {}) }}
+                  >
+                    {col.sortingField ? (
+                      <TableSortLabel
+                        active={sortField === col.sortingField}
+                        direction={
+                          sortField === col.sortingField
+                            ? sortDirection
+                            : "asc"
+                        }
+                        onClick={() => handleSort(col.sortingField)}
+                      >
+                        {col.header}
+                      </TableSortLabel>
+                    ) : (
+                      col.header
+                    )}
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {sortedItems.map((item, index) => (
+                <TableRow key={item.question_id || index} hover>
+                  {columnDefinitions.map((col) => (
+                    <TableCell key={col.id}>{col.cell(item)}</TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      {pages.length > 0 && (
+        <Stack direction="row" justifyContent="center" spacing={2} sx={{ py: 1 }}>
+          <Button
+            size="small"
+            disabled={currentPageIndex <= 1}
+            onClick={onPreviousPageClick}
           >
-            <SpaceBetween size="m">
-              <div>
-                <h4>Question:</h4>
-                <p>{selectedQuestion}</p>
-              </div>
-              <div>
-                <h4>Context:</h4>
-                <div style={{ maxHeight: '400px', overflow: 'auto', whiteSpace: 'pre-wrap', border: '1px solid #eee', padding: '10px', backgroundColor: '#f9f9f9' }}>
-                  {selectedContext}
-                </div>
-              </div>
-            </SpaceBetween>
-          </Modal>
-        </>
-      }
-    />
+            Previous
+          </Button>
+          <Typography variant="body2" sx={{ alignSelf: "center" }}>
+            Page {currentPageIndex} of {pages.length}
+          </Typography>
+          <Button
+            size="small"
+            disabled={!pages[currentPageIndex - 1]?.NextPageToken}
+            onClick={onNextPageClick}
+          >
+            Next
+          </Button>
+        </Stack>
+      )}
+
+      <Dialog
+        open={isContextModalVisible}
+        onClose={() => setContextModalVisible(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Retrieved Context</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2}>
+            <Box>
+              <Typography variant="subtitle2">Question:</Typography>
+              <Typography variant="body2">{selectedQuestion}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="subtitle2">Context:</Typography>
+              <Box
+                sx={{
+                  maxHeight: 400,
+                  overflow: "auto",
+                  whiteSpace: "pre-wrap",
+                  border: "1px solid #eee",
+                  p: 1.5,
+                  bgcolor: "#f9f9f9",
+                  borderRadius: 1,
+                }}
+              >
+                {selectedContext}
+              </Box>
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setContextModalVisible(false)} variant="contained">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Stack>
   );
 }
 

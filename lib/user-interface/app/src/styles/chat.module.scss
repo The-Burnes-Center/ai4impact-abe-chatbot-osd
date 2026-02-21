@@ -1,40 +1,20 @@
-@use "@cloudscape-design/design-tokens/index" as awsui;
-
 .chat_container {
-  margin-bottom: -40px;
+  margin-bottom: 0;
   min-height: calc(100vh - 96px);
   display: flex;
   flex-direction: column;
   padding-bottom: 20px;
   justify-content: space-between;
-}
-
-.session_link {
-  color: black;
-  text-decoration: none;
-}
-
-.session_link_selected {
-  color: #0972d3;
-  text-decoration: none;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
 }
 
 @media (min-width: 466px) {
   .chat_container {
     min-height: calc(100vh - 104px);
   }
-}
-
-.new-session-button {
-  background-color: #4CAF50; /* Green background */
-  color: white; /* White text */
-  padding: 10px 20px;
-  border-radius: 5px;
-  transition: background-color 0.3s; /* Smooth transition for hover effect */
-}
-
-.new-session-button:hover {
-  background-color: #5045a0; /* Darker blue on hover */
 }
 
 @media (min-width: 689px) {
@@ -49,25 +29,26 @@
   }
 }
 
+/* Welcome empty state */
 .welcome_text {
-  color: awsui.$color-text-body-default;
-  font-size: 3rem;
-  font-weight: bolder;
-  opacity: 0.4;
+  color: var(--abe-textSecondary, #555d6b);
+  font-size: 1.5rem;
+  font-weight: 600;
+  text-align: center;
+  padding: 24px 16px;
 }
 
+/* Input area */
 .input_container {
   position: sticky;
   bottom: 0;
-  padding-bottom: awsui.$space-scaled-l;
-  padding-top: awsui.$space-scaled-xxl;
+  padding-bottom: 16px;
+  padding-top: 24px;
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    awsui.$color-background-container-content 20%
+    var(--abe-surface, #ffffff) 20%
   );
-  margin-left: -8px;
-  margin-right: -8px;
   container-type: inline-size;
   container-name: input_container;
 }
@@ -87,14 +68,21 @@
   outline: none;
   width: 100%;
   height: 100%;
-  font-size: 1rem;
+  font-size: 0.9375rem;
+  font-family: inherit;
+  color: var(--abe-textPrimary, #1a1d23);
+  line-height: 1.6;
+
+  &::placeholder {
+    color: var(--abe-textTertiary, #8a919e);
+  }
 }
 
 .input_controls {
   display: grid;
   grid-template-rows: 1fr;
   grid-template-columns: minmax(300px, 800px) minmax(180px, auto);
-  gap: awsui.$space-scaled-xs;
+  gap: 8px;
   align-items: center;
 
   .input_controls_selects_2 {
@@ -102,7 +90,7 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     align-items: center;
-    gap: awsui.$space-scaled-xs;
+    gap: 8px;
   }
 
   .input_controls_selects_1 {
@@ -110,7 +98,7 @@
     display: grid;
     grid-template-columns: 1fr;
     align-items: center;
-    gap: awsui.$space-scaled-xs;
+    gap: 8px;
   }
 
   .input_controls_right {
@@ -120,6 +108,8 @@
 
 .btn_chabot_message_copy {
   float: right;
+  opacity: 0;
+  transition: opacity var(--abe-transition-fast, 150ms cubic-bezier(0.4, 0, 0.2, 1));
 }
 
 .btn_chabot_metadata_copy {
@@ -129,7 +119,7 @@
 
 .img_chabot_message {
   max-width: 30%;
-  border-radius: 8px;
+  border-radius: var(--abe-radius-sm, 8px);
 }
 
 @media (max-width: 689px) {
@@ -137,7 +127,7 @@
     display: grid;
     grid-template-rows: 1fr 1fr;
     grid-template-columns: 1fr;
-    gap: awsui.$space-scaled-xs;
+    gap: 8px;
   }
 }
 
@@ -146,71 +136,189 @@
     display: grid;
     grid-template-rows: 1fr 1fr;
     grid-template-columns: 1fr;
-    gap: awsui.$space-scaled-xs;
+    gap: 8px;
   }
 }
 
+/* Markdown code blocks */
 .codeMarkdown {
-  background-color: awsui.$color-charts-line-grid;
+  background-color: var(--abe-codeBlockBg, #f4f5f7);
   text-overflow: ellipsis;
-  overflow: scroll;
-  border-radius: 5px;
-  padding: 5px;
+  overflow: auto;
+  border-radius: var(--abe-radius-sm, 8px);
+  padding: 12px 16px;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  border: 1px solid var(--abe-borderSubtle, #eef0f3);
 }
 
+/* Markdown tables */
 .markdownTable {
   width: 100%;
   border-collapse: collapse;
   margin-top: 1em;
-  border: 1px solid awsui.$color-border-divider-default;
-  border-radius: awsui.$border-radius-container;
+  border: 1px solid var(--abe-tableBorder, #e2e5ea);
+  border-radius: var(--abe-radius-sm, 8px);
+  overflow: hidden;
 }
 
 .markdownTable th,
-.markdownTable td {
-  border: 1px solid awsui.$color-border-divider-default;
-  padding: 8px;
+.markdownTable td,
+.markdownTableCell {
+  border: 1px solid var(--abe-tableBorder, #e2e5ea);
+  padding: 10px 14px;
   text-align: left;
+  font-size: 0.875rem;
 }
 
 .markdownTable th {
-  background-color: awsui.$color-background-container-header;
+  background-color: var(--abe-tableHeaderBg, #f2f4f7);
+  font-weight: 600;
 }
 
 .markdownTable tr:nth-child(even) {
-  background-color: awsui.$color-background-container-content;
+  background-color: var(--abe-tableStripeBg, #fafbfc);
 }
 
+/* Feedback thumbs */
 .thumbsContainer {
   display: flex;
   align-items: center;
   margin-top: 8px;
+  gap: 4px;
 }
 
-.thumbsIcon {
+/* Message wrapper for hover-reveal */
+.messageWrapper {
+  &:hover .btn_chabot_message_copy {
+    opacity: 1;
+  }
+}
+
+/* AI message bubble */
+.aiMessage {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  animation: slideUp 300ms ease-out;
+}
+
+.aiAvatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--abe-radius-sm, 8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.75rem;
+  margin-top: 4px;
+}
+
+.aiContent {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Human message bubble */
+.humanMessage {
+  display: flex;
+  justify-content: flex-end;
+  animation: slideUp 300ms ease-out;
+}
+
+.humanBubble {
+  max-width: 80%;
+  padding: 10px 16px;
+  border-radius: var(--abe-radius-md, 12px) var(--abe-radius-md, 12px) var(--abe-radius-xs, 4px) var(--abe-radius-md, 12px);
+  background-color: var(--abe-chatHumanBg, #14558f);
+  color: var(--abe-chatHumanText, #ffffff);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+/* Source chips */
+.sourcesContainer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* Typing indicator */
+.typingIndicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.typingDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--abe-textTertiary, #8a919e);
+  animation: typingDot 1.4s ease-in-out infinite;
+
+  &:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  &:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+}
+
+/* Suggested prompt cards */
+.suggestedPrompts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 24px;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.suggestedPromptCard {
+  padding: 14px 18px;
+  border-radius: var(--abe-radius-md, 12px);
+  border: 1px solid var(--abe-border, #e2e5ea);
+  background: var(--abe-surface, #ffffff);
   cursor: pointer;
-  margin-right: 10px;
-  opacity: 0.5;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--abe-textPrimary, #1a1d23);
+  transition: all var(--abe-transition-fast, 150ms cubic-bezier(0.4, 0, 0.2, 1));
+  text-align: left;
+
+  &:hover {
+    border-color: var(--abe-primary, #14558f);
+    background: var(--abe-primaryLight, #e8f2fc);
+    transform: translateY(-2px);
+    box-shadow: var(--abe-shadow-sm, 0 1px 3px rgba(0,0,0,0.08));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--abe-primary, #14558f);
+    outline-offset: 2px;
+  }
 }
 
-/* Styles for thumbs up icon. Should be compatible with dark theme */
-.thumbsUp {
-  color: #539fe5;
-}
+@media (prefers-reduced-motion: reduce) {
+  .aiMessage,
+  .humanMessage {
+    animation: none;
+  }
 
-/* Styles for thumbs down icon. Should be compatible with dark theme */
-.thumbsDown {
-  color: #539fe5;
-}
+  .typingDot {
+    animation: none;
+    opacity: 0.6;
+  }
 
-/* Style for clicked state */
-.clicked {
-  opacity: 0.5;
-  pointer-events: none; /* Disable pointer events for a clicked icon */
-}
-
-/* Styles for selected icon */
-.thumbsIcon.selected {
-  opacity: 1 !important;
-  pointer-events: none; /* Disable pointer events for the selected icon */
+  .suggestedPromptCard:hover {
+    transform: none;
+  }
 }

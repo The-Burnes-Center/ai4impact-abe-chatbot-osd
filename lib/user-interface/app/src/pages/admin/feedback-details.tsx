@@ -1,68 +1,44 @@
-import React from 'react'
-import { useLocation } from 'react-router-dom';
+import React from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
-  BreadcrumbGroup,
-  ContentLayout,
-  Header,
-  SpaceBetween,
-  Alert
-} from "@cloudscape-design/components";
-import {
-  Authenticator,
-  Heading,
-  useTheme,
-} from "@aws-amplify/ui-react";
-import BaseAppLayout from "../../components/base-app-layout";
-import useOnFollow from "../../common/hooks/use-on-follow";
-import FeedbackTab from "./feedback-tab";
-import FeedbackPanel from "../../components/feedback-panel";
+  Typography,
+  Stack,
+  Breadcrumbs,
+  Link,
+} from "@mui/material";
 import { CHATBOT_NAME } from "../../common/constants";
-import { useState, useEffect } from "react";
-import { Auth } from "aws-amplify";
-import FeedbackDetailsTab from './feedback-details-tab';
-// ChatbotMessage, CreatedAt, FeedbackComments, FeedbackID, Problem, Sources, UserPrompt
+import FeedbackDetailsTab from "./feedback-details-tab";
 
 const UserFeedbackDetailPage = () => {
-
   const location = useLocation();
+  const navigate = useNavigate();
   const feedbackItem = location.state?.feedback;
-  const onFollow = useOnFollow();  
 
-  return (    
-    <BaseAppLayout
-      contentType="cards"
-      breadcrumbs={
-        <BreadcrumbGroup
-          onFollow={onFollow}
-          items={[
-            {
-              text: CHATBOT_NAME,
-              href: "/",
-            },
+  return (
+    <Stack spacing={3}>
+      <Breadcrumbs>
+        <Link
+          component="button"
+          underline="hover"
+          onClick={() => navigate("/")}
+        >
+          {CHATBOT_NAME}
+        </Link>
+        <Link
+          component="button"
+          underline="hover"
+          onClick={() => navigate("/admin/user-feedback")}
+        >
+          View Feedback
+        </Link>
+        <Typography color="text.primary">Feedback Details</Typography>
+      </Breadcrumbs>
 
-            {
-              text: "View Feedback",
-              href: "/admin/user-feedback",
-            },
+      <Typography variant="h4">Feedback Details</Typography>
 
-            {
-              text: "Feedback Details",
-              href: `/admin/user-feedback/${feedbackItem.FeedbackID}`,
-            },
-          ]}
-        />
-      }
-
-      content={
-        <ContentLayout header={<Header variant="h1">Feedback Details</Header>}>
-          <SpaceBetween size="l">
-                {/* <FeedbackTab updateSelectedFeedback={setFeedback} selectedFeedback={feedback}/> */}
-                <FeedbackDetailsTab selectedFeedback={feedbackItem} />
-          </SpaceBetween>
-        </ContentLayout>
-      }
-    />
+      <FeedbackDetailsTab selectedFeedback={feedbackItem} />
+    </Stack>
   );
-}
+};
 
-export default UserFeedbackDetailPage
+export default UserFeedbackDetailPage;

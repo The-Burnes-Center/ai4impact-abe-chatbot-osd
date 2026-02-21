@@ -1,7 +1,6 @@
-import React, { useContext } from "react";
+import React from "react";
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
-import { AppContext } from "./common/app-context";
-import GlobalHeader from "./components/global-header";
+import BaseAppLayout from "./components/base-app-layout";
 import Playground from "./pages/chatbot/playground/playground";
 import SessionPage from "./pages/chatbot/sessions/sessions";
 import DataPage from "./pages/admin/data-view-page";
@@ -15,41 +14,37 @@ import LandingPage from "./pages/landing-page";
 import LandingPageInfo from "./pages/landing-page-info";
 import LandingPageStart from "./pages/landing-page-start";
 import TipsAndQuestions from "./pages/tips-and-questions";
-import LlmEvaluationPage from "./pages/admin/llm-evaluation-page"; 
+import LlmEvaluationPage from "./pages/admin/llm-evaluation-page";
 import DetailedEvaluationPage from "./pages/admin/detailed-evaluation-page";
 import { v4 as uuidv4 } from "uuid";
 import "./styles/app.scss";
 
-function App() {
-  const appContext = useContext(AppContext);
+function AppShell() {
+  return (
+    <BaseAppLayout>
+      <Outlet />
+    </BaseAppLayout>
+  );
+}
 
+function App() {
   return (
     <div style={{ height: "100%" }}>
       <BrowserRouter>
         <Routes>
-          {/* Landing Page */}
+          {/* Landing Pages (no sidebar) */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/about" element={<LandingPageInfo />} />
           <Route path="/get-started" element={<LandingPageStart />} />
 
-          {/* Grouped Routes with Global Header */}
-          <Route
-            element={
-              <>
-                <GlobalHeader />
-                <div style={{ height: "56px", backgroundColor: "#000716" }}>&nbsp;</div>
-                <Outlet /> {/* Ensure Outlet renders child routes */}
-              </>
-            }
-          >
-            {/* Chatbot Routes */}
+          {/* App routes with sidebar + header */}
+          <Route element={<AppShell />}>
             <Route path="/chatbot">
               <Route path="playground/:sessionId" element={<Playground />} />
               <Route path="sessions" element={<SessionPage />} />
               <Route path="tips" element={<TipsAndQuestions />} />
             </Route>
 
-            {/* Admin Routes */}
             <Route path="/admin">
               <Route path="data" element={<DataPage />} />
               <Route path="user-feedback" element={<UserFeedbackPage />} />
@@ -57,27 +52,17 @@ function App() {
               <Route path="metrics" element={<MetricsPage />} />
               <Route path="llm-evaluation" element={<Outlet />}>
                 <Route index element={<LlmEvaluationPage />} />
-                {/* Support both URL formats for backward compatibility */}
                 <Route
                   path=":evaluationId"
-                  element={
-                    <DetailedEvaluationPage
-                      documentType="detailedEvaluation" 
-                    />
-                  }
+                  element={<DetailedEvaluationPage documentType="detailedEvaluation" />}
                 />
                 <Route
                   path="details/:evaluationId"
-                  element={
-                    <DetailedEvaluationPage
-                      documentType="detailedEvaluation" 
-                    />
-                  }
+                  element={<DetailedEvaluationPage documentType="detailedEvaluation" />}
                 />
               </Route>
             </Route>
 
-            {/* FAQ and Guide Routes */}
             <Route path="/faq-and-guide">
               <Route path="about-chatbot" element={<AboutChatbot />} />
               <Route path="how-to-use" element={<HowToUse />} />
@@ -85,7 +70,7 @@ function App() {
             </Route>
           </Route>
 
-          {/* Catch-all Route */}
+          {/* Catch-all */}
           <Route
             path="*"
             element={<Navigate to={`/chatbot/playground/${uuidv4()}`} replace />}

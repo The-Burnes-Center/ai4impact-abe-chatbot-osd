@@ -1,98 +1,37 @@
-import {
-    BreadcrumbGroup,
-    ContentLayout,
-    Header,
-    SpaceBetween,
-    Alert,
-    Tabs,
-    Container
-  } from "@cloudscape-design/components";
-  import useOnFollow from "../../common/hooks/use-on-follow";
-  import BaseAppLayout from "../../components/base-app-layout";
-  import { CHATBOT_NAME } from "../../common/constants";
-  import { useState, useEffect, useContext } from "react";
-  import { Auth } from "aws-amplify";
-  import { ApiClient } from "../../common/api-client/api-client";
-  import { AppContext } from "../../common/app-context";
-  
-  export default function Support() {
-    const onFollow = useOnFollow();
-    const [activeTab, setActiveTab] = useState("file");
-    const appContext = useContext(AppContext);
+import Typography from "@mui/material/Typography";
+import Stack from "@mui/material/Stack";
+import Paper from "@mui/material/Paper";
+import Box from "@mui/material/Box";
 
-  
- 
-  
-    return (
-        <BaseAppLayout
-          contentType="cards"
-          content={
-            <ContentLayout
-              header={
-                <Header
-                  variant="h1"
-                >
-                  Support
-                </Header>
-              }
-            >
-              <SpaceBetween size="l">
-                <Container
-                  header={
-                    <Header
-                      variant="h3"
-                      // description="Container description"
-                    >
-                      An AI-powered chatbot that helps students explore academic and career paths.
-                    </Header>                
-                  }
-                >
-                  <SpaceBetween size="xxs">
-                  The MATCH Chatbot is designed to help you research how specific courses and programs at public higher education institutions within MA can set you up for a fullfilling career.
-    
-                  <br></br>
-          
-                  </SpaceBetween>
-                </Container>
-                <Tabs
-                  tabs={[
-                      {
-                      label: "About the MATCH Chatbot",
-                      id: "about-the-tool",
-                    //   content: (
-                    //       <AboutTheToolTab
-                    //       tabChangeFunction={() => setActiveTab("about-the-tool")}
-                    //       />
-                    //   ),
-                      },
-                      {
-                      label: "How To Use MATCH",
-                      id: "how-to-use",
-                    //   content: (
-                    //     <HowToUseTab 
-                    //       tabChangeFunction={() => setActiveTab("how-to-use")}
-                    //     />
-                    //   ),
-                      },
-                      {
-                      label: "FAQs and Support",
-                      id: "support",
-                    //   content: (
-                    //       <SupportTab 
-                    //       tabChangeFunction={() => setActiveTab("support")}
-                    //       />
-                    //   ),
-                      },
-                  ]}
-                  activeTabId={activeTab}
-                  onChange={({ detail: { activeTabId } }) => {
-                      setActiveTab(activeTabId);
-                  }}
-                  />
-    
-              </SpaceBetween>
-            </ContentLayout>
-          }
-        />
-      );
-    }
+export default function Support() {
+  return (
+    <Box role="main">
+      <Typography variant="h2" component="h1" gutterBottom>
+        Support
+      </Typography>
+
+      <Stack spacing={3}>
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h4" component="h2" gutterBottom>
+            Need Help?
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            If you encounter any issues or have questions about using ABE,
+            please reach out to your system administrator or the ABE support team.
+          </Typography>
+        </Paper>
+
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h4" component="h2" gutterBottom>
+            Reporting Issues
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Use the thumbs-down feedback button on any response to report
+            inaccurate or unhelpful answers. Your feedback helps improve ABE&apos;s
+            accuracy over time.
+          </Typography>
+        </Paper>
+      </Stack>
+    </Box>
+  );
+}

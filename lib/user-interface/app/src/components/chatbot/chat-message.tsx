@@ -1,20 +1,31 @@
-import {
-  Box,
-  Button,
-  Container,
-  Popover,
-  Spinner,
-  StatusIndicator,
-  TextContent,
-  SpaceBetween,
-  ButtonDropdown,
-  Modal,
-  FormField,
-  Input,
-  Select
-} from "@cloudscape-design/components";
 import * as React from "react";
-import { useState } from 'react';
+import { useState } from "react";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
+import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
+import Tooltip from "@mui/material/Tooltip";
+import Chip from "@mui/material/Chip";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
+import TextField from "@mui/material/TextField";
+import Select from "@mui/material/Select";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
+import MuiMenuItem from "@mui/material/MenuItem";
+import Avatar from "@mui/material/Avatar";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import CheckIcon from "@mui/icons-material/Check";
+import ThumbUpIcon from "@mui/icons-material/ThumbUp";
+import ThumbUpOutlinedIcon from "@mui/icons-material/ThumbUpOutlined";
+import ThumbDownIcon from "@mui/icons-material/ThumbDown";
+import ThumbDownOutlinedIcon from "@mui/icons-material/ThumbDownOutlined";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import SmartToyOutlinedIcon from "@mui/icons-material/SmartToyOutlined";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import styles from "../../styles/chat.module.scss";
@@ -24,240 +35,300 @@ import {
   ChatBotMessageType,
 } from "./types";
 
-
 import "react-json-view-lite/dist/index.css";
 import "../../styles/app.scss";
 import { useNotifications } from "../notif-manager";
 import { Utils } from "../../common/utils";
-import {feedbackCategories, feedbackTypes} from '../../common/constants'
+import { feedbackCategories, feedbackTypes } from "../../common/constants";
 
 export interface ChatMessageProps {
-  message: ChatBotHistoryItem;  
+  message: ChatBotHistoryItem;
   onThumbsUp: () => void;
-  onThumbsDown: (feedbackTopic : string, feedbackType : string, feedbackMessage: string) => void;  
+  onThumbsDown: (feedbackTopic: string, feedbackType: string, feedbackMessage: string) => void;
 }
 
-
-
 export default function ChatMessage(props: ChatMessageProps) {
-  const [loading, setLoading] = useState<boolean>(false);
   const [selectedIcon, setSelectedIcon] = useState<1 | 0 | null>(null);
   const { addNotification, removeNotification } = useNotifications();
   const [modalVisible, setModalVisible] = useState(false);
-  const [selectedTopic, setSelectedTopic] = React.useState({label: "Select a Topic", value: "1"});
-  const [selectedFeedbackType, setSelectedFeedbackType] = React.useState({label: "Select a Problem", value: "1"});
+  const [selectedTopic, setSelectedTopic] = React.useState("");
+  const [selectedFeedbackType, setSelectedFeedbackType] = React.useState("");
   const [value, setValue] = useState("");
-
+  const [copied, setCopied] = useState(false);
 
   const content =
     props.message.content && props.message.content.length > 0
       ? props.message.content
       : "";
 
-  const showSources = props.message.metadata?.Sources && (props.message.metadata.Sources as any[]).length > 0;
+  const showSources =
+    props.message.metadata?.Sources &&
+    (props.message.metadata.Sources as any[]).length > 0;
 
-  console.log("Sources:", props.message.metadata.Sources);
-
+  const handleCopy = () => {
+    navigator.clipboard.writeText(props.message.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div>
-      <Modal
-      onDismiss={() => setModalVisible(false)}
-      visible={modalVisible}
-      footer={
-        <Box float = "right">
-          <SpaceBetween direction="horizontal" size="xs">
-            <Button variant="link" onClick={() => {
-              setModalVisible(false)
-            setValue("")
-            setSelectedTopic({label: "Select a Topic", value: "1"})
-            setSelectedFeedbackType({label: "Select a Topic", value: "1"})
+      {/* Feedback dialog */}
+      <Dialog
+        open={modalVisible}
+        onClose={() => setModalVisible(false)}
+        maxWidth="sm"
+        fullWidth
+        aria-labelledby="feedback-dialog-title"
+      >
+        <DialogTitle id="feedback-dialog-title">Provide Feedback</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <FormControl fullWidth size="small">
+              <InputLabel id="feedback-topic-label">Topic</InputLabel>
+              <Select
+                labelId="feedback-topic-label"
+                value={selectedTopic}
+                label="Topic"
+                onChange={(e) => setSelectedTopic(e.target.value)}
+              >
+                {feedbackCategories.map((cat) => (
+                  <MuiMenuItem key={cat.value} value={cat.value} disabled={cat.disabled}>
+                    {cat.label}
+                  </MuiMenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth size="small">
+              <InputLabel id="feedback-problem-label">Problem</InputLabel>
+              <Select
+                labelId="feedback-problem-label"
+                value={selectedFeedbackType}
+                label="Problem"
+                onChange={(e) => setSelectedFeedbackType(e.target.value)}
+              >
+                {feedbackTypes.map((ft) => (
+                  <MuiMenuItem key={ft.value} value={ft.value} disabled={ft.disabled}>
+                    {ft.label}
+                  </MuiMenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              label="Please enter feedback here"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              fullWidth
+              size="small"
+              multiline
+              minRows={2}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => {
+              setModalVisible(false);
+              setValue("");
+              setSelectedTopic("");
+              setSelectedFeedbackType("");
             }}
-            >Cancel</Button>
-            <Button variant="primary" onClick={() => {
-              if (!selectedTopic.value || !selectedFeedbackType.value || selectedTopic.value === "1" || selectedFeedbackType.value === "1" || value.trim() === "") {
-                const id = addNotification("error","Please fill out all fields.")
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              if (!selectedTopic || !selectedFeedbackType || value.trim() === "") {
+                const id = addNotification("error", "Please fill out all fields.");
                 Utils.delay(3000).then(() => removeNotification(id));
                 return;
-              } else {
-              setModalVisible(false)
-              setValue("")
-
-              const id = addNotification("success","Your feedback has been submitted.")
+              }
+              setModalVisible(false);
+              setValue("");
+              const id = addNotification("success", "Your feedback has been submitted.");
               Utils.delay(3000).then(() => removeNotification(id));
-              
-              props.onThumbsDown(selectedTopic.value, selectedFeedbackType.value,value.trim());
+              props.onThumbsDown(selectedTopic, selectedFeedbackType, value.trim());
               setSelectedIcon(0);
+              setSelectedTopic("");
+              setSelectedFeedbackType("");
+            }}
+          >
+            Submit
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-              setSelectedTopic({label: "Select a Topic", value: "1"})
-              setSelectedFeedbackType({label: "Select a Problem", value: "1"})
-              
-              
-            }}}>Ok</Button>
-          </SpaceBetween>
-        </Box>
-      }
-      header="Provide Feedback"
-      >
-        <SpaceBetween size="xs">
-        <Select
-        selectedOption = {selectedTopic}
-        onChange = {({detail}) => setSelectedTopic({label: detail.selectedOption.label,value: detail.selectedOption.value})}
-        options ={feedbackCategories}
-        />
-        <Select
-        selectedOption = {selectedFeedbackType}
-        onChange = {({detail}) => setSelectedFeedbackType({label: detail.selectedOption.label,value: detail.selectedOption.value})}
-        options ={feedbackTypes}
-        />
-        <FormField label="Please enter feedback here">
-          <Input
-          onChange={({detail}) => setValue(detail.value)}
-          value={value}
-          />
-        </FormField>
-        </SpaceBetween>
-      </Modal>
+      {/* AI Message */}
       {props.message?.type === ChatBotMessageType.AI && (
-        <Container
-          footer={
-            showSources && (
-              <SpaceBetween direction="horizontal" size="s">
-              {/* <ButtonDropdown
-              items={(props.message.metadata.Sources as any[]).map((item) => { return {id: "id", disabled: false, text : item.title, href : item.uri, external : true, externalIconAriaLabel: "(opens in new tab)"}})}
-        
-              >Sources</ButtonDropdown>               */}
-              <ButtonDropdown
-                items={(props.message.metadata.Sources as any[]).map((item, idx) => {
-                  // Use the pre-signed URL from the backend directly
-                  // Never convert s3:// URIs to public https URLs (bucket is private)
-                  return {
-                    id: `source-${idx}`,
-                    disabled: false,
-                    text: item.title,
-                    href: item.uri,
-                    external: true,
-                    externalIconAriaLabel: "(opens in new tab)",
-                  };
-                })}
-              >Sources</ButtonDropdown>
+        <div className={styles.aiMessage} role="article" aria-label="ABE response">
+          <Avatar
+            className={styles.aiAvatar}
+            sx={{
+              bgcolor: "primary.light",
+              color: "primary.main",
+              width: 32,
+              height: 32,
+            }}
+          >
+            <SmartToyOutlinedIcon sx={{ fontSize: 18 }} />
+          </Avatar>
+          <Box className={`${styles.aiContent} ${styles.messageWrapper}`} sx={{ minWidth: 0, flex: 1 }}>
+            <Paper
+              sx={{
+                p: 2,
+                bgcolor: "var(--abe-chatAiBg)",
+                borderColor: "var(--abe-chatAiBorder)",
+              }}
+            >
+              {content.length === 0 ? (
+                <div className={styles.typingIndicator} aria-label="ABE is typing" role="status">
+                  <span className={styles.typingDot} />
+                  <span className={styles.typingDot} />
+                  <span className={styles.typingDot} />
+                </div>
+              ) : null}
 
-              </SpaceBetween>
-            )
-          }
-        >
-          {content?.length === 0 ? (
-            <Box>
-              <Spinner />
-            </Box>
-          ) : null}
-          {props.message.content.length > 0 ? (
-            <div className={styles.btn_chabot_message_copy}>
-              <Popover
-                size="medium"
-                position="top"
-                triggerType="custom"
-                dismissButton={false}
-                content={
-                  <StatusIndicator type="success">
-                    Copied to clipboard
-                  </StatusIndicator>
-                }
-              >
-                <Button
-                  variant="inline-icon"
-                  iconName="copy"
-                  onClick={() => {
-                    navigator.clipboard.writeText(props.message.content);
+              {props.message.content.length > 0 && (
+                <div className={styles.btn_chabot_message_copy}>
+                  <Tooltip title={copied ? "Copied!" : "Copy to clipboard"} placement="top">
+                    <IconButton
+                      size="small"
+                      onClick={handleCopy}
+                      aria-label="Copy message to clipboard"
+                    >
+                      {copied ? (
+                        <CheckIcon fontSize="small" color="success" />
+                      ) : (
+                        <ContentCopyIcon fontSize="small" />
+                      )}
+                    </IconButton>
+                  </Tooltip>
+                </div>
+              )}
+
+              <Box sx={{ "& p": { my: 0.5 }, "& p:first-of-type": { mt: 0 }, "& p:last-of-type": { mb: 0 }, lineHeight: 1.7 }}>
+                <ReactMarkdown
+                  children={content}
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    pre(props) {
+                      const { children, ...rest } = props;
+                      return (
+                        <pre {...rest} className={styles.codeMarkdown}>
+                          {children}
+                        </pre>
+                      );
+                    },
+                    table(props) {
+                      const { children, ...rest } = props;
+                      return (
+                        <table {...rest} className={styles.markdownTable}>
+                          {children}
+                        </table>
+                      );
+                    },
+                    th(props) {
+                      const { children, ...rest } = props;
+                      return (
+                        <th {...rest} className={styles.markdownTableCell}>
+                          {children}
+                        </th>
+                      );
+                    },
+                    td(props) {
+                      const { children, ...rest } = props;
+                      return (
+                        <td {...rest} className={styles.markdownTableCell}>
+                          {children}
+                        </td>
+                      );
+                    },
+                    a(props) {
+                      const { children, href, ...rest } = props;
+                      return (
+                        <a {...rest} href={href} target="_blank" rel="noopener noreferrer">
+                          {children}
+                        </a>
+                      );
+                    },
                   }}
                 />
-              </Popover>
-            </div>
-          ) : null}
-          <ReactMarkdown
-            children={content}
-            remarkPlugins={[remarkGfm]}
-            components={{
-              pre(props) {
-                const { children, ...rest } = props;
-                return (
-                  <pre {...rest} className={styles.codeMarkdown}>
-                    {children}
-                  </pre>
-                );
-              },
-              table(props) {
-                const { children, ...rest } = props;
-                return (
-                  <table {...rest} className={styles.markdownTable}>
-                    {children}
-                  </table>
-                );
-              },
-              th(props) {
-                const { children, ...rest } = props;
-                return (
-                  <th {...rest} className={styles.markdownTableCell}>
-                    {children}
-                  </th>
-                );
-              },
-              td(props) {
-                const { children, ...rest } = props;
-                return (
-                  <td {...rest} className={styles.markdownTableCell}>
-                    {children}
-                  </td>
-                );
-              },
-              a(props) {
-                const { children, href, ...rest } = props;
-                return (
-                  <a {...rest} href={href} target="_blank" rel="noopener noreferrer">
-                    {children}
-                  </a>
-                );
-              },
-            }}
-          />
-          <div className={styles.thumbsContainer}>
-            {(selectedIcon === 1 || selectedIcon === null) && (
-              <Button
-                variant="icon"
-                iconName={selectedIcon === 1 ? "thumbs-up-filled" : "thumbs-up"}
-                onClick={() => {
-                  props.onThumbsUp();
-                  const id = addNotification("success","Thank you for your valuable feedback!")
-                  Utils.delay(3000).then(() => removeNotification(id));
-                  setSelectedIcon(1);
-                }}
-              />
+              </Box>
+
+              {/* Feedback buttons */}
+              {content.length > 0 && (
+                <div className={styles.thumbsContainer}>
+                  {(selectedIcon === 1 || selectedIcon === null) && (
+                    <Tooltip title="Helpful">
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          props.onThumbsUp();
+                          const id = addNotification("success", "Thank you for your valuable feedback!");
+                          Utils.delay(3000).then(() => removeNotification(id));
+                          setSelectedIcon(1);
+                        }}
+                        aria-label="Mark response as helpful"
+                      >
+                        {selectedIcon === 1 ? (
+                          <ThumbUpIcon fontSize="small" color="primary" />
+                        ) : (
+                          <ThumbUpOutlinedIcon fontSize="small" />
+                        )}
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                  {(selectedIcon === 0 || selectedIcon === null) && (
+                    <Tooltip title="Not helpful">
+                      <IconButton
+                        size="small"
+                        onClick={() => setModalVisible(true)}
+                        aria-label="Mark response as not helpful and provide feedback"
+                      >
+                        {selectedIcon === 0 ? (
+                          <ThumbDownIcon fontSize="small" color="primary" />
+                        ) : (
+                          <ThumbDownOutlinedIcon fontSize="small" />
+                        )}
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                </div>
+              )}
+            </Paper>
+
+            {/* Source chips */}
+            {showSources && (
+              <div className={styles.sourcesContainer}>
+                {(props.message.metadata.Sources as any[]).map((item, idx) => (
+                  <Chip
+                    key={`source-${idx}`}
+                    label={item.title}
+                    component="a"
+                    href={item.uri}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    clickable
+                    size="small"
+                    variant="outlined"
+                    icon={<OpenInNewIcon sx={{ fontSize: "14px !important" }} />}
+                    sx={{ fontSize: "0.75rem", maxWidth: 280 }}
+                  />
+                ))}
+              </div>
             )}
-            {(selectedIcon === 0 || selectedIcon === null) && (
-              <Button
-                iconName={
-                  selectedIcon === 0 ? "thumbs-down-filled" : "thumbs-down"
-                }
-                variant="icon"
-                onClick={() => {
-                  // props.onThumbsDown();
-                  // setSelectedIcon(0);
-                  setModalVisible(true);
-                }}
-              />
-            )}
-          </div>
-        </Container>
+          </Box>
+        </div>
       )}
-      {loading && (
-        <Box float="left">
-          <Spinner />
-        </Box>
-      )}      
+
+      {/* Human Message */}
       {props.message?.type === ChatBotMessageType.Human && (
-        <TextContent>
-          <strong>{props.message.content}</strong>
-        </TextContent>
+        <div className={styles.humanMessage} role="article" aria-label="Your message">
+          <div className={styles.humanBubble}>
+            {props.message.content}
+          </div>
+        </div>
       )}
     </div>
   );

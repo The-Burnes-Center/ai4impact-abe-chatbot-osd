@@ -1,27 +1,37 @@
 import {
   Box,
-  SpaceBetween,
+  Stack,
   Table,
-  DateRangePicker,
-  Pagination,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  TableContainer,
+  Paper,
   Button,
-  Header,
-  Modal,
+  Typography,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
   Select,
-  DateRangePickerProps,
-} from "@cloudscape-design/components";
-import { I18nProvider } from '@cloudscape-design/components/i18n';
-import messages from '@cloudscape-design/components/i18n/messages/all.all';
+  MenuItem,
+  FormControl,
+  InputLabel,
+  IconButton,
+} from "@mui/material";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { ApiClient } from "../../common/api-client/api-client";
 import { AppContext } from "../../common/app-context";
 import { getColumnDefinition } from "./columns";
 import { Utils } from "../../common/utils";
-import { useCollection } from "@cloudscape-design/collection-hooks";
-import React from 'react';
+import React from "react";
 import { useNotifications } from "../../components/notif-manager";
-import { feedbackCategories } from '../../common/constants';
-import { useNavigate } from 'react-router-dom';
+import { feedbackCategories } from "../../common/constants";
+import { useNavigate } from "react-router-dom";
+import CircularProgress from "@mui/material/CircularProgress";
 
 export interface FeedbackTabProps {
   updateSelectedFeedback: React.Dispatch<any>;
@@ -40,74 +50,51 @@ export default function FeedbackTab(props: FeedbackTabProps) {
   const navigate = useNavigate();
 
   const onProblemClick = (feedbackItem) => {
-    // Navigate to the feedback details page and pass in the selected feedback
     console.log(feedbackItem);
     navigate(`/admin/user-feedback/${feedbackItem.FeedbackID}`, {
-      state: { feedback: feedbackItem }
+      state: { feedback: feedbackItem },
     });
   };
 
-  const [
-    selectedOption,
-    setSelectedOption
-  ] = React.useState({ label: "Any", value: "any" });
-  const [value, setValue] = React.useState<DateRangePickerProps.AbsoluteValue>({
-    type: "absolute",
-    startDate: (new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() - 1)).toISOString().split("T")[0],
-    endDate: (new Date()).toISOString().split("T")[0]
+  const [selectedOption, setSelectedOption] = React.useState({
+    label: "Any",
+    value: "any",
   });
+  const [startDate, setStartDate] = React.useState(
+    new Date(
+      new Date().getFullYear(),
+      new Date().getMonth(),
+      new Date().getDate() - 1
+    )
+      .toISOString()
+      .split("T")[0]
+  );
+  const [endDate, setEndDate] = React.useState(
+    new Date().toISOString().split("T")[0]
+  );
 
   const { addNotification, removeNotification } = useNotifications();
 
-  /** Theoretically handles pagination but I think it works without this actually */
-  const { items, collectionProps, paginationProps } = useCollection(pages, {
-    filtering: {
-      empty: (
-        <Box margin={{ vertical: "xs" }} textAlign="center" color="inherit">
-          <SpaceBetween size="m">
-            <b>No feedback</b>
-          </SpaceBetween>
-        </Box>
-      ),
-    },
-    pagination: { pageSize: 5 },
-    sorting: {
-      defaultState: {
-        sortingColumn: {
-          sortingField: "FeedbackID",
-        },
-        isDescending: true,
-      },
-    },
-    selection: {},
-  });
-
-  /** This is the memoized function that is used to get feedback. It takes in a
-   * page index to set the data locally to the correct page as well as a token that the
-   * API uses to paginate the results.
-   */
   const getFeedback = useCallback(
-    async (params: { pageIndex?, nextPageToken?}) => {
+    async (params: { pageIndex?; nextPageToken? }) => {
       setLoading(true);
       try {
-        const result = await apiClient.userFeedback.getUserFeedback(selectedOption.value, value.startDate + "T00:00:00", value.endDate + "T23:59:59", params.nextPageToken)
+        const result = await apiClient.userFeedback.getUserFeedback(
+          selectedOption.value,
+          startDate + "T00:00:00",
+          endDate + "T23:59:59",
+          params.nextPageToken
+        );
 
         setPages((current) => {
-          /** When any of the filters change, we want to reset the display back to page 1.
-           * Therefore, when needsRefresh is true, we want to set the pages array so that whatever was just retrieved
-           * is set as the first page
-           */
           if (needsRefresh.current) {
             needsRefresh.current = false;
             return [result];
           }
-          /** If there was a provided page index, then pop it in that index */
           if (typeof params.pageIndex !== "undefined") {
             current[params.pageIndex - 1] = result;
             return [...current];
           } else {
-            /** Otherwise, not, and just append it to the end and hope it's correct */
-            console.log("pages?")
             return [...current, result];
           }
         });
@@ -116,245 +103,273 @@ export default function FeedbackTab(props: FeedbackTabProps) {
       }
       setLoading(false);
     },
-    [appContext, selectedOption, value, needsRefresh]
+    [appContext, selectedOption, startDate, endDate, needsRefresh]
   );
 
-
-  /** The getFeedback function is a memoized function.
-   * When any of the filters change, getFeedback will also change and we therefore need a refresh
-   */
   useEffect(() => {
     setCurrentPageIndex(1);
     setSelectedItems([]);
     if (needsRefresh.current) {
-      // console.log("needs refresh!")
       getFeedback({ pageIndex: 1 });
     } else {
       getFeedback({ pageIndex: currentPageIndex });
     }
   }, [getFeedback]);
 
-  /** Handles next page clicks */
   const onNextPageClick = async () => {
     const continuationToken = pages[currentPageIndex - 1]?.NextPageToken;
     if (continuationToken) {
       if (pages.length <= currentPageIndex || needsRefresh.current) {
         await getFeedback({ nextPageToken: continuationToken });
       }
-      setCurrentPageIndex((current) => Math.min(pages.length + 1, current + 1));
+      setCurrentPageIndex((current) =>
+        Math.min(pages.length + 1, current + 1)
+      );
     }
   };
 
-  /** Handles previous page clicks */
   const onPreviousPageClick = async () => {
     setCurrentPageIndex((current) =>
       Math.max(1, Math.min(pages.length - 1, current - 1))
     );
   };
 
-  /** Handles page refreshes */
   const refreshPage = async () => {
     if (currentPageIndex <= 1) {
       await getFeedback({ pageIndex: currentPageIndex });
     } else {
       const continuationToken = pages[currentPageIndex - 2]?.NextPageToken!;
-      await getFeedback({ pageIndex: currentPageIndex, nextPageToken: continuationToken });
+      await getFeedback({
+        pageIndex: currentPageIndex,
+        nextPageToken: continuationToken,
+      });
     }
   };
 
-
   const columnDefinitions = getColumnDefinition("feedback", onProblemClick);
 
-  /** Deletes all selected feedback */
   const deleteSelectedFeedback = async () => {
     if (!appContext) return;
     setLoading(true);
     setShowModalDelete(false);
     const apiClient = new ApiClient(appContext);
     await Promise.all(
-      selectedItems.map((s) => apiClient.userFeedback.deleteFeedback(s.Topic, s.CreatedAt))
+      selectedItems.map((s) =>
+        apiClient.userFeedback.deleteFeedback(s.Topic, s.CreatedAt)
+      )
     );
     await getFeedback({ pageIndex: currentPageIndex });
-    setSelectedItems([])
+    setSelectedItems([]);
     setLoading(false);
   };
 
+  const currentItems =
+    pages[Math.min(pages.length - 1, currentPageIndex - 1)]?.Items || [];
 
+  const handleRowClick = (item) => {
+    props.updateSelectedFeedback(item);
+    setSelectedItems([item]);
+  };
 
   return (
     <>
-      <Modal
-        onDismiss={() => setShowModalDelete(false)}
-        visible={showModalDelete}
-        footer={
-          <Box float="right">
-            <SpaceBetween direction="horizontal" size="xs">
-              {" "}
-              <Button variant="link" onClick={() => setShowModalDelete(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={deleteSelectedFeedback}>
-                Ok
-              </Button>
-            </SpaceBetween>{" "}
-          </Box>
-        }
-        header={"Delete feedback" + (selectedItems.length > 1 ? "s" : "")}
+      <Dialog
+        open={showModalDelete}
+        onClose={() => setShowModalDelete(false)}
       >
-        Do you want to delete{" "}
-        {selectedItems.length == 1
-          ? `Feedback ${selectedItems[0].FeedbackID!}?`
-          : `${selectedItems.length} Feedback?`}
-      </Modal>
-      <I18nProvider locale="en" messages={[messages]}>
+        <DialogTitle>
+          {"Delete feedback" + (selectedItems.length > 1 ? "s" : "")}
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            Do you want to delete{" "}
+            {selectedItems.length == 1
+              ? `Feedback ${selectedItems[0]?.FeedbackID}?`
+              : `${selectedItems.length} Feedback?`}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowModalDelete(false)}>Cancel</Button>
+          <Button onClick={deleteSelectedFeedback} variant="contained">
+            Ok
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-
-        <Table
-          {...collectionProps}
-          loading={loading}
-          loadingText={`Loading Feedback`}
-          columnDefinitions={columnDefinitions}
-          selectionType="single"
-          onSelectionChange={({ detail }) => {
-            // console.log(detail);
-            // needsRefresh.current = true;
-            props.updateSelectedFeedback(detail.selectedItems[0])
-            setSelectedItems(detail.selectedItems);
-          }}
-          selectedItems={selectedItems}
-          items={pages[Math.min(pages.length - 1, currentPageIndex - 1)]?.Items!}
-          trackBy="FeedbackID"
-          header={
-            <Header
-              actions={
-                <SpaceBetween direction="horizontal" size="xs">
-                  <DateRangePicker
-                    onChange={({ detail }) => {
-                      /** If the date changes, refresh all of the feedback. This
-                       * prevents bugs where one page is up-to-date and the previous/next ones are not
-                       */
-                      needsRefresh.current = true;
-                      setValue(detail.value as DateRangePickerProps.AbsoluteValue)
-                    }}
-                    value={value as DateRangePickerProps.AbsoluteValue}
-                    relativeOptions={[
-                      {
-                        key: "previous-5-minutes",
-                        amount: 5,
-                        unit: "minute",
-                        type: "relative"
-                      },
-                      {
-                        key: "previous-30-minutes",
-                        amount: 30,
-                        unit: "minute",
-                        type: "relative"
-                      },
-                      {
-                        key: "previous-1-hour",
-                        amount: 1,
-                        unit: "hour",
-                        type: "relative"
-                      },
-                      {
-                        key: "previous-6-hours",
-                        amount: 6,
-                        unit: "hour",
-                        type: "relative"
-                      }
-                    ]}
-
-                    isValidRange={range => {
-                      if (range.type === "absolute") {
-                        const [
-                          startDateWithoutTime
-                        ] = range.startDate.split("T");
-                        const [
-                          endDateWithoutTime
-                        ] = range.endDate.split("T");
-                        if (
-                          !startDateWithoutTime ||
-                          !endDateWithoutTime
-                        ) {
-                          return {
-                            valid: false,
-                            errorMessage:
-                              "The selected date range is incomplete. Select a start and end date for the date range."
-                          };
-                        }
-                        if (
-                          +new Date(range.startDate) - +new Date(range.endDate) > 0
-                        ) {
-                          return {
-                            valid: false,
-                            errorMessage:
-                              "The selected date range is invalid. The start date must be before the end date."
-                          };
-                        }
-                      }
-                      return { valid: true };
-                    }}
-                    i18nStrings={{}}
-                    placeholder="Filter by a date and time range"
-                    showClearButton={false}
-                    dateOnly
-                    timeInputFormat="hh:mm:ss"
-                    rangeSelectorMode="absolute-only"
-                  />
-                  <Select
-                    selectedOption={selectedOption}
-                    onChange={({ detail }) => {
-                      /** If the topic changes, refresh all of the feedback */
-                      needsRefresh.current = true;
-                      setSelectedOption({ label: detail.selectedOption.label!, value: detail.selectedOption.value });
-                    }}
-                    placeholder="Choose a category"
-                    options={[...feedbackCategories, {label : "Any", value: "any", disabled: false}]}
-                  />
-                  <Button iconName="refresh" onClick={refreshPage} />
-                  <Button
-                    variant="primary"
-                    onClick={() => {
-                      apiClient.userFeedback.downloadFeedback(selectedOption.value, value.startDate, value.endDate);
-                      const id = addNotification("success", "Your files have been downloaded.")
-                      Utils.delay(3000).then(() => removeNotification(id));
-                    }}
-                  >Download</Button>
-                  <Button
-                    variant="primary"
-                    disabled={selectedItems.length == 0}
-                    onClick={() => {
-                      if (selectedItems.length > 0) setShowModalDelete(true);
-                    }}
-                    data-testid="submit">
-                    Delete
-                  </Button>
-                </SpaceBetween>
-              }
-              description="Please expect a delay for your changes to be reflected. Press the refresh button to see the latest changes."
+      <Stack spacing={2}>
+        <Stack
+          direction="row"
+          justifyContent="space-between"
+          alignItems="center"
+          flexWrap="wrap"
+          gap={1}
+        >
+          <Box>
+            <Typography variant="h6">Feedback</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Please expect a delay for your changes to be reflected. Press the
+              refresh button to see the latest changes.
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+            <TextField
+              type="date"
+              label="Start Date"
+              value={startDate}
+              onChange={(e) => {
+                needsRefresh.current = true;
+                setStartDate(e.target.value);
+              }}
+              size="small"
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              type="date"
+              label="End Date"
+              value={endDate}
+              onChange={(e) => {
+                needsRefresh.current = true;
+                setEndDate(e.target.value);
+              }}
+              size="small"
+              InputLabelProps={{ shrink: true }}
+            />
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <InputLabel>Category</InputLabel>
+              <Select
+                value={selectedOption.value}
+                label="Category"
+                onChange={(e) => {
+                  needsRefresh.current = true;
+                  const opt = [
+                    ...feedbackCategories,
+                    { label: "Any", value: "any", disabled: false },
+                  ].find((o) => o.value === e.target.value);
+                  setSelectedOption({
+                    label: opt?.label || "Any",
+                    value: e.target.value,
+                  });
+                }}
+              >
+                {[
+                  ...feedbackCategories,
+                  { label: "Any", value: "any", disabled: false },
+                ].map((opt) => (
+                  <MenuItem
+                    key={opt.value}
+                    value={opt.value}
+                    disabled={opt.disabled}
+                  >
+                    {opt.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <IconButton onClick={refreshPage} aria-label="Refresh">
+              <RefreshIcon />
+            </IconButton>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => {
+                apiClient.userFeedback.downloadFeedback(
+                  selectedOption.value,
+                  startDate,
+                  endDate
+                );
+                const id = addNotification(
+                  "success",
+                  "Your files have been downloaded."
+                );
+                Utils.delay(3000).then(() => removeNotification(id));
+              }}
             >
-              {"Feedback"}
+              Download
+            </Button>
+            <Button
+              variant="contained"
+              color="error"
+              size="small"
+              disabled={selectedItems.length === 0}
+              onClick={() => {
+                if (selectedItems.length > 0) setShowModalDelete(true);
+              }}
+            >
+              Delete
+            </Button>
+          </Stack>
+        </Stack>
 
-            </Header>
-          }
-          empty={
-            <Box textAlign="center">No feedback available</Box>
-          }
-          pagination={
-            pages.length === 0 ? null : (
-              <Pagination
-                openEnd={true}
-                pagesCount={pages.length}
-                currentPageIndex={currentPageIndex}
-                onNextPageClick={onNextPageClick}
-                onPreviousPageClick={onPreviousPageClick}
-              />
-            )
-          }
-        />
-      </I18nProvider>
+        {loading ? (
+          <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
+            <CircularProgress />
+          </Box>
+        ) : currentItems.length === 0 ? (
+          <Box sx={{ textAlign: "center", p: 4 }}>
+            <Typography color="text.secondary">
+              No feedback available
+            </Typography>
+          </Box>
+        ) : (
+          <TableContainer component={Paper}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  {columnDefinitions.map((col) => (
+                    <TableCell key={col.id} sx={{ fontWeight: "bold" }}>
+                      {col.header}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {currentItems.map((item, index) => (
+                  <TableRow
+                    key={item.FeedbackID || index}
+                    hover
+                    selected={selectedItems.some(
+                      (s) => s.FeedbackID === item.FeedbackID
+                    )}
+                    onClick={() => handleRowClick(item)}
+                    sx={{ cursor: "pointer" }}
+                  >
+                    {columnDefinitions.map((col) => (
+                      <TableCell key={col.id}>{col.cell(item)}</TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+
+        {pages.length > 0 && (
+          <Stack
+            direction="row"
+            justifyContent="center"
+            spacing={2}
+            sx={{ py: 1 }}
+          >
+            <Button
+              size="small"
+              disabled={currentPageIndex <= 1}
+              onClick={onPreviousPageClick}
+            >
+              Previous
+            </Button>
+            <Typography variant="body2" sx={{ alignSelf: "center" }}>
+              Page {currentPageIndex}
+            </Typography>
+            <Button
+              size="small"
+              disabled={!pages[currentPageIndex - 1]?.NextPageToken}
+              onClick={onNextPageClick}
+            >
+              Next
+            </Button>
+          </Stack>
+        )}
+      </Stack>
     </>
-
-
   );
 }

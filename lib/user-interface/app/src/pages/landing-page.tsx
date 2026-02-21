@@ -1,148 +1,162 @@
-import React, {useEffect} from 'react';
-import { useNavigate } from 'react-router-dom';
-import { v4 as uuidv4 } from 'uuid';
-import styled, { keyframes } from 'styled-components';
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { v4 as uuidv4 } from "uuid";
+import styled, { keyframes } from "styled-components";
 
 const fadeIn = keyframes`
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 `;
 
 const PageContainer = styled.div`
-    position: relative;
-    background: linear-gradient(to bottom, #0A2B48, #14558F); 
-    width: 100vw;
-    height: 100vh;
-    box-sizing: border-box;
-    padding: 20px 30px;
-    font-family: "Open Sans", sans-serif;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    overflow: hidden;
+  position: relative;
+  background: linear-gradient(135deg, #0a2b48 0%, #14558f 100%);
+  width: 100vw;
+  height: 100vh;
+  box-sizing: border-box;
+  padding: 24px clamp(20px, 5vw, 60px);
+  font-family: "Inter", "Open Sans", "Helvetica Neue", sans-serif;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
 `;
 
 const Circle = styled.div`
-    position: absolute;
-    border-radius: 50%;
+  position: absolute;
+  border-radius: 50%;
+  z-index: 0;
+
+  &.darkBlue {
+    background-color: rgba(10, 43, 72, 0.5);
+    width: 160vw;
+    height: 95vw;
+    bottom: -100%;
+    left: -93%;
+    z-index: 1;
+  }
+
+  &.lightBlue {
+    background-color: rgba(20, 85, 143, 0.4);
+    width: 95vw;
+    height: 50vw;
+    bottom: -52%;
+    right: -44%;
     z-index: 0;
-
-    &.darkBlue {
-        background-color: #0A2B48;
-        width: 160vw;
-        height: 95vw;
-        bottom: -100%;
-        left: -93%;
-        z-index: 1;
-    }
-
-    &.lightBlue {
-        background-color: #14558F;
-        width: 95vw;
-        height: 50vw;
-        bottom: -52%;
-        right: -44%;
-        z-index: 0;
-    }
+  }
 `;
 
 const HeaderBar = styled.div`
-    display: flex;
-    justify-content: end;
-    align-items: center;
-    width: 100%;
-    position: absolute;
-    top: 0;
-    right: 0;
-    padding: 22px 25px 0 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  width: 100%;
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 20px 24px 0 0;
+  z-index: 3;
 `;
 
-const Icon = styled.img`
-    height: 4.5vh;
-    width: auto;
-    opacity: 0.95;
+const SkipButton = styled.button`
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  font-weight: 600;
+  animation: ${fadeIn} 0.75s ease-out;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-family: inherit;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.5);
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.8);
+    outline-offset: 2px;
+  }
 `;
 
-const SkipButton = styled.div`
-    color: rgb(240, 240, 240);
-    font-size: 16px;
-    transition: 0.3s ease-in-out all;
-    font-weight: 600;
-    animation: ${fadeIn} 0.75s ease-in-out;
+const Heading = styled.h1`
+  font-size: clamp(2.5rem, 8vw, 5.5rem);
+  font-weight: 700;
+  color: #ffffff;
+  animation: ${fadeIn} 0.75s ease-out;
+  z-index: 2;
+  text-align: center;
+  margin: 0;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
 
-    &:hover {
-        cursor: pointer;
-        color: rgb(160, 160, 160);
-    }
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 `;
 
-const TextContainer = styled.div`
-    font-size: 90px;
-    font-weight: 700;
-    color: rgb(240, 240, 240);
-    padding-bottom: 0px;
-    animation: ${fadeIn} 0.75s ease-in-out;
-    z-index: 2;
+const SubText = styled.button`
+  font-size: clamp(1rem, 2.5vw, 1.5rem);
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  margin-top: 16px;
+  animation: ${fadeIn} 0.75s ease-out 0.15s both;
+  z-index: 2;
+  text-align: center;
+  transition: all 0.2s ease;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 8px 16px;
+  border-radius: 8px;
+
+  &:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.8);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 `;
 
-const SmallTextContainer = styled.div`
-    font-size: 30px;
-    font-weight: 600;
-    color: rgb(240, 240, 240);
-    margin-top: -2px;
-    margin-bottom: 50px;
-    animation: ${fadeIn} 0.75s ease-in-out;
-    z-index: 2;
-    transition: 0.3s ease-in-out all;
+export default function LandingPage() {
+  const navigate = useNavigate();
 
-    &:hover {
-        cursor: pointer;
-        color: rgb(160, 160, 160);
-    }
-`;
+  const handleSkip = () => navigate(`/chatbot/playground/${uuidv4()}`);
+  const handleNext = () => navigate("/about");
 
-
-const LandingPage = () => {
-    const navigate = useNavigate();
-
-    const handleSkipButtonClick = () => {
-        navigate(`/chatbot/playground/${uuidv4()}`); // Navigate to the chatbot
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "ArrowRight") handleNext();
     };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
-    const handleNextButtonClick = () => {
-        navigate(`/about`); 
-    };
-
-    useEffect(() => {
-        const handleKeyDown = (event) => {
-            if (event.key === "ArrowRight") {
-                handleNextButtonClick();
-            }
-        };
-
-        window.addEventListener("keydown", handleKeyDown);
-
-        return () => {
-            window.removeEventListener("keydown", handleKeyDown);
-        };
-    }, []);
-
-    return (
-        <PageContainer>
-            <HeaderBar>
-                <SkipButton onClick={handleSkipButtonClick}>Skip to Chat {'>'}</SkipButton>
-            </HeaderBar>
-            <TextContainer>Welcome to ABE</TextContainer>
-            <SmallTextContainer onClick={handleNextButtonClick}>Let's learn more about what I can do for you →</SmallTextContainer>
-            <Circle className="darkBlue" />
-            <Circle className="lightBlue" />
-        </PageContainer>
-    );
-};
-
-export default LandingPage;
+  return (
+    <PageContainer role="main">
+      <HeaderBar>
+        <SkipButton onClick={handleSkip} aria-label="Skip introduction and go to chat">
+          Skip to Chat &rarr;
+        </SkipButton>
+      </HeaderBar>
+      <Heading>Welcome to ABE</Heading>
+      <SubText onClick={handleNext} aria-label="Learn more about ABE">
+        Learn more about what I can do for you &rarr;
+      </SubText>
+      <Circle className="darkBlue" aria-hidden="true" />
+      <Circle className="lightBlue" aria-hidden="true" />
+    </PageContainer>
+  );
+}
