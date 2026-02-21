@@ -36,9 +36,9 @@ Clone the repository and check all pre-requisites.
 
 ### Deployment Instructions
 
-1. Change the constants in `lib/constants.ts`
+1. Set the stack name and other constants in `lib/constants.ts`
 2. Install frontend dependencies: `cd lib/user-interface/app && npm install && cd ../../..`
-3. Deploy: `npx cdk deploy ABEStackNonProd`
+3. Deploy: `npx cdk deploy <StackName>` (replace `<StackName>` with the value from `lib/constants.ts`)
 4. Configure Cognito using the CDK outputs
 
 ### Monitoring & Alerts
@@ -47,7 +47,7 @@ The stack deploys a CloudWatch monitoring construct that provides operational vi
 
 #### CloudWatch Dashboard
 
-A pre-built dashboard named **`ABEStackNonProd-Operations`** is created automatically on deploy. It consolidates key metrics across the entire stack:
+A pre-built dashboard named **`<StackName>-Operations`** is created automatically on deploy. It consolidates key metrics across the entire stack:
 
 | Row | Widgets | What it shows |
 |-----|---------|---------------|
@@ -59,15 +59,15 @@ A pre-built dashboard named **`ABEStackNonProd-Operations`** is created automati
 
 **How to access the dashboard:**
 
-1. Sign in to the [AWS Console](https://console.aws.amazon.com/) with the correct account (158878148642).
+1. Sign in to the [AWS Console](https://console.aws.amazon.com/) with the account used for deployment.
 2. Navigate to **CloudWatch → Dashboards** (or search "CloudWatch" in the top search bar).
-3. Select **`ABEStackNonProd-Operations`** from the dashboard list.
+3. Select **`<StackName>-Operations`** from the dashboard list.
 4. Alternatively, use the direct URL output by CDK after deploy — look for `DashboardURL` in the CloudFormation outputs, or run:
 
 ```bash
-aws cloudformation describe-stacks --stack-name ABEStackNonProd \
+aws cloudformation describe-stacks --stack-name <StackName> \
   --query "Stacks[0].Outputs[?OutputKey=='MonitoringDashboardURL'].OutputValue" \
-  --output text --profile 158878148642_eoanf-osd-ai-admins
+  --output text --profile <your-aws-profile>
 ```
 
 > **Tip:** You can adjust the time range in the top-right corner of the dashboard (e.g., 1h, 3h, 12h, 1d, 1w) and enable auto-refresh to use it as a live operations screen.
@@ -96,7 +96,7 @@ All alarms publish to an SNS topic. There are two ways to subscribe an email add
 Pass the `alarmEmail` context variable when deploying:
 
 ```bash
-npx cdk deploy ABEStackNonProd -c alarmEmail=you@example.com
+npx cdk deploy <StackName> -c alarmEmail=you@example.com
 ```
 
 In CI/CD, set the `ALARM_EMAIL` GitHub Actions secret — the workflow passes it automatically. To change the alert recipient, update the secret and re-deploy; no code change required.
@@ -107,7 +107,7 @@ If you want to add additional recipients or set up alerts without redeploying:
 
 1. Sign in to the [AWS Console](https://console.aws.amazon.com/).
 2. Navigate to **SNS → Topics**.
-3. Find the topic named **`ABEStackNonProd Monitoring Alerts`** (or search for "Monitoring Alerts").
+3. Find the topic named **`<StackName> Monitoring Alerts`** (or search for "Monitoring Alerts").
 4. Click the topic, then click **Create subscription**.
 5. Set **Protocol** to `Email` and **Endpoint** to the email address you want to receive alerts.
 6. Click **Create subscription**.

@@ -10,5 +10,6 @@ aws-exports.json
 .cdk.staging
 cdk.out
 
-# Local AWS profile config (contains account-specific profile names)
+# Local Cursor rules (contain account-specific profile names / deploy instructions)
 .cursor/rules/aws-profile.mdc
+.cursor/rules/deployment.mdc
