@@ -163,7 +163,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
   };
 
   useEffect(() => {
-    if (!appContext) return;
+    if (!appContext) return undefined;
     const apiClient = new ApiClient(appContext);
     let intervalId: NodeJS.Timeout | null = null;
 

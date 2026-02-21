@@ -18,6 +18,7 @@ import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import MuiMenuItem from "@mui/material/MenuItem";
 import Avatar from "@mui/material/Avatar";
+import CircularProgress from "@mui/material/CircularProgress";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import CheckIcon from "@mui/icons-material/Check";
 import ThumbUpIcon from "@mui/icons-material/ThumbUp";
@@ -25,17 +26,19 @@ import ThumbUpOutlinedIcon from "@mui/icons-material/ThumbUpOutlined";
 import ThumbDownIcon from "@mui/icons-material/ThumbDown";
 import ThumbDownOutlinedIcon from "@mui/icons-material/ThumbDownOutlined";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import Collapse from "@mui/material/Collapse";
 import SmartToyOutlinedIcon from "@mui/icons-material/SmartToyOutlined";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import styles from "../../styles/chat.module.scss";
 import {
-  ChatBotConfiguration,
   ChatBotHistoryItem,
   ChatBotMessageType,
 } from "./types";
+import { StreamingStatus } from "../../hooks/useWebSocketChat";
 
-import "react-json-view-lite/dist/index.css";
 import "../../styles/app.scss";
 import { useNotifications } from "../notif-manager";
 import { Utils } from "../../common/utils";
@@ -43,6 +46,8 @@ import { feedbackCategories, feedbackTypes } from "../../common/constants";
 
 export interface ChatMessageProps {
   message: ChatBotHistoryItem;
+  isLastAiMessage?: boolean;
+  streamingStatus?: StreamingStatus;
   onThumbsUp: () => void;
   onThumbsDown: (feedbackTopic: string, feedbackType: string, feedbackMessage: string) => void;
 }
@@ -55,6 +60,7 @@ export default function ChatMessage(props: ChatMessageProps) {
   const [selectedFeedbackType, setSelectedFeedbackType] = React.useState("");
   const [value, setValue] = useState("");
   const [copied, setCopied] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
 
   const content =
     props.message.content && props.message.content.length > 0
@@ -181,11 +187,20 @@ export default function ChatMessage(props: ChatMessageProps) {
                 borderColor: "var(--abe-chatAiBorder)",
               }}
             >
-              {content.length === 0 ? (
+              {content.length === 0 && !props.streamingStatus?.active ? (
                 <div className={styles.typingIndicator} aria-label="ABE is typing" role="status">
                   <span className={styles.typingDot} />
                   <span className={styles.typingDot} />
                   <span className={styles.typingDot} />
+                </div>
+              ) : null}
+
+              {props.isLastAiMessage && props.streamingStatus?.active ? (
+                <div className={styles.statusIndicator} role="status" aria-live="polite">
+                  <CircularProgress size={14} sx={{ color: "primary.main" }} />
+                  <Typography variant="body2" sx={{ color: "text.secondary", fontStyle: "italic" }}>
+                    {props.streamingStatus.text}
+                  </Typography>
                 </div>
               ) : null}
 
@@ -254,6 +269,9 @@ export default function ChatMessage(props: ChatMessageProps) {
                     },
                   }}
                 />
+                {props.isLastAiMessage && content.length > 0 && !props.streamingStatus?.active && !showSources ? (
+                  <span className={styles.streamingCursor} aria-hidden="true" />
+                ) : null}
               </Box>
 
               {/* Feedback buttons */}
@@ -298,25 +316,46 @@ export default function ChatMessage(props: ChatMessageProps) {
               )}
             </Paper>
 
-            {/* Source chips */}
+            {/* Collapsible sources */}
             {showSources && (
-              <div className={styles.sourcesContainer}>
-                {(props.message.metadata.Sources as any[]).map((item, idx) => (
-                  <Chip
-                    key={`source-${idx}`}
-                    label={item.title}
-                    component="a"
-                    href={item.uri}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    clickable
-                    size="small"
-                    variant="outlined"
-                    icon={<OpenInNewIcon sx={{ fontSize: "14px !important" }} />}
-                    sx={{ fontSize: "0.75rem", maxWidth: 280 }}
+              <Box sx={{ mt: 1 }}>
+                <button
+                  className={styles.sourcesToggle}
+                  onClick={() => setSourcesOpen((o) => !o)}
+                  aria-expanded={sourcesOpen}
+                  aria-controls="sources-list"
+                >
+                  <DescriptionOutlinedIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+                  <Typography variant="body2" sx={{ color: "text.secondary", fontSize: "0.8125rem" }}>
+                    {(props.message.metadata.Sources as any[]).length} source
+                    {(props.message.metadata.Sources as any[]).length !== 1 ? "s" : ""} found
+                  </Typography>
+                  <ExpandMoreIcon
+                    sx={{
+                      fontSize: 18,
+                      color: "text.secondary",
+                      transition: "transform 200ms ease",
+                      transform: sourcesOpen ? "rotate(180deg)" : "rotate(0deg)",
+                    }}
                   />
-                ))}
-              </div>
+                </button>
+                <Collapse in={sourcesOpen} timeout={200}>
+                  <div id="sources-list" className={styles.sourcesList}>
+                    {(props.message.metadata.Sources as any[]).map((item, idx) => (
+                      <a
+                        key={`source-${idx}`}
+                        href={item.uri}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={styles.sourceLink}
+                      >
+                        <OpenInNewIcon sx={{ fontSize: 13, flexShrink: 0 }} />
+                        <span className={styles.sourceLinkText}>{item.title}</span>
+                      </a>
+                    ))}
+                  </div>
+                </Collapse>
+              </Box>
             )}
           </Box>
         </div>

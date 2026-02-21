@@ -100,16 +100,27 @@ export default function BaseAppLayout({ children, info }: BaseAppLayoutProps) {
             sx={{
               flexGrow: 1,
               width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
-              minHeight: "100vh",
+              height: "100vh",
+              display: "flex",
+              flexDirection: "column",
               outline: "none",
+              overflow: "hidden",
             }}
           >
-            <Toolbar sx={{ minHeight: { xs: 56, sm: 64 } }} />
+            <Toolbar sx={{ minHeight: { xs: 56, sm: 64 }, flexShrink: 0 }} />
             <Box
               sx={{
-                p: { xs: 2, sm: 2.5, md: 3 },
+                flex: 1,
+                minHeight: 0,
+                display: "flex",
+                flexDirection: "column",
+                px: { xs: 2, sm: 2.5, md: 3 },
+                pt: { xs: 2, sm: 2.5, md: 3 },
+                pb: 0,
                 maxWidth: 1200,
                 mx: "auto",
+                width: "100%",
+                overflow: "auto",
               }}
             >
               <NotificationBar />

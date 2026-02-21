@@ -248,8 +248,7 @@ export class EvaluationsClient {
    // Returns a URL from the this.API that allows one file upload to S3 with that exact filename
    async getUploadURL(fileName: string, fileType : string): Promise<string> {    
     if (!fileType) {
-      alert('Must have valid file type!');
-      return;
+      throw new Error('Must have valid file type!');
     }
 
     try {

@@ -46,6 +46,22 @@ export default defineConfig({
     },
     react(),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-react": ["react", "react-dom", "react-router-dom"],
+          "vendor-mui": [
+            "@mui/material",
+            "@mui/icons-material",
+            "@emotion/react",
+            "@emotion/styled",
+          ],
+          "vendor-charts": ["@mui/x-charts"],
+        },
+      },
+    },
+  },
   server: {
     port: 3000,
   },

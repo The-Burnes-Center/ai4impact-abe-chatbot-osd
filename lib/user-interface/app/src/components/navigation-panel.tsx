@@ -11,7 +11,6 @@ import Box from "@mui/material/Box";
 import IconButton from "@mui/material/IconButton";
 import CircularProgress from "@mui/material/CircularProgress";
 import Typography from "@mui/material/Typography";
-import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Skeleton from "@mui/material/Skeleton";
 import ExpandLess from "@mui/icons-material/ExpandLess";
@@ -32,6 +31,8 @@ import { SessionRefreshContext } from "../common/session-refresh-context";
 import { useNotifications } from "./notif-manager";
 import { Utils } from "../common/utils.js";
 
+const VISIBLE_SESSION_COUNT = 10;
+
 interface SessionItem {
   session_id: string;
   title: string;
@@ -46,7 +47,7 @@ interface AdminLink {
 const adminLinkDefinitions: AdminLink[] = [
   { text: "Data", href: "/admin/data", icon: <FolderOutlinedIcon fontSize="small" /> },
   { text: "User Feedback", href: "/admin/user-feedback", icon: <FeedbackOutlinedIcon fontSize="small" /> },
-  { text: "Metrics", href: "/admin/metrics", icon: <BarChartOutlinedIcon fontSize="small" /> },
+  { text: "Analytics", href: "/admin/metrics", icon: <BarChartOutlinedIcon fontSize="small" /> },
   { text: "LLM Evaluation", href: "/admin/llm-evaluation", icon: <ScienceOutlinedIcon fontSize="small" /> },
 ];
 
@@ -61,7 +62,6 @@ export default function NavigationPanel() {
   const { needsRefresh, setNeedsRefresh } = useContext(SessionRefreshContext);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const { addNotification, removeNotification } = useNotifications();
-  const [sessionsOpen, setSessionsOpen] = useState(true);
   const [adminOpen, setAdminOpen] = useState(true);
 
   const loadSessions = async () => {
@@ -116,6 +116,9 @@ export default function NavigationPanel() {
     navigate(`/chatbot/playground/${uuidv4()}`);
   };
 
+  const visibleSessions = sessions.slice(0, VISIBLE_SESSION_COUNT);
+  const hasMore = sessions.length > VISIBLE_SESSION_COUNT;
+
   return (
     <Box
       component="nav"
@@ -128,6 +131,7 @@ export default function NavigationPanel() {
         flexDirection: "column",
       }}
     >
+      {/* New session button */}
       <Box sx={{ p: 2, pt: 1.5 }}>
         <Button
           variant="contained"
@@ -142,14 +146,14 @@ export default function NavigationPanel() {
             fontSize: "0.875rem",
           }}
         >
-          New session
+          New chat
         </Button>
       </Box>
 
-      <Box sx={{ flex: 1, overflow: "auto" }}>
+      <Box sx={{ flex: 1 }}>
         {!loaded ? (
           <Box sx={{ px: 2, py: 1 }}>
-            {[1, 2, 3, 4].map((i) => (
+            {[1, 2, 3, 4, 5, 6].map((i) => (
               <Skeleton
                 key={i}
                 variant="rounded"
@@ -160,83 +164,97 @@ export default function NavigationPanel() {
           </Box>
         ) : (
           <>
-            <List dense disablePadding>
-              <ListItemButton
-                onClick={() => setSessionsOpen(!sessionsOpen)}
-                sx={{ mx: 1, borderRadius: 1 }}
-                aria-expanded={sessionsOpen}
+            {/* Sessions header */}
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 0.75,
+                px: 2,
+                pt: 0.5,
+                pb: 0.25,
+              }}
+            >
+              <ChatBubbleOutlineIcon sx={{ fontSize: 15, opacity: 0.5 }} />
+              <Typography
+                variant="caption"
+                sx={{
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  color: "text.secondary",
+                  fontSize: "0.7rem",
+                  flex: 1,
+                }}
               >
-                <ListItemIcon sx={{ minWidth: 32 }}>
-                  <ChatBubbleOutlineIcon fontSize="small" sx={{ opacity: 0.6 }} />
-                </ListItemIcon>
-                <ListItemText
-                  primary="Sessions"
-                  primaryTypographyProps={{
-                    fontWeight: 600,
-                    fontSize: "0.75rem",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    color: "text.secondary",
-                  }}
-                />
-                {sessionsOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
-              </ListItemButton>
-              <Collapse in={sessionsOpen} timeout={200} unmountOnExit>
-                <List dense disablePadding>
-                  {sessions.length === 0 && (
-                    <Typography
-                      variant="caption"
-                      sx={{ px: 3, py: 1.5, display: "block", color: "text.secondary" }}
-                    >
-                      No sessions yet. Start a new one!
-                    </Typography>
+                Recent chats
+              </Typography>
+              <Tooltip title="Refresh sessions" placement="top">
+                <IconButton
+                  size="small"
+                  onClick={onReloadClick}
+                  disabled={loadingSessions}
+                  aria-label="Refresh sessions"
+                  sx={{ p: 0.375 }}
+                >
+                  {loadingSessions ? (
+                    <CircularProgress size={13} />
+                  ) : (
+                    <RefreshIcon sx={{ fontSize: 15, opacity: 0.5 }} />
                   )}
-                  {sessions.map((session) => (
-                    <Tooltip
-                      key={session.session_id}
-                      title={session.title}
-                      placement="right"
-                      enterDelay={500}
-                    >
-                      <ListItemButton
-                        selected={location.pathname === `/chatbot/playground/${session.session_id}`}
-                        onClick={() => navigate(`/chatbot/playground/${session.session_id}`)}
-                        sx={{ pl: 2.5 }}
-                      >
-                        <ListItemText
-                          primary={session.title}
-                          primaryTypographyProps={{
-                            noWrap: true,
-                            fontSize: "0.8125rem",
-                          }}
-                        />
-                      </ListItemButton>
-                    </Tooltip>
-                  ))}
-                  <Box sx={{ display: "flex", justifyContent: "center", gap: 1, py: 1 }}>
-                    <Button
-                      size="small"
-                      onClick={() => navigate("/chatbot/sessions")}
-                    >
-                      View All
-                    </Button>
-                    <Tooltip title="Refresh sessions">
-                      <IconButton
-                        size="small"
-                        onClick={onReloadClick}
-                        disabled={loadingSessions}
-                        aria-label="Refresh sessions"
-                      >
-                        {loadingSessions ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                </List>
-              </Collapse>
+                </IconButton>
+              </Tooltip>
+            </Box>
+
+            {/* Session list */}
+            <List dense disablePadding>
+              {sessions.length === 0 && (
+                <Typography
+                  variant="caption"
+                  sx={{ px: 3, py: 1.5, display: "block", color: "text.secondary" }}
+                >
+                  No sessions yet. Start a new one!
+                </Typography>
+              )}
+              {visibleSessions.map((session) => (
+                <Tooltip
+                  key={session.session_id}
+                  title={session.title}
+                  placement="right"
+                  enterDelay={500}
+                >
+                  <ListItemButton
+                    selected={location.pathname === `/chatbot/playground/${session.session_id}`}
+                    onClick={() => navigate(`/chatbot/playground/${session.session_id}`)}
+                    sx={{ pl: 2.5, mx: 0.5, borderRadius: 1 }}
+                  >
+                    <ListItemText
+                      primary={session.title}
+                      primaryTypographyProps={{
+                        noWrap: true,
+                        fontSize: "0.8125rem",
+                      }}
+                    />
+                  </ListItemButton>
+                </Tooltip>
+              ))}
+              {hasMore && (
+                <Box sx={{ px: 1, pt: 0.5 }}>
+                  <Button
+                    size="small"
+                    fullWidth
+                    onClick={() => navigate("/chatbot/sessions")}
+                    sx={{ fontSize: "0.75rem", color: "text.secondary" }}
+                  >
+                    View all ({sessions.length})
+                  </Button>
+                </Box>
+              )}
             </List>
 
             <Divider sx={{ my: 0.5, mx: 2 }} />
 
+            {/* Tips */}
             <List dense disablePadding>
               <ListItemButton
                 onClick={() => navigate("/chatbot/tips")}
@@ -253,6 +271,7 @@ export default function NavigationPanel() {
               </ListItemButton>
             </List>
 
+            {/* Admin */}
             {adminLinks.length > 0 && (
               <>
                 <Divider sx={{ my: 0.5, mx: 2 }} />

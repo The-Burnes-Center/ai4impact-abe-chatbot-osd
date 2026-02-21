@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import {
   ChatBotHistoryItem,
   ChatBotMessageType,
@@ -16,10 +16,11 @@ import { v4 as uuidv4 } from "uuid";
 import { AppContext } from "../../common/app-context";
 import { ApiClient } from "../../common/api-client/api-client";
 import ChatMessage from "./chat-message";
-import ChatInputPanel, { ChatScrollState } from "./chat-input-panel";
+import ChatInputPanel from "./chat-input-panel";
 import styles from "../../styles/chat.module.scss";
-import { CHATBOT_NAME, WELCOME_PAGE, SUGGESTED_PROMPTS } from "../../common/constants";
+import { WELCOME_PAGE, SUGGESTED_PROMPTS } from "../../common/constants";
 import { useNotifications } from "../notif-manager";
+import { StreamingStatus } from "../../hooks/useWebSocketChat";
 
 export default function Chat(props: { sessionId?: string }) {
   const appContext = useContext(AppContext);
@@ -30,8 +31,14 @@ export default function Chat(props: { sessionId?: string }) {
   });
 
   const { addNotification } = useNotifications();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const [messageHistory, setMessageHistory] = useState<ChatBotHistoryItem[]>([]);
+  const [streamingStatus, setStreamingStatus] = useState<StreamingStatus>({
+    text: "",
+    active: false,
+  });
 
   useEffect(() => {
     if (!appContext) return;
@@ -57,9 +64,6 @@ export default function Chat(props: { sessionId?: string }) {
         );
 
         if (hist) {
-          ChatScrollState.skipNextHistoryUpdate = true;
-          ChatScrollState.skipNextScrollEvent = true;
-
           setMessageHistory(
             hist
               .filter((x) => x !== null)
@@ -69,8 +73,6 @@ export default function Chat(props: { sessionId?: string }) {
                 content: x!.content,
               }))
           );
-
-          window.scrollTo({ top: 0, behavior: "instant" });
         }
         setSession({ id: props.sessionId, loading: false });
         setRunning(false);
@@ -81,6 +83,18 @@ export default function Chat(props: { sessionId?: string }) {
       }
     })();
   }, [appContext, props.sessionId]);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (messageHistory.length === 0) return;
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+    if (isNearBottom || running) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messageHistory, running]);
 
   const handleFeedback = (
     feedbackType: 1 | 0,
@@ -115,128 +129,142 @@ export default function Chat(props: { sessionId?: string }) {
 
   const isEmpty = messageHistory.length === 0 && !session?.loading;
 
+  const lastAiIdx = (() => {
+    for (let i = messageHistory.length - 1; i >= 0; i--) {
+      if (messageHistory[i].type === ChatBotMessageType.AI) return i;
+    }
+    return -1;
+  })();
+
   return (
     <div className={styles.chat_container}>
-      {/* Scrollable message area with aria-live for screen readers */}
-      <Box aria-live="polite" aria-relevant="additions" sx={{ flex: 1 }}>
-        <Stack direction="column" spacing={2}>
-          {isEmpty && (
-            <Alert severity="info" sx={{ mb: 1 }}>
-              This tool is for Executive Office use only. While AI can assist,
-              always validate critical information and confirm permissions before
-              procuring goods or services.
-            </Alert>
-          )}
+      {/* Scrollable message area */}
+      <div className={styles.messages_scroll} ref={scrollContainerRef}>
+        <Box aria-live="polite" aria-relevant="additions">
+          <Stack direction="column" spacing={2}>
+            {isEmpty && (
+              <Alert severity="info" sx={{ mb: 1 }}>
+                This tool is for Executive Office use only. While AI can assist,
+                always validate critical information and confirm permissions before
+                procuring goods or services.
+              </Alert>
+            )}
 
-          {messageHistory.map((message, idx) => (
-            <ChatMessage
-              key={idx}
-              message={message}
-              onThumbsUp={() => handleFeedback(1, idx, message)}
-              onThumbsDown={(
-                feedbackTopic: string,
-                feedbackType: string,
-                feedbackMessage: string
-              ) =>
-                handleFeedback(
-                  0,
-                  idx,
-                  message,
-                  feedbackTopic,
-                  feedbackType,
-                  feedbackMessage
-                )
-              }
-            />
-          ))}
-        </Stack>
-      </Box>
-
-      {/* Empty state */}
-      {isEmpty && (
-        <Box
-          sx={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            py: 6,
-            textAlign: "center",
-          }}
-        >
-          <Avatar
-            sx={{
-              width: 56,
-              height: 56,
-              bgcolor: "primary.light",
-              color: "primary.main",
-              mb: 2.5,
-            }}
-          >
-            <SmartToyOutlinedIcon sx={{ fontSize: 28 }} />
-          </Avatar>
-          <Typography
-            variant="h2"
-            sx={{
-              color: "text.primary",
-              mb: 1,
-              fontSize: { xs: "1.25rem", sm: "1.5rem" },
-            }}
-          >
-            {WELCOME_PAGE}
-          </Typography>
-          <Typography
-            variant="body2"
-            sx={{ color: "text.secondary", mb: 3, maxWidth: 420 }}
-          >
-            Ask me about Massachusetts procurement processes, statewide
-            contracts, bidding, and more.
-          </Typography>
-          <div className={styles.suggestedPrompts}>
-            {SUGGESTED_PROMPTS.map((prompt, idx) => (
-              <button
+            {messageHistory.map((message, idx) => (
+              <ChatMessage
                 key={idx}
-                className={styles.suggestedPromptCard}
-                onClick={() => {
-                  const textarea = document.querySelector(
-                    "textarea"
-                  ) as HTMLTextAreaElement | null;
-                  if (textarea) {
-                    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-                      window.HTMLTextAreaElement.prototype,
-                      "value"
-                    )?.set;
-                    nativeInputValueSetter?.call(textarea, prompt);
-                    textarea.dispatchEvent(new Event("input", { bubbles: true }));
-                    textarea.focus();
-                  }
-                }}
-                aria-label={`Suggested question: ${prompt}`}
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
-        </Box>
-      )}
-
-      {/* Loading state */}
-      {session?.loading && (
-        <Box sx={{ py: 4 }}>
-          <Stack spacing={2}>
-            {[1, 2, 3].map((i) => (
-              <Box key={i} sx={{ display: "flex", gap: 1.5 }}>
-                <Skeleton variant="circular" width={32} height={32} />
-                <Box sx={{ flex: 1 }}>
-                  <Skeleton variant="rounded" height={60 + i * 20} />
-                </Box>
-              </Box>
+                message={message}
+                isLastAiMessage={running && idx === lastAiIdx}
+                streamingStatus={running && idx === lastAiIdx ? streamingStatus : undefined}
+                onThumbsUp={() => handleFeedback(1, idx, message)}
+                onThumbsDown={(
+                  feedbackTopic: string,
+                  feedbackType: string,
+                  feedbackMessage: string
+                ) =>
+                  handleFeedback(
+                    0,
+                    idx,
+                    message,
+                    feedbackTopic,
+                    feedbackType,
+                    feedbackMessage
+                  )
+                }
+              />
             ))}
           </Stack>
         </Box>
-      )}
 
-      {/* Input panel */}
+        {/* Empty state */}
+        {isEmpty && (
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              py: 6,
+              textAlign: "center",
+            }}
+          >
+            <Avatar
+              sx={{
+                width: 56,
+                height: 56,
+                bgcolor: "primary.light",
+                color: "primary.main",
+                mb: 2.5,
+              }}
+            >
+              <SmartToyOutlinedIcon sx={{ fontSize: 28 }} />
+            </Avatar>
+            <Typography
+              variant="h2"
+              sx={{
+                color: "text.primary",
+                mb: 1,
+                fontSize: { xs: "1.25rem", sm: "1.5rem" },
+              }}
+            >
+              {WELCOME_PAGE}
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{ color: "text.secondary", mb: 3, maxWidth: 420 }}
+            >
+              Ask me about Massachusetts procurement processes, statewide
+              contracts, bidding, and more.
+            </Typography>
+            <div className={styles.suggestedPrompts}>
+              {SUGGESTED_PROMPTS.map((prompt, idx) => (
+                <button
+                  key={idx}
+                  className={styles.suggestedPromptCard}
+                  onClick={() => {
+                    const textarea = document.querySelector(
+                      "textarea"
+                    ) as HTMLTextAreaElement | null;
+                    if (textarea) {
+                      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                        window.HTMLTextAreaElement.prototype,
+                        "value"
+                      )?.set;
+                      nativeInputValueSetter?.call(textarea, prompt);
+                      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+                      textarea.focus();
+                    }
+                  }}
+                  aria-label={`Suggested question: ${prompt}`}
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          </Box>
+        )}
+
+        {/* Loading state */}
+        {session?.loading && (
+          <Box sx={{ py: 4 }}>
+            <Stack spacing={2}>
+              {[1, 2, 3].map((i) => (
+                <Box key={i} sx={{ display: "flex", gap: 1.5 }}>
+                  <Skeleton variant="circular" width={32} height={32} />
+                  <Box sx={{ flex: 1 }}>
+                    <Skeleton variant="rounded" height={60 + i * 20} />
+                  </Box>
+                </Box>
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {/* Invisible anchor for auto-scroll */}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input panel — always visible at the bottom */}
       <div className={styles.input_container}>
         <ChatInputPanel
           session={session}
@@ -244,6 +272,8 @@ export default function Chat(props: { sessionId?: string }) {
           setRunning={setRunning}
           messageHistory={messageHistory}
           setMessageHistory={(history) => setMessageHistory(history)}
+          streamingStatus={streamingStatus}
+          setStreamingStatus={setStreamingStatus}
         />
       </div>
     </div>
