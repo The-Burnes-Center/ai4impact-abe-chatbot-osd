@@ -46,6 +46,7 @@ npx cdk deploy ABEStackNonProd
 - No explanations of *why*, no context, no commentary -- just the changes
 - Use imperative mood (e.g., "Fix source links", not "Fixed source links")
 - Group related changes with bullet points if multiple things changed
+- **Never** add `Co-authored-by` trailers (e.g., `Co-authored-by: Cursor <cursoragent@cursor.com>`). All commits should appear as authored solely by the committer.
 
 ```
 # Good
