@@ -10,8 +10,9 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Skeleton from "@mui/material/Skeleton";
-import SmartToyOutlinedIcon from "@mui/icons-material/SmartToyOutlined";
 import Avatar from "@mui/material/Avatar";
+import Fab from "@mui/material/Fab";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import { v4 as uuidv4 } from "uuid";
 import { AppContext } from "../../common/app-context";
 import { ApiClient } from "../../common/api-client/api-client";
@@ -20,7 +21,7 @@ import ChatInputPanel from "./chat-input-panel";
 import styles from "../../styles/chat.module.scss";
 import { WELCOME_PAGE, SUGGESTED_PROMPTS } from "../../common/constants";
 import { useNotifications } from "../notif-manager";
-import { StreamingStatus } from "../../hooks/useWebSocketChat";
+import { useWebSocketChat, StreamingStatus } from "../../hooks/useWebSocketChat";
 
 export default function Chat(props: { sessionId?: string }) {
   const appContext = useContext(AppContext);
@@ -31,8 +32,10 @@ export default function Chat(props: { sessionId?: string }) {
   });
 
   const { addNotification } = useNotifications();
+  const { abort } = useWebSocketChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
   const [messageHistory, setMessageHistory] = useState<ChatBotHistoryItem[]>([]);
   const [streamingStatus, setStreamingStatus] = useState<StreamingStatus>({
@@ -77,7 +80,6 @@ export default function Chat(props: { sessionId?: string }) {
         setSession({ id: props.sessionId, loading: false });
         setRunning(false);
       } catch (error: any) {
-        console.error(error);
         addNotification("error", error.message);
         addNotification("info", "Please refresh the page");
       }
@@ -95,6 +97,22 @@ export default function Chat(props: { sessionId?: string }) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messageHistory, running]);
+
+  // Track scroll position for scroll-to-bottom button
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return undefined;
+    const handleScroll = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowScrollButton(distFromBottom > 300);
+    };
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   const handleFeedback = (
     feedbackType: 1 | 0,
@@ -137,7 +155,25 @@ export default function Chat(props: { sessionId?: string }) {
   })();
 
   return (
-    <div className={styles.chat_container}>
+    <div className={styles.chat_container} style={{ position: "relative" }}>
+      {/* Scroll-to-bottom button */}
+      {showScrollButton && (
+        <div className={styles.scrollToBottom}>
+          <Fab
+            size="small"
+            onClick={scrollToBottom}
+            aria-label="Scroll to bottom"
+            sx={{
+              bgcolor: "background.paper",
+              color: "text.secondary",
+              boxShadow: "var(--abe-shadow-md)",
+              "&:hover": { bgcolor: "background.paper", color: "text.primary" },
+            }}
+          >
+            <KeyboardArrowDownIcon />
+          </Fab>
+        </div>
+      )}
       {/* Scrollable message area */}
       <div className={styles.messages_scroll} ref={scrollContainerRef}>
         <Box aria-live="polite" aria-relevant="additions">
@@ -195,9 +231,12 @@ export default function Chat(props: { sessionId?: string }) {
                 bgcolor: "primary.light",
                 color: "primary.main",
                 mb: 2.5,
+                fontWeight: 800,
+                fontSize: "1.25rem",
+                letterSpacing: "-0.02em",
               }}
             >
-              <SmartToyOutlinedIcon sx={{ fontSize: 28 }} />
+              ABE
             </Avatar>
             <Typography
               variant="h2"
@@ -274,6 +313,7 @@ export default function Chat(props: { sessionId?: string }) {
           setMessageHistory={(history) => setMessageHistory(history)}
           streamingStatus={streamingStatus}
           setStreamingStatus={setStreamingStatus}
+          onStop={abort}
         />
       </div>
     </div>

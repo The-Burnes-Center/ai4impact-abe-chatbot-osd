@@ -41,9 +41,8 @@ export default function GlobalHeader({ onMenuClick }: GlobalHeaderProps) {
         const name = result?.signInUserSession?.idToken?.payload?.name;
         const email = result?.signInUserSession?.idToken?.payload?.email;
         setUserName(name || email || null);
-      } catch (error) {
-        console.error("Failed to get authenticated user:", error);
-        try { Auth.signOut(); } catch (_) { /* ignore */ }
+      } catch {
+        try { Auth.signOut(); } catch { /* ignore */ }
       }
     })();
   }, []);
@@ -134,11 +133,11 @@ export default function GlobalHeader({ onMenuClick }: GlobalHeaderProps) {
           <Tooltip title="Help & Guide">
             <IconButton
               color="inherit"
-              onClick={() => navigate("/faq-and-guide/how-to-use")}
+              onClick={() => navigate("/help")}
               aria-label="Help and guide"
-              sx={{ color: c.headerText, opacity: 0.85, "&:hover": { opacity: 1 } }}
+              sx={{ color: c.headerText, "&:hover": { bgcolor: "rgba(255,255,255,0.12)" } }}
             >
-              <HelpOutlineIcon fontSize="small" />
+              <HelpOutlineIcon />
             </IconButton>
           </Tooltip>
 
@@ -147,12 +146,12 @@ export default function GlobalHeader({ onMenuClick }: GlobalHeaderProps) {
               color="inherit"
               onClick={onChangeThemeClick}
               aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-              sx={{ color: c.headerText, opacity: 0.85, "&:hover": { opacity: 1 } }}
+              sx={{ color: c.headerText, "&:hover": { bgcolor: "rgba(255,255,255,0.12)" } }}
             >
               {theme === "dark" ? (
-                <LightModeOutlinedIcon fontSize="small" />
+                <LightModeOutlinedIcon />
               ) : (
-                <DarkModeOutlinedIcon fontSize="small" />
+                <DarkModeOutlinedIcon />
               )}
             </IconButton>
           </Tooltip>

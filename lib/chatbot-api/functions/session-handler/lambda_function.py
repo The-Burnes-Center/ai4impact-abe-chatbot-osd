@@ -162,7 +162,7 @@ def delete_user_sessions(user_id):
         return [{"error": str(error)}]
         
         
-def list_sessions_by_user_id(user_id, limit = 4):
+def list_sessions_by_user_id(user_id, limit = 50):
     items = []  # Initialize an empty list to store the fetched session items
 
     try:

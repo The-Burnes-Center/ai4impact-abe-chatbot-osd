@@ -5,7 +5,7 @@ export default function Playground() {
   const { sessionId } = useParams();
 
   return (
-    <div>
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, height: 0, overflow: "hidden" }}>
       <Chat sessionId={sessionId} />
     </div>
   );

@@ -21,7 +21,6 @@ import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import FeedbackOutlinedIcon from "@mui/icons-material/FeedbackOutlined";
 import BarChartOutlinedIcon from "@mui/icons-material/BarChartOutlined";
 import ScienceOutlinedIcon from "@mui/icons-material/ScienceOutlined";
-import TipsAndUpdatesOutlinedIcon from "@mui/icons-material/TipsAndUpdatesOutlined";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import { AppContext } from "../common/app-context";
 import { ApiClient } from "../common/api-client/api-client";
@@ -78,7 +77,6 @@ export default function NavigationPanel() {
         setNeedsRefresh(false);
       }
     } catch (error: any) {
-      console.error("Failed to load sessions:", error);
       setLoaded(true);
       addNotification("error", "Could not load sessions: " + (error?.message ?? "Unknown error"));
       addNotification("info", "Please refresh the page");
@@ -97,8 +95,8 @@ export default function NavigationPanel() {
           setAdminLinks(adminLinkDefinitions);
         }
       }
-    } catch (e) {
-      console.error("Admin check failed:", e);
+    } catch {
+      // Admin check failed — user is not admin
     }
   };
 
@@ -221,7 +219,7 @@ export default function NavigationPanel() {
                   key={session.session_id}
                   title={session.title}
                   placement="right"
-                  enterDelay={500}
+                  enterDelay={200}
                 >
                   <ListItemButton
                     selected={location.pathname === `/chatbot/playground/${session.session_id}`}
@@ -250,25 +248,6 @@ export default function NavigationPanel() {
                   </Button>
                 </Box>
               )}
-            </List>
-
-            <Divider sx={{ my: 0.5, mx: 2 }} />
-
-            {/* Tips */}
-            <List dense disablePadding>
-              <ListItemButton
-                onClick={() => navigate("/chatbot/tips")}
-                selected={location.pathname === "/chatbot/tips"}
-                sx={{ mx: 1, borderRadius: 1 }}
-              >
-                <ListItemIcon sx={{ minWidth: 32 }}>
-                  <TipsAndUpdatesOutlinedIcon fontSize="small" sx={{ opacity: 0.6 }} />
-                </ListItemIcon>
-                <ListItemText
-                  primary="Tips & Questions"
-                  primaryTypographyProps={{ fontSize: "0.8125rem" }}
-                />
-              </ListItemButton>
             </List>
 
             {/* Admin */}

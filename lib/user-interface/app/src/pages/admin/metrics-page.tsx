@@ -332,7 +332,6 @@ export default function MetricsPage() {
       setMetrics(metricsRes);
       setFaqData(faqRes);
     } catch (e: any) {
-      console.error("Error loading metrics:", e);
       setError(e.message || "Failed to load metrics");
     } finally {
       setLoading(false);

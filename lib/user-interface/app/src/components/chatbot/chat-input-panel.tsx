@@ -7,6 +7,7 @@ import Tooltip from "@mui/material/Tooltip";
 import MicIcon from "@mui/icons-material/Mic";
 import MicOffIcon from "@mui/icons-material/MicOff";
 import SendIcon from "@mui/icons-material/Send";
+import StopCircleOutlinedIcon from "@mui/icons-material/StopCircleOutlined";
 import {
   Dispatch,
   SetStateAction,
@@ -41,6 +42,7 @@ export interface ChatInputPanelProps {
   setMessageHistory: (history: ChatBotHistoryItem[]) => void;
   streamingStatus: StreamingStatus;
   setStreamingStatus: Dispatch<SetStateAction<StreamingStatus>>;
+  onStop?: () => void;
 }
 
 export default function ChatInputPanel(props: ChatInputPanelProps) {
@@ -87,17 +89,20 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
     props.setRunning(true);
     props.setStreamingStatus({ text: "", active: false });
 
+    const now = Date.now();
     messageHistoryRef.current = [
       ...messageHistoryRef.current,
       {
         type: ChatBotMessageType.Human,
         content: messageToSend,
         metadata: {},
+        timestamp: now,
       },
       {
         type: ChatBotMessageType.AI,
         content: "",
         metadata: {},
+        timestamp: now,
       },
     ];
     props.setMessageHistory(messageHistoryRef.current);
@@ -180,30 +185,6 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
         }}
       >
         <div className={styles.input_textarea_container}>
-          <Stack direction="row" spacing={0.5} alignItems="center">
-            {browserSupportsSpeechRecognition ? (
-              <Tooltip title={listening ? "Stop listening" : "Start voice input"}>
-                <IconButton
-                  size="small"
-                  aria-label={listening ? "Stop voice input" : "Start voice input"}
-                  onClick={() =>
-                    listening
-                      ? SpeechRecognition.stopListening()
-                      : SpeechRecognition.startListening()
-                  }
-                  color={listening ? "primary" : "default"}
-                >
-                  {listening ? (
-                    <MicOffIcon fontSize="small" />
-                  ) : (
-                    <MicIcon fontSize="small" />
-                  )}
-                </IconButton>
-              </Tooltip>
-            ) : (
-              <MicOffIcon fontSize="small" color="disabled" />
-            )}
-          </Stack>
           <TextareaAutosize
             className={styles.input_textarea}
             maxRows={6}
@@ -223,39 +204,64 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
             placeholder="Ask ABE a question..."
             aria-label="Type your message to ABE"
           />
-          <div style={{ marginLeft: "8px" }}>
-            <Tooltip title={props.running ? "Generating response..." : "Send message"}>
-              <span>
-                <Button
-                  disabled={isSendDisabled}
-                  onClick={handleSendMessage}
-                  variant="contained"
-                  aria-label="Send message"
-                  sx={{
-                    minWidth: "auto",
-                    borderRadius: 2,
-                    px: props.running ? 2.5 : 2,
-                  }}
-                  endIcon={
-                    !props.running ? <SendIcon fontSize="small" /> : undefined
+          <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 1 }}>
+            {browserSupportsSpeechRecognition && (
+              <Tooltip title={listening ? "Stop listening" : "Start voice input"}>
+                <IconButton
+                  size="small"
+                  aria-label={listening ? "Stop voice input" : "Start voice input"}
+                  onClick={() =>
+                    listening
+                      ? SpeechRecognition.stopListening()
+                      : SpeechRecognition.startListening()
                   }
+                  color={listening ? "primary" : "default"}
                 >
-                  {props.running ? (
-                    <>
-                      Thinking
-                      <CircularProgress
-                        size={14}
-                        color="inherit"
-                        sx={{ ml: 1 }}
-                      />
-                    </>
+                  {listening ? (
+                    <MicOffIcon fontSize="small" />
                   ) : (
-                    "Send"
+                    <MicIcon fontSize="small" />
                   )}
-                </Button>
-              </span>
-            </Tooltip>
-          </div>
+                </IconButton>
+              </Tooltip>
+            )}
+            {props.running ? (
+              <Tooltip title="Stop generating">
+                <IconButton
+                  onClick={() => {
+                    props.onStop?.();
+                    props.setRunning(false);
+                    props.setStreamingStatus({ text: "", active: false });
+                  }}
+                  aria-label="Stop generating response"
+                  color="error"
+                  size="small"
+                  sx={{ border: 1, borderColor: "error.main" }}
+                >
+                  <StopCircleOutlinedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            ) : (
+              <Tooltip title="Send message">
+                <span>
+                  <Button
+                    disabled={isSendDisabled}
+                    onClick={handleSendMessage}
+                    variant="contained"
+                    aria-label="Send message"
+                    sx={{
+                      minWidth: "auto",
+                      borderRadius: 2,
+                      px: 2,
+                    }}
+                    endIcon={<SendIcon fontSize="small" />}
+                  >
+                    Send
+                  </Button>
+                </span>
+              </Tooltip>
+            )}
+          </Stack>
         </div>
       </Paper>
     </Stack>

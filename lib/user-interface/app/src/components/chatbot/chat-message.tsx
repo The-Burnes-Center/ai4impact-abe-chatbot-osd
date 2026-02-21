@@ -29,7 +29,6 @@ import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import Collapse from "@mui/material/Collapse";
-import SmartToyOutlinedIcon from "@mui/icons-material/SmartToyOutlined";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import styles from "../../styles/chat.module.scss";
@@ -61,6 +60,10 @@ export default function ChatMessage(props: ChatMessageProps) {
   const [value, setValue] = useState("");
   const [copied, setCopied] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
+
+  const formattedTime = props.message.timestamp
+    ? new Date(props.message.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    : null;
 
   const content =
     props.message.content && props.message.content.length > 0
@@ -175,12 +178,16 @@ export default function ChatMessage(props: ChatMessageProps) {
               color: "primary.main",
               width: 32,
               height: 32,
+              fontWeight: 800,
+              fontSize: "0.625rem",
+              letterSpacing: "-0.02em",
             }}
           >
-            <SmartToyOutlinedIcon sx={{ fontSize: 18 }} />
+            ABE
           </Avatar>
           <Box className={`${styles.aiContent} ${styles.messageWrapper}`} sx={{ minWidth: 0, flex: 1 }}>
             <Paper
+              variant="outlined"
               sx={{
                 p: 2,
                 bgcolor: "var(--abe-chatAiBg)",
@@ -278,39 +285,43 @@ export default function ChatMessage(props: ChatMessageProps) {
               {content.length > 0 && (
                 <div className={styles.thumbsContainer}>
                   {(selectedIcon === 1 || selectedIcon === null) && (
-                    <Tooltip title="Helpful">
-                      <IconButton
-                        size="small"
-                        onClick={() => {
-                          props.onThumbsUp();
-                          const id = addNotification("success", "Thank you for your valuable feedback!");
-                          Utils.delay(3000).then(() => removeNotification(id));
-                          setSelectedIcon(1);
-                        }}
-                        aria-label="Mark response as helpful"
-                      >
-                        {selectedIcon === 1 ? (
-                          <ThumbUpIcon fontSize="small" color="primary" />
-                        ) : (
-                          <ThumbUpOutlinedIcon fontSize="small" />
-                        )}
-                      </IconButton>
-                    </Tooltip>
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        props.onThumbsUp();
+                        const id = addNotification("success", "Thank you for your valuable feedback!");
+                        Utils.delay(3000).then(() => removeNotification(id));
+                        setSelectedIcon(1);
+                      }}
+                      aria-label="Mark response as helpful"
+                      sx={{ borderRadius: 1.5, px: 1, gap: 0.5 }}
+                    >
+                      {selectedIcon === 1 ? (
+                        <ThumbUpIcon sx={{ fontSize: 16 }} color="primary" />
+                      ) : (
+                        <ThumbUpOutlinedIcon sx={{ fontSize: 16 }} />
+                      )}
+                      <Typography variant="caption" sx={{ fontSize: "0.7rem", color: selectedIcon === 1 ? "primary.main" : "text.secondary" }}>
+                        Helpful
+                      </Typography>
+                    </IconButton>
                   )}
                   {(selectedIcon === 0 || selectedIcon === null) && (
-                    <Tooltip title="Not helpful">
-                      <IconButton
-                        size="small"
-                        onClick={() => setModalVisible(true)}
-                        aria-label="Mark response as not helpful and provide feedback"
-                      >
-                        {selectedIcon === 0 ? (
-                          <ThumbDownIcon fontSize="small" color="primary" />
-                        ) : (
-                          <ThumbDownOutlinedIcon fontSize="small" />
-                        )}
-                      </IconButton>
-                    </Tooltip>
+                    <IconButton
+                      size="small"
+                      onClick={() => setModalVisible(true)}
+                      aria-label="Mark response as not helpful and provide feedback"
+                      sx={{ borderRadius: 1.5, px: 1, gap: 0.5 }}
+                    >
+                      {selectedIcon === 0 ? (
+                        <ThumbDownIcon sx={{ fontSize: 16 }} color="primary" />
+                      ) : (
+                        <ThumbDownOutlinedIcon sx={{ fontSize: 16 }} />
+                      )}
+                      <Typography variant="caption" sx={{ fontSize: "0.7rem", color: selectedIcon === 0 ? "primary.main" : "text.secondary" }}>
+                        Not helpful
+                      </Typography>
+                    </IconButton>
                   )}
                 </div>
               )}
@@ -364,8 +375,18 @@ export default function ChatMessage(props: ChatMessageProps) {
       {/* Human Message */}
       {props.message?.type === ChatBotMessageType.Human && (
         <div className={styles.humanMessage} role="article" aria-label="Your message">
-          <div className={styles.humanBubble}>
-            {props.message.content}
+          <div>
+            <div className={styles.humanBubble}>
+              {props.message.content}
+            </div>
+            {formattedTime && (
+              <Typography
+                variant="caption"
+                sx={{ display: "block", textAlign: "right", mt: 0.5, color: "text.tertiary", fontSize: "0.6875rem" }}
+              >
+                {formattedTime}
+              </Typography>
+            )}
           </div>
         </div>
       )}

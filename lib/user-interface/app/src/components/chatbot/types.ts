@@ -20,6 +20,7 @@ export interface ChatBotHistoryItem {
     | string[]
     | string[][]
   >;
+  timestamp?: number;
 }
 
 export interface FeedbackData {

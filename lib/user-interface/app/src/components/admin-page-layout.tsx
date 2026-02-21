@@ -46,8 +46,7 @@ export default function AdminPageLayout({
           }
         }
         setAdmin(false);
-      } catch (e) {
-        console.error(e);
+      } catch {
         setAdmin(false);
       }
     })();
@@ -55,7 +54,7 @@ export default function AdminPageLayout({
 
   if (admin === null) {
     return (
-      <Stack spacing={3} sx={{ maxWidth: 1200, mx: "auto" }}>
+      <Stack spacing={3}>
         <Skeleton variant="text" width={200} height={24} />
         <Skeleton variant="text" width={300} height={40} />
         <Skeleton variant="rounded" height={200} />
@@ -81,7 +80,7 @@ export default function AdminPageLayout({
   }
 
   return (
-    <Stack spacing={3} sx={{ maxWidth: 1200, mx: "auto" }}>
+    <Stack spacing={3}>
       <Breadcrumbs aria-label="breadcrumb">
         <Link
           component="button"

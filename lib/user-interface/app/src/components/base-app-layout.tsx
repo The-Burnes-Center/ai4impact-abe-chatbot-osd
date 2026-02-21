@@ -117,8 +117,6 @@ export default function BaseAppLayout({ children, info }: BaseAppLayoutProps) {
                 px: { xs: 2, sm: 2.5, md: 3 },
                 pt: { xs: 2, sm: 2.5, md: 3 },
                 pb: 0,
-                maxWidth: 1200,
-                mx: "auto",
                 width: "100%",
                 overflow: "auto",
               }}

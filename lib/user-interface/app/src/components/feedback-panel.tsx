@@ -1,5 +1,4 @@
 import React, { useRef, useState } from 'react';
-import { useEffect } from 'react';
 import Box from "@mui/material/Box";
 import Grid from "@mui/material/Grid";
 import Paper from "@mui/material/Paper";
@@ -19,10 +18,6 @@ export interface FeedbackPanelProps {
 }
 
 export default function EmailPanel(props: FeedbackPanelProps) {
-
-  useEffect(() => {
-    console.log(props.selectedFeedback)
-  }, [props.selectedFeedback]);
 
   return (
     <div>

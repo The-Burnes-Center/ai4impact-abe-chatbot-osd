@@ -9,16 +9,13 @@ import "./styles/app.scss";
 
 const Playground = React.lazy(() => import("./pages/chatbot/playground/playground"));
 const SessionPage = React.lazy(() => import("./pages/chatbot/sessions/sessions"));
-const TipsAndQuestions = React.lazy(() => import("./pages/tips-and-questions"));
 const DataPage = React.lazy(() => import("./pages/admin/data-view-page"));
 const UserFeedbackPage = React.lazy(() => import("./pages/admin/user-feedback-page"));
 const UserFeedbackDetailPage = React.lazy(() => import("./pages/admin/feedback-details"));
 const MetricsPage = React.lazy(() => import("./pages/admin/metrics-page"));
 const LlmEvaluationPage = React.lazy(() => import("./pages/admin/llm-evaluation-page"));
 const DetailedEvaluationPage = React.lazy(() => import("./pages/admin/detailed-evaluation-page"));
-const AboutChatbot = React.lazy(() => import("./pages/help/about-chatbot"));
-const Support = React.lazy(() => import("./pages/help/support"));
-const HowToUse = React.lazy(() => import("./pages/help/how-to-use"));
+const HelpPage = React.lazy(() => import("./pages/help/how-to-use"));
 const LandingPage = React.lazy(() => import("./pages/landing-page"));
 const LandingPageInfo = React.lazy(() => import("./pages/landing-page-info"));
 const LandingPageStart = React.lazy(() => import("./pages/landing-page-start"));
@@ -70,7 +67,8 @@ function App() {
                 <Route path="/chatbot">
                   <Route path="playground/:sessionId" element={<Playground />} />
                   <Route path="sessions" element={<SessionPage />} />
-                  <Route path="tips" element={<TipsAndQuestions />} />
+                  {/* Redirect old tips path to unified help page */}
+                  <Route path="tips" element={<Navigate to="/help" replace />} />
                 </Route>
 
                 <Route path="/admin">
@@ -91,11 +89,9 @@ function App() {
                   </Route>
                 </Route>
 
-                <Route path="/faq-and-guide">
-                  <Route path="about-chatbot" element={<AboutChatbot />} />
-                  <Route path="how-to-use" element={<HowToUse />} />
-                  <Route path="support" element={<Support />} />
-                </Route>
+                <Route path="/help" element={<HelpPage />} />
+                {/* Redirect old help paths */}
+                <Route path="/faq-and-guide/*" element={<Navigate to="/help" replace />} />
               </Route>
 
               {/* Catch-all */}

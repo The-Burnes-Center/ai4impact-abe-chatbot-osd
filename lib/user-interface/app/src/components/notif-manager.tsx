@@ -23,18 +23,12 @@ export const NotificationProvider = ({ children }) => {
       dismissible: true,
       dismissLabel: "Hide notification",
       onDismiss: () => removeNotification(id)
-    }]);    
-    console.log("Added notification", id);
+    }]);
     return id;
   };
 
   const removeNotification = (id) => {
-    setNotifications(prev => {
-      const updatedNotifications = prev.filter(notif => notif.id !== id);
-      console.log("Removing notification", id);
-      console.log("Updated notifications", updatedNotifications);
-      return updatedNotifications;
-    });
+    setNotifications(prev => prev.filter(notif => notif.id !== id));
   };
 
   return (

@@ -38,8 +38,7 @@ export default function AppConfigured() {
         }
         setConfig(awsExports);
         setConfigured(true);
-      } catch (e) {
-        console.error("Authentication check error:", e);
+      } catch {
         try {
           if (currentConfig!.federatedSignInProvider != "") {
             Auth.federatedSignIn({ customProvider: currentConfig!.federatedSignInProvider });

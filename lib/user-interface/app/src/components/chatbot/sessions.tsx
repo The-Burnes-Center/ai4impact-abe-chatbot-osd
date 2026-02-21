@@ -57,8 +57,7 @@ export default function Sessions(props: SessionsProps) {
         const result = await apiClient.sessions.getSessions(username,true);
         setSessions(result);
       }
-    } catch (e) {
-      console.log(e);
+    } catch {
       setSessions([]);
     }
   }, [appContext]);
