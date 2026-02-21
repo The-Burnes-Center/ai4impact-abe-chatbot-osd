@@ -217,11 +217,13 @@
 .humanMessage {
   display: flex;
   justify-content: flex-end;
+  min-width: min-content;
   animation: slideUp 300ms ease-out;
 }
 
 .humanBubble {
   max-width: 80%;
+  min-width: min-content;
   padding: 10px 16px;
   border-radius: var(--abe-radius-md, 12px) var(--abe-radius-md, 12px) var(--abe-radius-xs, 4px) var(--abe-radius-md, 12px);
   background-color: var(--abe-chatHumanBg, #14558f);
@@ -229,6 +231,7 @@
   font-size: 0.9375rem;
   line-height: 1.6;
   word-break: break-word;
+  text-align: left;
 }
 
 /* Collapsible sources */
