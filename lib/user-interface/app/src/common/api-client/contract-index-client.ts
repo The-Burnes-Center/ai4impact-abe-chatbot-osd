@@ -26,10 +26,11 @@ export class ContractIndexClient {
       method: "GET",
       headers: { Authorization: auth },
     });
+    const body = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error("Failed to get contract index status");
+      const msg = (body as { error?: string; message?: string })?.error ?? (body as { message?: string })?.message ?? `Failed to get contract index status (${response.status})`;
+      throw new Error(msg);
     }
-    const body = await response.json();
     return {
       has_data: body.has_data ?? false,
       row_count: body.row_count ?? 0,
@@ -48,10 +49,11 @@ export class ContractIndexClient {
       },
       body: JSON.stringify({}),
     });
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error("Failed to get upload URL");
+      const msg = (data as { error?: string; message?: string })?.error ?? (data as { message?: string })?.message ?? `Failed to get upload URL (${response.status})`;
+      throw new Error(msg);
     }
-    const data = await response.json();
     return data.signedUrl;
   }
 
@@ -61,10 +63,11 @@ export class ContractIndexClient {
       method: "GET",
       headers: { Authorization: auth },
     });
+    const body = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error("Failed to get preview");
+      const msg = (body as { error?: string; message?: string })?.error ?? (body as { message?: string })?.message ?? `Failed to get preview (${response.status})`;
+      throw new Error(msg);
     }
-    const body = await response.json();
     return {
       columns: body.columns ?? [],
       rows: body.rows ?? [],

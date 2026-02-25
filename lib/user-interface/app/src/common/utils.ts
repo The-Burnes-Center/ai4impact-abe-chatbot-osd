@@ -79,12 +79,17 @@ export class Utils {
     return null;
   }
 
-  static getErrorMessage(error: any) {
-    if (error.errors) {
-      return error.errors.map((e: any) => e.message).join(", ");
+  static getErrorMessage(error: unknown): string {
+    if (error == null) return "Unknown error";
+    if (typeof error === "object" && "errors" in error && Array.isArray((error as { errors: unknown[] }).errors)) {
+      return (error as { errors: { message?: string }[] }).errors
+        .map((e) => e?.message ?? "Unknown error")
+        .join(", ");
     }
-
-    return "Unknown error";
+    if (typeof (error as Error).message === "string") {
+      return (error as Error).message;
+    }
+    return String(error);
   }
 
   static urlSearchParamsToRecord(

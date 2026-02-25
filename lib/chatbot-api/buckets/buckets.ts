@@ -87,6 +87,11 @@ export class S3BucketStack extends Construct {
       autoDeleteObjects: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
+      cors: [{
+        allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.GET, s3.HttpMethods.HEAD],
+        allowedOrigins: ['*'],
+        allowedHeaders: ['*'],
+      }],
     });
   }
 }

@@ -33,6 +33,7 @@ export default function ContractIndexTab() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadResult, setUploadResult] = useState<"idle" | "success" | "error">("idle");
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [preview, setPreview] = useState<ContractIndexPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -69,6 +70,7 @@ export default function ContractIndexTab() {
     setUploading(true);
     setUploadProgress(0);
     setUploadResult("idle");
+    setUploadError(null);
     const uploader = new FileUploader();
     try {
       const signedUrl = await apiClient.contractIndex.getUploadUrl();
@@ -84,6 +86,7 @@ export default function ContractIndexTab() {
       await loadStatus();
     } catch (e) {
       setUploadResult("error");
+      setUploadError(Utils.getErrorMessage(e));
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -187,7 +190,7 @@ export default function ContractIndexTab() {
         )}
         {uploadResult === "error" && (
           <Alert severity="error" sx={{ mt: 2 }}>
-            Upload failed. Please try again.
+            {uploadError ?? "Upload failed. Please try again."}
           </Alert>
         )}
       </Paper>
