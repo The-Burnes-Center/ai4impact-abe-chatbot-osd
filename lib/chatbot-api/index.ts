@@ -231,19 +231,34 @@ export class ChatBotApi extends Construct {
     const contractIndexApiIntegration = new HttpLambdaIntegration('ContractIndexAPIIntegration', lambdaFunctions.contractIndexApiFunction);
     restBackend.restAPI.addRoutes({
       path: "/admin/contract-index/status",
-      methods: [apigwv2.HttpMethod.OPTIONS, apigwv2.HttpMethod.GET],
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/contract-index/status",
+      methods: [apigwv2.HttpMethod.GET],
       integration: contractIndexApiIntegration,
       authorizer: httpAuthorizer,
     });
     restBackend.restAPI.addRoutes({
       path: "/admin/contract-index/preview",
-      methods: [apigwv2.HttpMethod.OPTIONS, apigwv2.HttpMethod.GET],
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/contract-index/preview",
+      methods: [apigwv2.HttpMethod.GET],
       integration: contractIndexApiIntegration,
       authorizer: httpAuthorizer,
     });
     restBackend.restAPI.addRoutes({
       path: "/admin/contract-index/upload-url",
-      methods: [apigwv2.HttpMethod.OPTIONS, apigwv2.HttpMethod.POST],
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/contract-index/upload-url",
+      methods: [apigwv2.HttpMethod.POST],
       integration: contractIndexApiIntegration,
       authorizer: httpAuthorizer,
     });
