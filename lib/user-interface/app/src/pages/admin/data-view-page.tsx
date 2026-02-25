@@ -2,6 +2,7 @@ import { Typography, Paper, Alert, Tabs, Tab, Box, Stack } from "@mui/material";
 import { useState, useEffect, useContext } from "react";
 import DocumentsTab from "./documents-tab";
 import DataFileUpload from "./file-upload-tab";
+import ContractIndexTab from "./contract-index-tab";
 import { ApiClient } from "../../common/api-client/api-client";
 import { AppContext } from "../../common/app-context";
 import { Utils } from "../../common/utils";
@@ -74,6 +75,7 @@ export default function DataPage() {
         >
           <Tab label="Current Files" />
           <Tab label="Add Files" />
+          <Tab label="Contract Index" />
         </Tabs>
         <Box sx={{ pt: 2 }}>
           {activeTab === 0 && (
@@ -88,6 +90,7 @@ export default function DataPage() {
           {activeTab === 1 && (
             <DataFileUpload tabChangeFunction={() => setActiveTab(0)} />
           )}
+          {activeTab === 2 && <ContractIndexTab />}
         </Box>
       </Box>
     </AdminPageLayout>

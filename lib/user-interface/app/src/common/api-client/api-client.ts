@@ -4,6 +4,7 @@ import { KnowledgeManagementClient } from "./knowledge-management-client";
 import { UserFeedbackClient } from "./user-feedback-client";
 import { MetricClient } from "./metrics-client";
 import { EvaluationsClient } from "./evaluations-client";
+import { ContractIndexClient } from "./contract-index-client";
 
 export class ApiClient {
 
@@ -13,6 +14,7 @@ export class ApiClient {
   private _userFeedbackClient: UserFeedbackClient | undefined;
   private _metricClient: MetricClient | undefined;
   private _evaluationsClient: EvaluationsClient | undefined;
+  private _contractIndexClient: ContractIndexClient | undefined;
 
  
 
@@ -58,5 +60,13 @@ export class ApiClient {
 
     return this._metricClient; //
   }
+
+  public get contractIndex() {
+    if (!this._contractIndexClient) {
+      this._contractIndexClient = new ContractIndexClient(this._appConfig);
+    }
+    return this._contractIndexClient;
+  }
+
   constructor(protected _appConfig: AppConfig) {}
 }

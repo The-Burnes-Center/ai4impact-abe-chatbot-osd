@@ -23,6 +23,8 @@ interface LambdaFunctionStackProps {
   readonly evalTestCasesBucket: s3.Bucket;
   readonly evalResultsBucket: s3.Bucket;
   readonly analyticsTable: Table;
+  readonly contractIndexBucket: s3.Bucket;
+  readonly contractIndexTable: Table;
 }
 
 const LAMBDA_DEFAULTS: Partial<lambda.FunctionProps> = {
@@ -46,6 +48,9 @@ export class LambdaFunctionStack extends Construct {
   public readonly handleEvalResultsFunction: lambda.Function;
   public readonly metricsHandlerFunction: lambda.Function;
   public readonly faqClassifierFunction: lambda.Function;
+  public readonly contractIndexParserFunction: lambda.Function;
+  public readonly contractIndexQueryFunction: lambda.Function;
+  public readonly contractIndexApiFunction: lambda.Function;
 
   constructor(scope: Construct, id: string, props: LambdaFunctionStackProps) {
     super(scope, id);
@@ -481,6 +486,83 @@ faqClassifierFunction.addToRolePolicy(new iam.PolicyStatement({
 }));
 
 this.faqClassifierFunction = faqClassifierFunction;
+
+// Contract Index: parser (S3 trigger → DynamoDB), query (agent + REST reads from DynamoDB)
+const contractIndexParserFunction = new lambda.Function(scope, 'ContractIndexParserFunction', {
+  ...LAMBDA_DEFAULTS,
+  runtime: lambda.Runtime.PYTHON_3_12,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'contract-index/parser')),
+  handler: 'lambda_function.lambda_handler',
+  environment: {
+    BUCKET: props.contractIndexBucket.bucketName,
+    TABLE_NAME: props.contractIndexTable.tableName,
+  },
+  timeout: cdk.Duration.minutes(2),
+  memorySize: 512,
+});
+contractIndexParserFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
+  resources: [props.contractIndexBucket.bucketArn, props.contractIndexBucket.bucketArn + '/*'],
+}));
+contractIndexParserFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['dynamodb:Query', 'dynamodb:BatchWriteItem', 'dynamodb:PutItem', 'dynamodb:DeleteItem'],
+  resources: [props.contractIndexTable.tableArn, props.contractIndexTable.tableArn + '/index/*'],
+}));
+contractIndexParserFunction.addEventSource(new S3EventSource(props.contractIndexBucket, {
+  events: [s3.EventType.OBJECT_CREATED],
+  filters: [{ prefix: 'swc-index/', suffix: '.xlsx' }],
+}));
+this.contractIndexParserFunction = contractIndexParserFunction;
+
+const contractIndexQueryFunction = new lambda.Function(scope, 'ContractIndexQueryFunction', {
+  ...LAMBDA_DEFAULTS,
+  runtime: lambda.Runtime.PYTHON_3_12,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'contract-index/query')),
+  handler: 'lambda_function.lambda_handler',
+  environment: {
+    TABLE_NAME: props.contractIndexTable.tableName,
+  },
+  timeout: cdk.Duration.seconds(30),
+  memorySize: 256,
+});
+contractIndexQueryFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:Scan'],
+  resources: [props.contractIndexTable.tableArn, props.contractIndexTable.tableArn + '/index/*'],
+}));
+this.contractIndexQueryFunction = contractIndexQueryFunction;
+
+const contractIndexApiFunction = new lambda.Function(scope, 'ContractIndexApiFunction', {
+  ...LAMBDA_DEFAULTS,
+  runtime: lambda.Runtime.NODEJS_20_X,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'contract-index/api')),
+  handler: 'index.handler',
+  environment: {
+    CONTRACT_INDEX_QUERY_FUNCTION: contractIndexQueryFunction.functionName,
+    BUCKET: props.contractIndexBucket.bucketName,
+  },
+  timeout: cdk.Duration.seconds(30),
+});
+contractIndexApiFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['lambda:InvokeFunction'],
+  resources: [contractIndexQueryFunction.functionArn],
+}));
+contractIndexApiFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['s3:PutObject'],
+  resources: [props.contractIndexBucket.bucketArn, props.contractIndexBucket.bucketArn + '/*'],
+}));
+this.contractIndexApiFunction = contractIndexApiFunction;
+
+websocketAPIFunction.addEnvironment('CONTRACT_INDEX_QUERY_FUNCTION', contractIndexQueryFunction.functionName);
+websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['lambda:InvokeFunction'],
+  resources: [contractIndexQueryFunction.functionArn],
+}));
 
 this.stepFunctionsStack = new StepFunctionsStack(scope, 'StepFunctionsStack', {
   knowledgeBase: props.knowledgeBase,
