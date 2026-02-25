@@ -39,7 +39,7 @@ def _validate_headers(headers: list[str]) -> tuple[bool, str]:
 
 
 def _clear_table(table) -> None:
-    """Delete all items with pk=INDEX (rows + META)."""
+    """Delete all row items with pk=INDEX; keep META so status shows PROCESSING."""
     pk_name = "pk"
     sk_name = "sk"
     keys_to_delete = []
@@ -51,6 +51,8 @@ def _clear_table(table) -> None:
         ProjectionExpression="pk, sk",
     ):
         for item in page.get("Items", []):
+            if item.get(sk_name, {}).get("S") == SK_META:
+                continue
             keys_to_delete.append(
                 {pk_name: item[pk_name], sk_name: item[sk_name]}
             )
@@ -65,14 +67,22 @@ def _clear_table(table) -> None:
         boto3.client("dynamodb").batch_write_item(RequestItems=request_items)
 
 
-def _put_meta(table, row_count: int, last_updated: str, error: str | None = None) -> None:
-    """Write META item."""
+def _put_meta(
+    table,
+    row_count: int,
+    last_updated: str,
+    error: str | None = None,
+    status: str | None = None,
+) -> None:
+    """Write META item. status: PROCESSING | COMPLETE | ERROR."""
     item = {
         "pk": PK,
         "sk": SK_META,
         "row_count": row_count,
         "last_updated": last_updated,
     }
+    if status is not None:
+        item["status"] = status
     if error is not None:
         item["error"] = error
     table.put_item(Item=item)
@@ -104,9 +114,15 @@ def lambda_handler(event, context):
 
             ok, err = _validate_headers(headers)
             if not ok:
-                _put_meta(table, 0, datetime.now(timezone.utc).isoformat(), error=err)
+                _put_meta(
+                    table, 0, datetime.now(timezone.utc).isoformat(),
+                    error=err, status="ERROR",
+                )
                 wb.close()
                 return {"statusCode": 200, "body": json.dumps({"status": "error", "message": err})}
+
+            now_start = datetime.now(timezone.utc).isoformat()
+            _put_meta(table, 0, now_start, error=None, status="PROCESSING")
 
             rows_out = []
             for row in ws.iter_rows(min_row=2, values_only=True):
@@ -125,7 +141,7 @@ def lambda_handler(event, context):
             _clear_table(table)
 
             now = datetime.now(timezone.utc).isoformat()
-            _put_meta(table, len(rows_out), now, error=None)
+            _put_meta(table, len(rows_out), now, error=None, status="COMPLETE")
 
             for offset in range(0, len(rows_out), BATCH_SIZE):
                 chunk = rows_out[offset : offset + BATCH_SIZE]
@@ -141,7 +157,10 @@ def lambda_handler(event, context):
         except Exception as e:
             print(f"Parser error: {e}")
             try:
-                _put_meta(table, 0, datetime.now(timezone.utc).isoformat(), error=str(e))
+                _put_meta(
+                    table, 0, datetime.now(timezone.utc).isoformat(),
+                    error=str(e), status="ERROR",
+                )
             except Exception as meta_err:
                 print(f"Failed to write meta error: {meta_err}")
             return {"statusCode": 200, "body": json.dumps({"status": "error", "message": str(e)})}

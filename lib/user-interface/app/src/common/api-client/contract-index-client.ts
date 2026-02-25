@@ -1,7 +1,10 @@
 import { Utils } from "../utils";
 import { AppConfig } from "../types";
 
+export type ContractIndexStatusValue = "NO_DATA" | "PROCESSING" | "COMPLETE" | "ERROR";
+
 export interface ContractIndexStatus {
+  status: ContractIndexStatusValue;
   has_data: boolean;
   row_count: number;
   last_updated: string | null;
@@ -31,7 +34,10 @@ export class ContractIndexClient {
       const msg = (body as { error?: string; message?: string })?.error ?? (body as { message?: string })?.message ?? `Failed to get contract index status (${response.status})`;
       throw new Error(msg);
     }
+    const status = body.status as ContractIndexStatusValue | undefined;
+    const validStatus: ContractIndexStatusValue[] = ["NO_DATA", "PROCESSING", "COMPLETE", "ERROR"];
     return {
+      status: status && validStatus.includes(status) ? status : "NO_DATA",
       has_data: body.has_data ?? false,
       row_count: body.row_count ?? 0,
       last_updated: body.last_updated ?? null,

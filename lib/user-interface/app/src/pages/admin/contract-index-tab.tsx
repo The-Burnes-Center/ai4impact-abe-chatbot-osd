@@ -84,6 +84,19 @@ export default function ContractIndexTab() {
       setUploadFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       await loadStatus();
+      const pollMs = 3000;
+      const timeoutMs = 60000;
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, pollMs));
+        try {
+          const data = await apiClient.contractIndex.getStatus();
+          setStatus(data);
+          if (data.status === "COMPLETE" || data.status === "ERROR") break;
+        } catch {
+          break;
+        }
+      }
     } catch (e) {
       setUploadResult("error");
       setUploadError(Utils.getErrorMessage(e));
@@ -125,13 +138,15 @@ export default function ContractIndexTab() {
         )}
         {status != null && (
           <Typography variant="body2">
-            {status.has_data ? (
+            {status.status === "PROCESSING" ? (
+              <>Processing… (parsing uploaded file). Refresh in a moment.</>
+            ) : status.status === "ERROR" || status.error_message ? (
+              <>Error: {status.error_message ?? "Processing failed."}</>
+            ) : status.status === "COMPLETE" || status.has_data ? (
               <>
                 Ready — {status.row_count.toLocaleString()} rows
                 {lastUpdatedStr != null ? ` (updated ${lastUpdatedStr})` : ""}
               </>
-            ) : status.error_message ? (
-              <>Error: {status.error_message}</>
             ) : (
               <>No data. Upload an SWC Index Excel file (.xlsx) below.</>
             )}

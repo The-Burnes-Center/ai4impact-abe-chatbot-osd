@@ -95,13 +95,24 @@ def _do_status() -> dict:
     item = resp.get("Item")
     if not item:
         return StatusResponse(
+            status="NO_DATA",
             has_data=False,
             row_count=0,
             last_updated=None,
             error_message=None,
         ).model_dump()
     row_count = int(item.get("row_count", 0))
+    stored_status = item.get("status")
+    if stored_status in ("PROCESSING", "COMPLETE", "ERROR"):
+        status = stored_status
+    elif item.get("error"):
+        status = "ERROR"
+    elif row_count > 0:
+        status = "COMPLETE"
+    else:
+        status = "PROCESSING"
     return StatusResponse(
+        status=status,
         has_data=row_count > 0,
         row_count=row_count,
         last_updated=item.get("last_updated"),

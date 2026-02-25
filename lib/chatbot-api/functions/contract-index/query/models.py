@@ -24,7 +24,8 @@ class QueryContractIndexRequest(BaseModel):
 
 class StatusResponse(BaseModel):
     """Response for action=status."""
-    has_data: bool
+    status: Literal["NO_DATA", "PROCESSING", "COMPLETE", "ERROR"] = "NO_DATA"
+    has_data: bool = False
     row_count: int = 0
     last_updated: Optional[str] = None
     error_message: Optional[str] = None
