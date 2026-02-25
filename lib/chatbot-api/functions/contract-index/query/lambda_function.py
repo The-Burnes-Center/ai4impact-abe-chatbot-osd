@@ -125,10 +125,10 @@ def _do_preview(n: int) -> dict:
     table = DDB.Table(TABLE_NAME)
     resp = table.query(
         KeyConditionExpression=Key("pk").eq(PK),
-        FilterExpression=Attr("sk").ne(SK_META),
         Limit=max(n + 10, 50),
     )
     items = resp.get("Items", [])
+    items = [it for it in items if it.get("sk") != SK_META]
     rows = [_item_to_row(it) for it in items][:n]
     if not rows:
         return PreviewResponse(columns=[], rows=[]).model_dump()

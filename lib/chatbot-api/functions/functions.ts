@@ -497,7 +497,7 @@ const contractIndexParserFunction = new lambda.Function(scope, 'ContractIndexPar
       platform: 'linux/amd64',
       command: [
         'bash', '-c',
-        'pip install -r requirements.txt -t /asset-output && cp -au . /asset-output',
+        'pip install --platform manylinux2014_aarch64 --implementation cp --python-version 3.12 --only-binary=:all: -r requirements.txt -t /asset-output && cp -au . /asset-output',
       ],
     },
   }),
@@ -534,7 +534,7 @@ const contractIndexQueryFunction = new lambda.Function(scope, 'ContractIndexQuer
       platform: 'linux/amd64',
       command: [
         'bash', '-c',
-        'pip install -r requirements.txt -t /asset-output && cp -au . /asset-output',
+        'pip install --platform manylinux2014_aarch64 --implementation cp --python-version 3.12 --only-binary=:all: -r requirements.txt -t /asset-output && cp -au . /asset-output',
       ],
     },
   }),
