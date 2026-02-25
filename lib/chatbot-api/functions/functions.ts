@@ -494,6 +494,7 @@ const contractIndexParserFunction = new lambda.Function(scope, 'ContractIndexPar
   code: lambda.Code.fromAsset(path.join(__dirname, 'contract-index/parser'), {
     bundling: {
       image: lambda.Runtime.PYTHON_3_12.bundlingImage,
+      platform: 'linux/amd64',
       command: [
         'bash', '-c',
         'pip install -r requirements.txt -t /asset-output && cp -au . /asset-output',
@@ -530,6 +531,7 @@ const contractIndexQueryFunction = new lambda.Function(scope, 'ContractIndexQuer
   code: lambda.Code.fromAsset(path.join(__dirname, 'contract-index/query'), {
     bundling: {
       image: lambda.Runtime.PYTHON_3_12.bundlingImage,
+      platform: 'linux/amd64',
       command: [
         'bash', '-c',
         'pip install -r requirements.txt -t /asset-output && cp -au . /asset-output',
