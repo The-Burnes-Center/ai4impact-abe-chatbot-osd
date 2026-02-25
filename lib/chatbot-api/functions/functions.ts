@@ -491,7 +491,15 @@ this.faqClassifierFunction = faqClassifierFunction;
 const contractIndexParserFunction = new lambda.Function(scope, 'ContractIndexParserFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,
-  code: lambda.Code.fromAsset(path.join(__dirname, 'contract-index/parser')),
+  code: lambda.Code.fromAsset(path.join(__dirname, 'contract-index/parser'), {
+    bundling: {
+      image: lambda.Runtime.PYTHON_3_12.bundlingImage,
+      command: [
+        'bash', '-c',
+        'pip install -r requirements.txt -t /asset-output && cp -au . /asset-output',
+      ],
+    },
+  }),
   handler: 'lambda_function.lambda_handler',
   environment: {
     BUCKET: props.contractIndexBucket.bucketName,
@@ -519,7 +527,15 @@ this.contractIndexParserFunction = contractIndexParserFunction;
 const contractIndexQueryFunction = new lambda.Function(scope, 'ContractIndexQueryFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,
-  code: lambda.Code.fromAsset(path.join(__dirname, 'contract-index/query')),
+  code: lambda.Code.fromAsset(path.join(__dirname, 'contract-index/query'), {
+    bundling: {
+      image: lambda.Runtime.PYTHON_3_12.bundlingImage,
+      command: [
+        'bash', '-c',
+        'pip install -r requirements.txt -t /asset-output && cp -au . /asset-output',
+      ],
+    },
+  }),
   handler: 'lambda_function.lambda_handler',
   environment: {
     TABLE_NAME: props.contractIndexTable.tableName,
