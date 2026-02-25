@@ -30,8 +30,11 @@ todos:
     content: "Phase 2: Upgrade KB to semantic chunking (FIXED_SIZE 300 tokens → SEMANTIC 512 tokens with NLP-based splitting). Uses addPropertyOverride for CDK 2.140.0 compat. Requires KB re-sync after deploy."
     status: completed
   - id: phase2-excel
-    content: "Phase 2 [Issue #1]: Fix Statewide Contract Index & Trade Index Excel file ingestion"
-    status: pending
+    content: "Phase 2 [Issue #1]: Fix Statewide Contract Index & Trade Index Excel file ingestion (Contract Index done; Trade Index pending)"
+    status: in_progress
+  - id: phase2-contract-index
+    content: "Phase 2: Contract Index (SWC Index) — DynamoDB, parser, query, status/preview/upload, arm64 deps, preview fix"
+    status: completed
   - id: phase2-hyperlinks
     content: "Phase 2 [Issue #2]: Fix non-clickable hyperlinks -- strengthened prompt hyperlink instructions, model now outputs markdown links from source docs"
     status: completed
@@ -296,6 +299,23 @@ The current RAG pipeline has fundamental quality and cost issues.
 - 2.12 Eval Pipeline Fix: Removed all mock fallbacks (MockSentenceTransformer, MockNumpy, cosine_similarity=0.5) that silently produced garbage metrics. Simplified aggregate Lambda to only aggregate pre-computed RAGAS scores (-600 lines). Removed broken live/retrieval eval paths, Cognito creds, WebSocket endpoint, ECR/Cognito IAM permissions from aggregate Lambda. Fixed generate-response: added parseChunk null guard, JSON.parse try/catch, synced stale prompt with grounding rules. Removed `perform_retrieval_evaluation: true` from step-functions.
 
 **Files modified:** `knowledge-base.ts`, `claude3Sonnet.mjs` (websocket-chat), `claude3Sonnet.mjs` (generate-response), `index.mjs` (generate-response), `lambda_function.py` (aggregate-eval-results), `requirements.txt` (aggregate-eval-results), `step-functions.ts`
+
+### Contract Index Implementation & Post-Deploy Fixes (2026-02-25)
+
+**Status: COMPLETE** — Contract Index (SWC Index) built and deployed; status API, preview, and Python deps fixed after deploy.
+
+**What was implemented (Contract Index):**
+
+- **Backend:** DynamoDB table (`ContractIndexTable`: pk=INDEX, sk=META for meta, sk=0,1,… for rows). Parser Lambda (S3 trigger on `swc-index/*.xlsx`): Pydantic validation, writes rows + META (status PROCESSING at start, COMPLETE/ERROR on success/failure); preserves META when clearing rows. Query Lambda: status (GetItem META), preview (Query + filter out META in Python), query (Scan + filters). REST API: GET status/preview, POST upload-url (presigned); OPTIONS use CORS handler (no authorizer). Agent tool `query_contract_index` in chat model.
+- **Frontend:** Data Dashboard → Contract Index tab: status (No data / Processing… / Ready — N rows / Error), single .xlsx upload, preview "Show first 10 rows"; status polling after upload.
+- **Python deps for parser & query:** Both Lambdas use Pydantic (parser also openpyxl). CDK bundles deps via `pip install` in Docker. Stack uses `LAMBDA_DEFAULTS` with `architecture: ARM_64`, so Lambdas run on arm64. Bundling must produce arm64 wheels: `pip install --platform manylinux2014_aarch64 --implementation cp --python-version 3.12 --only-binary=:all: -r requirements.txt -t /asset-output` (and `cp -au . /asset-output`). Without `--platform manylinux2014_aarch64`, x86_64 wheels were bundled and Lambda failed with `No module named 'pydantic_core._pydantic_core'`.
+- **Preview DynamoDB fix:** DynamoDB does not allow primary key attributes (`pk`, `sk`) in `FilterExpression`. Preview previously used `FilterExpression=Attr("sk").ne(SK_META)`, causing `ValidationException: Filter Expression can only contain non-primary key attributes`. Fix: Query with `KeyConditionExpression=Key("pk").eq(PK)` only, then filter out META in Python: `items = [it for it in items if it.get("sk") != SK_META]`.
+
+**Files modified (recent):** `lib/chatbot-api/functions/functions.ts` (contract-index parser/query: bundling with pip --platform manylinux2014_aarch64, --only-binary=:all:), `lib/chatbot-api/functions/contract-index/query/lambda_function.py` (preview: remove FilterExpression on sk, filter META in Python). Earlier: parser (META PROCESSING/COMPLETE/ERROR, preserve META in _clear_table), query models (StatusResponse.status), frontend (status display, polling, contract-index-client status type).
+
+**Pushed to main:** 9c5b209 — Fix contract-index: arm64 pydantic wheels and preview DynamoDB ValidationException.
+
+**Trade Index:** Not yet implemented; Phase 2 [Issue #1] remains in progress for Trade Index.
 
 ### 2.1 [Issue #1] Statewide Contract Index & Trade Index Excel Files
 
