@@ -372,17 +372,18 @@ export default function ChatMessage(props: ChatMessageProps) {
         </div>
       )}
 
-      {/* Human Message */}
+      {/* Human Message — same pattern as major chatbots: right-aligned bubble, wrapped text, optional timestamp */}
       {props.message?.type === ChatBotMessageType.Human && (
         <div className={styles.humanMessage} role="article" aria-label="Your message">
-          <div>
+          <div className={styles.humanMessageInner}>
             <div className={styles.humanBubble}>
-              {props.message.content}
+              {typeof content === "string" ? content : ""}
             </div>
             {formattedTime && (
               <Typography
                 variant="caption"
-                sx={{ display: "block", textAlign: "right", mt: 0.5, color: "text.tertiary", fontSize: "0.6875rem" }}
+                component="span"
+                sx={{ display: "block", textAlign: "right", mt: 0.5, color: "text.secondary", fontSize: "0.6875rem" }}
               >
                 {formattedTime}
               </Typography>

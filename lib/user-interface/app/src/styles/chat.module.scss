@@ -213,25 +213,36 @@
   min-width: 0;
 }
 
-/* Human message bubble */
+/* Human message bubble — aligned with common chatbot patterns (ChatGPT/Claude style) */
 .humanMessage {
   display: flex;
   justify-content: flex-end;
-  min-width: min-content;
+  width: 100%;
   animation: slideUp 300ms ease-out;
 }
 
+.humanMessageInner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: 85%;
+}
+
 .humanBubble {
-  max-width: 80%;
-  min-width: min-content;
+  display: inline-block;
+  max-width: 100%;
   padding: 10px 16px;
   border-radius: var(--abe-radius-md, 12px) var(--abe-radius-md, 12px) var(--abe-radius-xs, 4px) var(--abe-radius-md, 12px);
   background-color: var(--abe-chatHumanBg, #14558f);
   color: var(--abe-chatHumanText, #ffffff);
   font-size: 0.9375rem;
   line-height: 1.6;
-  word-break: break-word;
   text-align: left;
+  /* Prevent overflow and preserve newlines like major chat UIs */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  overflow: hidden;
 }
 
 /* Collapsible sources */
