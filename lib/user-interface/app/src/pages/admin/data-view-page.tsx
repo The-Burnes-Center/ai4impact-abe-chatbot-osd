@@ -3,6 +3,7 @@ import { useState, useEffect, useContext } from "react";
 import DocumentsTab from "./documents-tab";
 import DataFileUpload from "./file-upload-tab";
 import ContractIndexTab from "./contract-index-tab";
+import TradeIndexTab from "./trade-index-tab";
 import { ApiClient } from "../../common/api-client/api-client";
 import { AppContext } from "../../common/app-context";
 import { Utils } from "../../common/utils";
@@ -76,6 +77,7 @@ export default function DataPage() {
           <Tab label="Current Files" />
           <Tab label="Add Files" />
           <Tab label="Contract Index" />
+          <Tab label="Trade Index" />
         </Tabs>
         <Box sx={{ pt: 2 }}>
           {activeTab === 0 && (
@@ -91,6 +93,7 @@ export default function DataPage() {
             <DataFileUpload tabChangeFunction={() => setActiveTab(0)} />
           )}
           {activeTab === 2 && <ContractIndexTab />}
+          {activeTab === 3 && <TradeIndexTab />}
         </Box>
       </Box>
     </AdminPageLayout>

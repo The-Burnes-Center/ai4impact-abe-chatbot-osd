@@ -10,7 +10,7 @@ import { assembleHistory } from "../components/chatbot/utils";
 const STATUS_PREFIX = "!<|STATUS|>!";
 const EOF_MARKER = "!<|EOF_STREAM|>!";
 const ERROR_PREFIX = "<!ERROR!>:";
-const TIMEOUT_MS = 60_000;
+const TIMEOUT_MS = 90_000;
 
 export interface StreamingStatus {
   text: string;
@@ -64,13 +64,15 @@ export function useWebSocketChat() {
       let incomingMetadata = false;
       let sources: Record<string, any> = {};
       const firstMessage = opts.messageHistory.length < 3;
+      let lastActivity = Date.now();
 
-      const timeoutId = setTimeout(() => {
-        if (receivedData === "") {
+      const timeoutId = setInterval(() => {
+        if (receivedData === "" && Date.now() - lastActivity > TIMEOUT_MS) {
+          clearInterval(timeoutId);
           ws.close();
           opts.onError("The request timed out. Please try again.");
         }
-      }, TIMEOUT_MS);
+      }, 5_000);
 
       ws.addEventListener("open", () => {
         ws.send(
@@ -99,8 +101,10 @@ export function useWebSocketChat() {
           // not JSON gateway timeout — continue
         }
 
+        lastActivity = Date.now();
+
         if (raw.startsWith(ERROR_PREFIX)) {
-          clearTimeout(timeoutId);
+          clearInterval(timeoutId);
           opts.onError(raw.replace(ERROR_PREFIX, "").trim());
           ws.close();
           return;
@@ -143,12 +147,12 @@ export function useWebSocketChat() {
       });
 
       ws.addEventListener("error", () => {
-        clearTimeout(timeoutId);
+        clearInterval(timeoutId);
         opts.onError("Connection lost. Please check your internet and try again.");
       });
 
       ws.addEventListener("close", () => {
-        clearTimeout(timeoutId);
+        clearInterval(timeoutId);
         wsRef.current = null;
         opts.onComplete(firstMessage);
       });

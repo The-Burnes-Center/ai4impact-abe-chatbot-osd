@@ -8,27 +8,23 @@ from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, field_validator
 
 
-# Expected column order from SWCIndex.xlsx (reference schema)
+# Expected column headers from SWCIndex_v2.xlsx (32 data columns)
 SWC_INDEX_COLUMNS = [
     "Contract_ID",
     "Blanket Number",
-    "Blanket Description",
-    "Blanket Begin Date",
-    "Blanket End Date",
+    "Statewide Contract Description",
+    "Master Blanket/Contract EndDate",
+    "CUG Keywords",
     "Agency",
-    "Buyer Name",
-    "Buyer Email",
-    "Buyer Phone",
-    "Buyer Contact Information",
-    "Org PO Type",
-    "Vendor Distributor",
-    "Vendor Name and Nbr Formatted",
+    "Purchaser/Category Manager",
+    "Purchaser Email",
+    "Purchaser Phone",
+    "Purchaser Contact",
     "Vendor Number",
     "Vendor Name",
     "Vendor Contact Name",
     "Vendor Email Address",
     "Vendor Phone Number",
-    "Vendor Phone Extension",
     "Vendor Fax Number",
     "Vendor Address Line 1",
     "Vendor Address Line 2",
@@ -39,13 +35,13 @@ SWC_INDEX_COLUMNS = [
     "Solicitation Enabled",
     "Group Blanket Release Type",
     "RPA Release Allowed",
-    "VendorCertificates",
-    "CategoryManager1Contact",
-    "CategoryManager1Email",
-    "CategoryManager1Phone",
-    "CategoryManager2Contact",
-    "CategoryManager2Email",
-    "CategoryManager2Phone",
+    "Vendor Certificates",
+    "CategoryManager-1 Contact",
+    "CategoryManager-1 Email",
+    "CategoryManager-1 Phone",
+    "CategoryManager-2 Contact",
+    "CategoryManager-2 Email",
+    "CategoryManager-2 Phone",
 ]
 
 
@@ -63,23 +59,19 @@ class SWCRow(BaseModel):
 
     Contract_ID: Optional[str] = ""
     Blanket_Number: Optional[str] = ""
-    Blanket_Description: Optional[str] = ""
-    Blanket_Begin_Date: Optional[str] = ""
-    Blanket_End_Date: Optional[str] = ""
+    Statewide_Contract_Description: Optional[str] = ""
+    Master_Blanket_Contract_EndDate: Optional[str] = ""
+    CUG_Keywords: Optional[str] = ""
     Agency: Optional[str] = ""
-    Buyer_Name: Optional[str] = ""
-    Buyer_Email: Optional[str] = ""
-    Buyer_Phone: Optional[str] = ""
-    Buyer_Contact_Information: Optional[str] = ""
-    Org_PO_Type: Optional[str] = ""
-    Vendor_Distributor: Optional[str] = ""
-    Vendor_Name_and_Nbr_Formatted: Optional[str] = ""
+    Purchaser_Category_Manager: Optional[str] = ""
+    Purchaser_Email: Optional[str] = ""
+    Purchaser_Phone: Optional[str] = ""
+    Purchaser_Contact: Optional[str] = ""
     Vendor_Number: Optional[str] = ""
     Vendor_Name: Optional[str] = ""
     Vendor_Contact_Name: Optional[str] = ""
     Vendor_Email_Address: Optional[str] = ""
     Vendor_Phone_Number: Optional[str] = ""
-    Vendor_Phone_Extension: Optional[str] = ""
     Vendor_Fax_Number: Optional[str] = ""
     Vendor_Address_Line_1: Optional[str] = ""
     Vendor_Address_Line_2: Optional[str] = ""
@@ -90,13 +82,13 @@ class SWCRow(BaseModel):
     Solicitation_Enabled: Optional[str] = ""
     Group_Blanket_Release_Type: Optional[str] = ""
     RPA_Release_Allowed: Optional[str] = ""
-    VendorCertificates: Optional[str] = ""
-    CategoryManager1Contact: Optional[str] = ""
-    CategoryManager1Email: Optional[str] = ""
-    CategoryManager1Phone: Optional[str] = ""
-    CategoryManager2Contact: Optional[str] = ""
-    CategoryManager2Email: Optional[str] = ""
-    CategoryManager2Phone: Optional[str] = ""
+    Vendor_Certificates: Optional[str] = ""
+    CategoryManager_1_Contact: Optional[str] = ""
+    CategoryManager_1_Email: Optional[str] = ""
+    CategoryManager_1_Phone: Optional[str] = ""
+    CategoryManager_2_Contact: Optional[str] = ""
+    CategoryManager_2_Email: Optional[str] = ""
+    CategoryManager_2_Phone: Optional[str] = ""
 
     @field_validator("*", mode="before")
     @classmethod
@@ -107,12 +99,12 @@ class SWCRow(BaseModel):
 
 
 def excel_column_to_field(name: str) -> str:
-    """Map Excel column header to Pydantic field name (spaces -> underscores)."""
-    return name.strip().replace(" ", "_")
+    """Map Excel column header to Pydantic field name."""
+    return name.strip().replace(" ", "_").replace("/", "_").replace("-", "_")
 
 
 def field_to_excel_column(name: str) -> str:
-    """Map Pydantic field name back to Excel column header."""
+    """Map Pydantic field name back to human-readable column header."""
     return name.replace("_", " ")
 
 

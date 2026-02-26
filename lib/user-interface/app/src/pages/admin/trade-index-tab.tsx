@@ -19,29 +19,29 @@ import { AppContext } from "../../common/app-context";
 import { ApiClient } from "../../common/api-client/api-client";
 import { Utils } from "../../common/utils";
 import { FileUploader } from "../../common/file-uploader";
-import type { ContractIndexStatus, ContractIndexPreview } from "../../common/api-client/contract-index-client";
+import type { TradeIndexStatus, TradeIndexPreview } from "../../common/api-client/trade-index-client";
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-export default function ContractIndexTab() {
+export default function TradeIndexTab() {
   const appContext = useContext(AppContext);
   const apiClient = new ApiClient(appContext);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [status, setStatus] = useState<ContractIndexStatus | null>(null);
+  const [status, setStatus] = useState<TradeIndexStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadResult, setUploadResult] = useState<"idle" | "success" | "error">("idle");
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<ContractIndexPreview | null>(null);
+  const [preview, setPreview] = useState<TradeIndexPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
   const loadStatus = async () => {
     setStatusError(null);
     try {
-      const data = await apiClient.contractIndex.getStatus();
+      const data = await apiClient.tradeIndex.getStatus();
       setStatus(data);
     } catch (e) {
       setStatusError(Utils.getErrorMessage(e));
@@ -73,7 +73,7 @@ export default function ContractIndexTab() {
     setUploadError(null);
     const uploader = new FileUploader();
     try {
-      const signedUrl = await apiClient.contractIndex.getUploadUrl();
+      const signedUrl = await apiClient.tradeIndex.getUploadUrl();
       await uploader.upload(
         uploadFile,
         signedUrl,
@@ -90,7 +90,7 @@ export default function ContractIndexTab() {
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, pollMs));
         try {
-          const data = await apiClient.contractIndex.getStatus();
+          const data = await apiClient.tradeIndex.getStatus();
           setStatus(data);
           if (data.status === "COMPLETE" || data.status === "ERROR") break;
         } catch {
@@ -110,7 +110,7 @@ export default function ContractIndexTab() {
     setPreviewError(null);
     setPreviewLoading(true);
     try {
-      const data = await apiClient.contractIndex.getPreview();
+      const data = await apiClient.tradeIndex.getPreview();
       setPreview(data);
     } catch (e) {
       setPreviewError(Utils.getErrorMessage(e));
@@ -148,7 +148,7 @@ export default function ContractIndexTab() {
                 {lastUpdatedStr != null ? ` (updated ${lastUpdatedStr})` : ""}
               </>
             ) : (
-              <>No data. Upload an SWC Index Excel file (.xlsx) below.</>
+              <>No data. Upload a Trade Contract Index Excel file (.xlsx) below.</>
             )}
           </Typography>
         )}
@@ -156,11 +156,11 @@ export default function ContractIndexTab() {
 
       <Paper sx={{ p: 2 }}>
         <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-          Upload SWC Index (Excel)
+          Upload Trade Index (Excel)
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Upload a single .xlsx file. It will replace the current index. The file should match the
-          expected Statewide Contract Index schema.
+          Upload a single .xlsx file. It will replace the current Trade index.
+          This is separate from the Statewide Contract Index.
         </Typography>
         <input
           type="file"

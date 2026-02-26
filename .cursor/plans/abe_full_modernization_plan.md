@@ -30,8 +30,11 @@ todos:
     content: "Phase 2: Upgrade KB to semantic chunking (FIXED_SIZE 300 tokens → SEMANTIC 512 tokens with NLP-based splitting). Uses addPropertyOverride for CDK 2.140.0 compat. Requires KB re-sync after deploy."
     status: completed
   - id: phase2-excel
-    content: "Phase 2 [Issue #1]: Fix Statewide Contract Index & Trade Index Excel file ingestion (Contract Index done; Trade Index pending)"
+    content: "Phase 2 [Issue #1]: Statewide Contract Index updated to 32-column v2 schema; Trade Index scaffolded (DynamoDB, parser, query, API, admin UI) but awaiting actual Excel from client — schema may need adjustments once received"
     status: in_progress
+  - id: phase2-query-improvements
+    content: "Phase 2: Punctuation-normalized matching (_norm/_contains) in SWC and Trade query Lambdas; server-side certification filter; vendor deduplication + unique_vendors count in response; default limit raised to 500 for full coverage; all 32 SWC columns enumerated in tool description; generic multi-source search prompt; completeness rules; markdown formatting guidance (tables/lists); no leaked reasoning; no unnecessary apologies; session title generation fix (maxTokens:15, user-message-only); frontend WebSocket timeout changed from fixed 60s to activity-based 90s with status message keepalive"
+    status: completed
   - id: phase2-contract-index
     content: "Phase 2: Contract Index (SWC Index) — DynamoDB, parser, query, status/preview/upload, arm64 deps, preview fix"
     status: completed

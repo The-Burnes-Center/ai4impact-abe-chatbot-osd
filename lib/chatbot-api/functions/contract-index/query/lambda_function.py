@@ -5,6 +5,7 @@ Uses Pydantic for request/response validation.
 """
 import json
 import os
+import re
 from typing import Any
 
 import boto3
@@ -23,13 +24,16 @@ PK = "INDEX"
 SK_META = "META"
 
 SEARCH_FIELDS = [
-    "Blanket_Description",
+    "Statewide_Contract_Description",
+    "CUG_Keywords",
     "Vendor_Name",
     "Agency",
     "Contract_ID",
     "Blanket_Number",
-    "Buyer_Name",
+    "Purchaser_Category_Manager",
     "Vendor_Contact_Name",
+    "Punchout_Enabled",
+    "Vendor_Certificates",
 ]
 
 
@@ -53,7 +57,9 @@ def lambda_handler(event, context):
                 agency=req.agency,
                 contract_id=req.contract_id,
                 blanket_number=req.blanket_number,
-                date_from=req.date_from,
+                punchout_enabled=req.punchout_enabled,
+                certification=req.certification,
+                count_only=req.count_only,
                 date_to=req.date_to,
                 limit=req.limit,
             )
@@ -136,6 +142,23 @@ def _do_preview(n: int) -> dict:
     return PreviewResponse(columns=columns, rows=rows).model_dump()
 
 
+_PUNCHOUT_YES = {"yes", "y", "true", "1"}
+_PUNCT_RE = re.compile(r'[^\w\s]')
+_MULTI_WS = re.compile(r'\s+')
+
+
+def _norm(s: str) -> str:
+    """Strip punctuation and collapse whitespace for fuzzy substring matching.
+    'W.B. Mason' -> 'wb mason', 'O'Brien & Sons, Inc.' -> 'obrien  sons inc'
+    """
+    return _MULTI_WS.sub(' ', _PUNCT_RE.sub('', s)).strip().lower()
+
+
+def _contains(haystack: str, needle: str) -> bool:
+    """Punctuation-insensitive substring check."""
+    return _norm(needle) in _norm(haystack)
+
+
 def _row_matches(
     row: dict[str, Any],
     free_text: str | None,
@@ -143,32 +166,37 @@ def _row_matches(
     agency: str | None,
     contract_id: str | None,
     blanket_number: str | None,
-    date_from: str | None,
+    punchout_enabled: bool | None,
+    certification: str | None,
     date_to: str | None,
 ) -> bool:
     """Return True if row matches all non-None filters."""
     if free_text:
-        q = free_text.lower()
         if not any(
-            q in (str(row.get(f, "")) or "").lower()
+            _contains(str(row.get(f, "") or ""), free_text)
             for f in SEARCH_FIELDS
             if f in row
         ):
             return False
-    if vendor_name and (vendor_name.lower() not in (str(row.get("Vendor_Name") or "")).lower()):
+    if vendor_name and not _contains(str(row.get("Vendor_Name") or ""), vendor_name):
         return False
-    if agency and (agency.lower() not in (str(row.get("Agency") or "")).lower()):
+    if agency and not _contains(str(row.get("Agency") or ""), agency):
         return False
     if contract_id and (contract_id.lower() not in (str(row.get("Contract_ID") or "")).lower()):
         return False
     if blanket_number and (blanket_number.lower() not in (str(row.get("Blanket_Number") or "")).lower()):
         return False
-    if date_from:
-        begin = str(row.get("Blanket_Begin_Date") or "")
-        if begin and begin < date_from:
+    if punchout_enabled is not None:
+        val = (str(row.get("Punchout_Enabled") or "")).strip().lower()
+        is_yes = val in _PUNCHOUT_YES
+        if punchout_enabled != is_yes:
+            return False
+    if certification:
+        certs = str(row.get("Vendor_Certificates") or "").upper()
+        if certification.upper() not in certs:
             return False
     if date_to:
-        end = str(row.get("Blanket_End_Date") or "")
+        end = str(row.get("Master_Blanket_Contract_EndDate") or "")
         if end and end > date_to:
             return False
     return True
@@ -180,14 +208,18 @@ def _do_query(
     agency: str | None = None,
     contract_id: str | None = None,
     blanket_number: str | None = None,
-    date_from: str | None = None,
+    punchout_enabled: bool | None = None,
+    certification: str | None = None,
+    count_only: bool = False,
     date_to: str | None = None,
     limit: int = 20,
 ) -> dict:
-    """Scan table and filter in code until we have limit matches (or run out)."""
+    """Scan table and filter in code. Always scans all pages for accurate totals."""
     table = DDB.Table(TABLE_NAME)
-    collected = []
-    scan_kw = {"FilterExpression": Attr("pk").eq(PK) & Attr("sk").ne(SK_META)}
+    collected: list[dict] = []
+    seen_vendors: set[str] = set()
+    total = 0
+    scan_kw: dict[str, Any] = {"FilterExpression": Attr("pk").eq(PK) & Attr("sk").ne(SK_META)}
     while True:
         resp = table.scan(**scan_kw)
         for item in resp.get("Items", []):
@@ -199,14 +231,21 @@ def _do_query(
                 agency=agency,
                 contract_id=contract_id,
                 blanket_number=blanket_number,
-                date_from=date_from,
+                punchout_enabled=punchout_enabled,
+                certification=certification,
                 date_to=date_to,
             ):
-                collected.append(row)
-                if len(collected) >= limit:
-                    return {"rows": collected, "total_matches": len(collected), "returned": len(collected)}
+                total += 1
+                vendor_key = str(row.get("Vendor_Name", "")).strip().lower()
+                is_new_vendor = vendor_key not in seen_vendors
+                if vendor_key:
+                    seen_vendors.add(vendor_key)
+                if not count_only and is_new_vendor and len(collected) < limit:
+                    collected.append(row)
         last_key = resp.get("LastEvaluatedKey")
         if not last_key:
             break
         scan_kw["ExclusiveStartKey"] = last_key
-    return {"rows": collected, "total_matches": len(collected), "returned": len(collected)}
+    if count_only:
+        return {"rows": [], "total_matches": total, "unique_vendors": len(seen_vendors), "returned": 0}
+    return {"rows": collected, "total_matches": total, "unique_vendors": len(seen_vendors), "returned": len(collected)}

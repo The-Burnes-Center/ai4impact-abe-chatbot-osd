@@ -25,6 +25,7 @@ interface LambdaFunctionStackProps {
   readonly analyticsTable: Table;
   readonly contractIndexBucket: s3.Bucket;
   readonly contractIndexTable: Table;
+  readonly tradeIndexTable: Table;
 }
 
 const LAMBDA_DEFAULTS: Partial<lambda.FunctionProps> = {
@@ -51,6 +52,9 @@ export class LambdaFunctionStack extends Construct {
   public readonly contractIndexParserFunction: lambda.Function;
   public readonly contractIndexQueryFunction: lambda.Function;
   public readonly contractIndexApiFunction: lambda.Function;
+  public readonly tradeIndexParserFunction: lambda.Function;
+  public readonly tradeIndexQueryFunction: lambda.Function;
+  public readonly tradeIndexApiFunction: lambda.Function;
 
   constructor(scope: Construct, id: string, props: LambdaFunctionStackProps) {
     super(scope, id);
@@ -580,6 +584,101 @@ websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
   actions: ['lambda:InvokeFunction'],
   resources: [contractIndexQueryFunction.functionArn],
+}));
+
+// Trade Index: parser (S3 trigger → DynamoDB), query (agent + REST reads from DynamoDB)
+const tradeIndexParserFunction = new lambda.Function(scope, 'TradeIndexParserFunction', {
+  ...LAMBDA_DEFAULTS,
+  runtime: lambda.Runtime.PYTHON_3_12,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'trade-index/parser'), {
+    bundling: {
+      image: lambda.Runtime.PYTHON_3_12.bundlingImage,
+      platform: 'linux/amd64',
+      command: [
+        'bash', '-c',
+        'pip install --platform manylinux2014_aarch64 --implementation cp --python-version 3.12 --only-binary=:all: -r requirements.txt -t /asset-output && cp -au . /asset-output',
+      ],
+    },
+  }),
+  handler: 'lambda_function.lambda_handler',
+  environment: {
+    BUCKET: props.contractIndexBucket.bucketName,
+    TABLE_NAME: props.tradeIndexTable.tableName,
+  },
+  timeout: cdk.Duration.minutes(2),
+  memorySize: 512,
+});
+tradeIndexParserFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
+  resources: [props.contractIndexBucket.bucketArn, props.contractIndexBucket.bucketArn + '/*'],
+}));
+tradeIndexParserFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['dynamodb:Query', 'dynamodb:BatchWriteItem', 'dynamodb:PutItem', 'dynamodb:DeleteItem', 'dynamodb:UpdateItem', 'dynamodb:GetItem'],
+  resources: [props.tradeIndexTable.tableArn, props.tradeIndexTable.tableArn + '/index/*'],
+}));
+tradeIndexParserFunction.addEventSource(new S3EventSource(props.contractIndexBucket, {
+  events: [s3.EventType.OBJECT_CREATED],
+  filters: [{ prefix: 'trade-index/', suffix: '.xlsx' }],
+}));
+this.tradeIndexParserFunction = tradeIndexParserFunction;
+
+const tradeIndexQueryFunction = new lambda.Function(scope, 'TradeIndexQueryFunction', {
+  ...LAMBDA_DEFAULTS,
+  runtime: lambda.Runtime.PYTHON_3_12,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'trade-index/query'), {
+    bundling: {
+      image: lambda.Runtime.PYTHON_3_12.bundlingImage,
+      platform: 'linux/amd64',
+      command: [
+        'bash', '-c',
+        'pip install --platform manylinux2014_aarch64 --implementation cp --python-version 3.12 --only-binary=:all: -r requirements.txt -t /asset-output && cp -au . /asset-output',
+      ],
+    },
+  }),
+  handler: 'lambda_function.lambda_handler',
+  environment: {
+    TABLE_NAME: props.tradeIndexTable.tableName,
+  },
+  timeout: cdk.Duration.seconds(30),
+  memorySize: 256,
+});
+tradeIndexQueryFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:Scan'],
+  resources: [props.tradeIndexTable.tableArn, props.tradeIndexTable.tableArn + '/index/*'],
+}));
+this.tradeIndexQueryFunction = tradeIndexQueryFunction;
+
+const tradeIndexApiFunction = new lambda.Function(scope, 'TradeIndexApiFunction', {
+  ...LAMBDA_DEFAULTS,
+  runtime: lambda.Runtime.NODEJS_20_X,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'trade-index/api')),
+  handler: 'index.handler',
+  environment: {
+    TRADE_INDEX_QUERY_FUNCTION: tradeIndexQueryFunction.functionName,
+    BUCKET: props.contractIndexBucket.bucketName,
+  },
+  timeout: cdk.Duration.seconds(30),
+});
+tradeIndexApiFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['lambda:InvokeFunction'],
+  resources: [tradeIndexQueryFunction.functionArn],
+}));
+tradeIndexApiFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['s3:PutObject'],
+  resources: [props.contractIndexBucket.bucketArn, props.contractIndexBucket.bucketArn + '/*'],
+}));
+this.tradeIndexApiFunction = tradeIndexApiFunction;
+
+websocketAPIFunction.addEnvironment('TRADE_INDEX_QUERY_FUNCTION', tradeIndexQueryFunction.functionName);
+websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['lambda:InvokeFunction'],
+  resources: [tradeIndexQueryFunction.functionArn],
 }));
 
 this.stepFunctionsStack = new StepFunctionsStack(scope, 'StepFunctionsStack', {

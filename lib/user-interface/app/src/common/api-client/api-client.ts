@@ -5,6 +5,7 @@ import { UserFeedbackClient } from "./user-feedback-client";
 import { MetricClient } from "./metrics-client";
 import { EvaluationsClient } from "./evaluations-client";
 import { ContractIndexClient } from "./contract-index-client";
+import { TradeIndexClient } from "./trade-index-client";
 
 export class ApiClient {
 
@@ -15,6 +16,7 @@ export class ApiClient {
   private _metricClient: MetricClient | undefined;
   private _evaluationsClient: EvaluationsClient | undefined;
   private _contractIndexClient: ContractIndexClient | undefined;
+  private _tradeIndexClient: TradeIndexClient | undefined;
 
  
 
@@ -66,6 +68,13 @@ export class ApiClient {
       this._contractIndexClient = new ContractIndexClient(this._appConfig);
     }
     return this._contractIndexClient;
+  }
+
+  public get tradeIndex() {
+    if (!this._tradeIndexClient) {
+      this._tradeIndexClient = new TradeIndexClient(this._appConfig);
+    }
+    return this._tradeIndexClient;
   }
 
   constructor(protected _appConfig: AppConfig) {}

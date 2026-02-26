@@ -96,6 +96,7 @@ export class ChatBotApi extends Construct {
         analyticsTable : tables.analyticsTable,
         contractIndexBucket: buckets.contractIndexBucket,
         contractIndexTable: tables.contractIndexTable,
+        tradeIndexTable: tables.tradeIndexTable,
       })
 
     const wsAuthorizer = new WebSocketLambdaAuthorizer('WebSocketAuthorizer', props.authentication.lambdaAuthorizer, {identitySource: ['route.request.querystring.Authorization']});
@@ -260,6 +261,41 @@ export class ChatBotApi extends Construct {
       path: "/admin/contract-index/upload-url",
       methods: [apigwv2.HttpMethod.POST],
       integration: contractIndexApiIntegration,
+      authorizer: httpAuthorizer,
+    });
+
+    const tradeIndexApiIntegration = new HttpLambdaIntegration('TradeIndexAPIIntegration', lambdaFunctions.tradeIndexApiFunction);
+    restBackend.restAPI.addRoutes({
+      path: "/admin/trade-index/status",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/trade-index/status",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: tradeIndexApiIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/trade-index/preview",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/trade-index/preview",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: tradeIndexApiIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/trade-index/upload-url",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/trade-index/upload-url",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: tradeIndexApiIntegration,
       authorizer: httpAuthorizer,
     });
 

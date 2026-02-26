@@ -9,6 +9,7 @@ export class TableStack extends Construct {
   public readonly evalSummaryTable: Table;
   public readonly analyticsTable: Table;
   public readonly contractIndexTable: Table;
+  public readonly tradeIndexTable: Table;
 
   constructor(scope: Construct, id: string) {
     super(scope, id);
@@ -106,5 +107,14 @@ export class TableStack extends Construct {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
     this.contractIndexTable = contractIndexTable;
+
+    const tradeIndexTable = new Table(scope, 'TradeIndexTable', {
+      partitionKey: { name: 'pk', type: AttributeType.STRING },
+      sortKey: { name: 'sk', type: AttributeType.STRING },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+    this.tradeIndexTable = tradeIndexTable;
   }
 }
