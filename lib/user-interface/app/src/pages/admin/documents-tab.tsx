@@ -17,8 +17,11 @@ import {
   CircularProgress,
   Checkbox,
   IconButton,
+  Collapse,
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import AddIcon from "@mui/icons-material/Add";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import { useCallback, useContext, useEffect, useState, useRef } from "react";
 import { AdminDataType } from "../../common/types";
 import { ApiClient } from "../../common/api-client/api-client";
@@ -26,9 +29,9 @@ import { AppContext } from "../../common/app-context";
 import { getColumnDefinition } from "./columns";
 import { Utils } from "../../common/utils";
 import { useNotifications } from "../../components/notif-manager";
+import DataFileUpload from "./file-upload-tab";
 
 export interface DocumentsTabProps {
-  tabChangeFunction: () => void;
   documentType: AdminDataType;
   statusRefreshFunction: () => void;
   lastSyncTime: string | null;
@@ -44,7 +47,8 @@ export default function DocumentsTab(props: DocumentsTabProps) {
   const [pages, setPages] = useState<any[]>([]);
   const [selectedItems, setSelectedItems] = useState<any[]>([]);
   const [showModalDelete, setShowModalDelete] = useState(false);
-  const { addNotification, removeNotification } = useNotifications();
+  const [showUploadArea, setShowUploadArea] = useState(false);
+  const { addNotification } = useNotifications();
   const previousSyncStatusRef = useRef<boolean>(false);
 
   useEffect(() => {
@@ -63,7 +67,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       }
 
       const hasUnsyncedFiles = pages.some((page) =>
-        page.Contents?.some((file) => {
+        page.Contents?.some((file: { LastModified: string }) => {
           const fileDate = new Date(file.LastModified);
           return fileDate > lastSyncDate;
         })
@@ -76,7 +80,6 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     }
   }, [pages, props.lastSyncTime, props.setShowUnsyncedAlert]);
 
-  /** Function to get documents */
   const getDocuments = useCallback(
     async (params: { continuationToken?: string; pageIndex?: number }) => {
       setLoading(true);
@@ -98,7 +101,6 @@ export default function DocumentsTab(props: DocumentsTabProps) {
         console.error(Utils.getErrorMessage(error));
       }
 
-      console.log(pages);
       setLoading(false);
     },
     [appContext, props.documentType]
@@ -170,20 +172,12 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     const getStatus = async () => {
       try {
         const result = await apiClient.knowledgeManagement.kendraIsSyncing();
-        console.log("Sync status check:", result);
-        const isCurrentlySyncing = result != "DONE SYNCING";
+        const isCurrentlySyncing = result !== "DONE SYNCING";
         const wasSyncing = previousSyncStatusRef.current;
-
-        console.log(
-          `Sync status: wasSyncing=${wasSyncing}, isCurrentlySyncing=${isCurrentlySyncing}`
-        );
 
         setSyncing(isCurrentlySyncing);
 
         if (wasSyncing && !isCurrentlySyncing) {
-          console.log(
-            "Sync completed! Transition detected: wasSyncing=true -> isCurrentlySyncing=false"
-          );
           try {
             await new Promise((resolve) => setTimeout(resolve, 1000));
             await props.statusRefreshFunction();
@@ -219,13 +213,11 @@ export default function DocumentsTab(props: DocumentsTabProps) {
 
   const syncKendra = async () => {
     if (syncing) return;
-    console.log("Starting sync...");
     setSyncing(true);
     previousSyncStatusRef.current = true;
     try {
       const state = await apiClient.knowledgeManagement.syncKendra();
-      console.log("Sync started, response:", state);
-      if (state != "STARTED SYNCING") {
+      if (state !== "STARTED SYNCING") {
         addNotification(
           "error",
           "Error running sync, please try again later."
@@ -237,7 +229,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       setTimeout(async () => {
         try {
           const result = await apiClient.knowledgeManagement.kendraIsSyncing();
-          const isCurrentlySyncing = result != "DONE SYNCING";
+          const isCurrentlySyncing = result !== "DONE SYNCING";
           setSyncing(isCurrentlySyncing);
           previousSyncStatusRef.current = isCurrentlySyncing;
           if (!isCurrentlySyncing) {
@@ -248,7 +240,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
         }
       }, 2000);
     } catch (error) {
-      console.log(error);
+      console.error(error);
       addNotification(
         "error",
         "Error running sync, please try again later."
@@ -256,6 +248,12 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       setSyncing(false);
       previousSyncStatusRef.current = false;
     }
+  };
+
+  const handleUploadComplete = () => {
+    setShowUploadArea(false);
+    refreshPage();
+    props.setShowUnsyncedAlert(true);
   };
 
   const currentItems =
@@ -292,7 +290,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
         <DialogContent>
           <Typography>
             Do you want to delete{" "}
-            {selectedItems.length == 1
+            {selectedItems.length === 1
               ? `file ${selectedItems[0]?.Key}?`
               : `${selectedItems.length} files?`}
           </Typography>
@@ -306,6 +304,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       </Dialog>
 
       <Stack spacing={2}>
+        {/* Toolbar */}
         <Stack
           direction="row"
           justifyContent="space-between"
@@ -314,16 +313,21 @@ export default function DocumentsTab(props: DocumentsTabProps) {
           <Box>
             <Typography variant="h6">Files</Typography>
             <Typography variant="body2" color="text.secondary">
-              Please expect a delay for your changes to be reflected. Press the
-              refresh button to see the latest changes.
+              Please expect a delay for your changes to be reflected. Press
+              the refresh button to see the latest changes.
             </Typography>
           </Box>
           <Stack direction="row" spacing={1}>
             <IconButton onClick={refreshPage} aria-label="Refresh">
               <RefreshIcon />
             </IconButton>
-            <Button onClick={props.tabChangeFunction} variant="outlined" size="small">
-              Add Files
+            <Button
+              onClick={() => setShowUploadArea((v) => !v)}
+              variant={showUploadArea ? "contained" : "outlined"}
+              size="small"
+              startIcon={showUploadArea ? <ExpandLessIcon /> : <AddIcon />}
+            >
+              {showUploadArea ? "Close" : "Add Files"}
             </Button>
             <Button
               variant="contained"
@@ -354,6 +358,17 @@ export default function DocumentsTab(props: DocumentsTabProps) {
           </Stack>
         </Stack>
 
+        {/* Inline upload area */}
+        <Collapse in={showUploadArea} unmountOnExit>
+          <Paper sx={{ p: 2.5 }}>
+            <DataFileUpload
+              inline
+              onUploadComplete={handleUploadComplete}
+            />
+          </Paper>
+        </Collapse>
+
+        {/* File table */}
         {loading ? (
           <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
             <CircularProgress />
@@ -388,7 +403,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {currentItems.map((item, index) => (
+                {currentItems.map((item: any, index: number) => (
                   <TableRow
                     key={item.Key || index}
                     hover

@@ -15,7 +15,6 @@ import { AppContext } from "../../common/app-context";
 import { ApiClient } from "../../common/api-client/api-client";
 import { Utils } from "../../common/utils";
 import { FileUploader } from "../../common/file-uploader";
-import { useNavigate } from "react-router-dom";
 
 const fileExtensions = new Set([
   ".csv",
@@ -39,7 +38,7 @@ const fileExtensions = new Set([
   ".xml",
 ]);
 
-const mimeTypes = {
+const mimeTypes: Record<string, string> = {
   ".pdf": "application/pdf",
   ".doc": "application/msword",
   ".docx":
@@ -66,15 +65,20 @@ const mimeTypes = {
 };
 
 export interface FileUploadTabProps {
-  tabChangeFunction: () => void;
+  /** When true, the upload area renders without an outer Paper wrapper (for embedding inside another card). */
+  inline?: boolean;
+  /** Called after a successful upload completes. */
+  onUploadComplete?: () => void;
 }
 
 type UploadStatus = "idle" | "in-progress" | "success" | "error";
 
-export default function DataFileUpload(props: FileUploadTabProps) {
+export default function DataFileUpload({
+  inline = false,
+  onUploadComplete,
+}: FileUploadTabProps) {
   const appContext = useContext(AppContext);
   const apiClient = new ApiClient(appContext);
-  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [filesToUpload, setFilesToUpload] = useState<File[]>([]);
@@ -175,7 +179,7 @@ export default function DataFileUpload(props: FileUploadTabProps) {
           hasError = true;
           break;
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         setGlobalError(Utils.getErrorMessage(error));
         console.error(Utils.getErrorMessage(error));
         setUploadingStatus("error");
@@ -188,6 +192,7 @@ export default function DataFileUpload(props: FileUploadTabProps) {
       setUploadingStatus("success");
       setFilesToUpload([]);
       setFiles([]);
+      onUploadComplete?.();
     }
   };
 
@@ -197,87 +202,124 @@ export default function DataFileUpload(props: FileUploadTabProps) {
     return "primary";
   };
 
+  const dropzone = (
+    <Stack spacing={2}>
+      <input
+        type="file"
+        multiple
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        style={{ display: "none" }}
+        accept={Array.from(fileExtensions).join(",")}
+      />
+      <Box
+        role="button"
+        tabIndex={0}
+        aria-label="Upload files - click or drag and drop"
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ")
+            fileInputRef.current?.click();
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.currentTarget.style.borderColor = "var(--abe-primary)";
+          e.currentTarget.style.backgroundColor = "var(--abe-primaryLight)";
+        }}
+        onDragLeave={(e) => {
+          e.currentTarget.style.borderColor = "";
+          e.currentTarget.style.backgroundColor = "";
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.currentTarget.style.borderColor = "";
+          e.currentTarget.style.backgroundColor = "";
+          if (e.dataTransfer.files) {
+            const newFiles = [
+              ...files,
+              ...Array.from(e.dataTransfer.files),
+            ];
+            onSetFiles(newFiles);
+          }
+        }}
+        sx={{
+          border: "2px dashed",
+          borderColor: "divider",
+          borderRadius: 3,
+          p: inline ? 3 : 5,
+          textAlign: "center",
+          cursor: "pointer",
+          transition: "all var(--abe-transition-fast, 150ms)",
+          "&:hover": {
+            borderColor: "primary.main",
+            bgcolor: "primary.light",
+          },
+          "&:focus-visible": {
+            outline: "2px solid",
+            outlineColor: "primary.main",
+            outlineOffset: 2,
+          },
+        }}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        <CloudUploadIcon
+          sx={{
+            fontSize: inline ? 36 : 48,
+            color: "text.secondary",
+            mb: 1,
+            opacity: 0.6,
+          }}
+        />
+        <Typography
+          variant="body1"
+          sx={{ fontWeight: 600, mb: 0.5 }}
+        >
+          Click to choose files or drag and drop
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {`Documents up to 100MB (${Array.from(fileExtensions.values()).join(", ")})`}
+        </Typography>
+      </Box>
+
+      {uploadError && <Alert severity="error">{uploadError}</Alert>}
+
+      {files.length > 0 && (
+        <Stack spacing={0.5}>
+          {files.map((file, i) => (
+            <Stack
+              key={i}
+              direction="row"
+              alignItems="center"
+              spacing={1}
+              sx={{
+                py: 0.5,
+                px: 1,
+                bgcolor: "grey.50",
+                borderRadius: 1,
+              }}
+            >
+              <Typography variant="body2" sx={{ flex: 1 }}>
+                {file.name} ({Utils.bytesToSize(file.size)})
+              </Typography>
+              {fileErrors[i] && (
+                <Typography variant="body2" color="error">
+                  {fileErrors[i]}
+                </Typography>
+              )}
+              <IconButton size="small" onClick={() => removeFile(i)}>
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+          ))}
+        </Stack>
+      )}
+    </Stack>
+  );
+
   return (
     <Stack spacing={2}>
       {globalError && <Alert severity="error">{globalError}</Alert>}
 
-      <Paper sx={{ p: 3 }}>
-        <Stack spacing={2}>
-          <input
-            type="file"
-            multiple
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            style={{ display: "none" }}
-            accept={Array.from(fileExtensions).join(",")}
-          />
-          <Box
-            role="button"
-            tabIndex={0}
-            aria-label="Upload files - click or drag and drop"
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click(); }}
-            onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = "var(--abe-primary)"; e.currentTarget.style.backgroundColor = "var(--abe-primaryLight)"; }}
-            onDragLeave={(e) => { e.currentTarget.style.borderColor = ""; e.currentTarget.style.backgroundColor = ""; }}
-            onDrop={(e) => {
-              e.preventDefault();
-              e.currentTarget.style.borderColor = "";
-              e.currentTarget.style.backgroundColor = "";
-              if (e.dataTransfer.files) {
-                const newFiles = [...files, ...Array.from(e.dataTransfer.files)];
-                onSetFiles(newFiles);
-              }
-            }}
-            sx={{
-              border: "2px dashed",
-              borderColor: "divider",
-              borderRadius: 3,
-              p: 5,
-              textAlign: "center",
-              cursor: "pointer",
-              transition: "all var(--abe-transition-fast, 150ms)",
-              "&:hover": { borderColor: "primary.main", bgcolor: "primary.light" },
-              "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 },
-            }}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <CloudUploadIcon sx={{ fontSize: 48, color: "text.secondary", mb: 1.5, opacity: 0.6 }} />
-            <Typography variant="body1" sx={{ fontWeight: 600, mb: 0.5 }}>
-              Click to choose files or drag and drop
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {`Documents up to 100MB (${Array.from(fileExtensions.values()).join(", ")})`}
-            </Typography>
-          </Box>
-
-          {uploadError && <Alert severity="error">{uploadError}</Alert>}
-
-          {files.length > 0 && (
-            <Stack spacing={0.5}>
-              {files.map((file, i) => (
-                <Stack
-                  key={i}
-                  direction="row"
-                  alignItems="center"
-                  spacing={1}
-                  sx={{ py: 0.5, px: 1, bgcolor: "grey.50", borderRadius: 1 }}
-                >
-                  <Typography variant="body2" sx={{ flex: 1 }}>
-                    {file.name} ({Utils.bytesToSize(file.size)})
-                  </Typography>
-                  {fileErrors[i] && (
-                    <Typography variant="body2" color="error">
-                      {fileErrors[i]}
-                    </Typography>
-                  )}
-                  <IconButton size="small" onClick={() => removeFile(i)}>
-                    <CloseIcon fontSize="small" />
-                  </IconButton>
-                </Stack>
-              ))}
-            </Stack>
-          )}
-        </Stack>
-      </Paper>
+      {inline ? dropzone : <Paper sx={{ p: 3 }}>{dropzone}</Paper>}
 
       {uploadingStatus !== "idle" && !uploadPanelDismissed && (
         <Alert
@@ -285,24 +327,13 @@ export default function DataFileUpload(props: FileUploadTabProps) {
             uploadingStatus === "error"
               ? "error"
               : uploadingStatus === "success"
-              ? "success"
-              : "info"
+                ? "success"
+                : "info"
           }
           onClose={
             uploadingStatus === "success" || uploadingStatus === "error"
               ? () => setUploadPanelDismissed(true)
               : undefined
-          }
-          action={
-            uploadingStatus === "success" ? (
-              <Button
-                color="inherit"
-                size="small"
-                onClick={props.tabChangeFunction}
-              >
-                View files
-              </Button>
-            ) : undefined
           }
         >
           <Typography variant="body2" gutterBottom>
@@ -320,8 +351,8 @@ export default function DataFileUpload(props: FileUploadTabProps) {
             {uploadingStatus === "success"
               ? "Upload complete"
               : uploadingStatus === "error"
-              ? "Upload failed"
-              : currentFileName}
+                ? "Upload failed"
+                : currentFileName}
           </Typography>
         </Alert>
       )}

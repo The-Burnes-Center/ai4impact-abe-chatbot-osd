@@ -156,14 +156,13 @@ export default function DataPage() {
           {activeTab === 0 && (
             <DocumentsTab
               documentType="file"
-              tabChangeFunction={() => setActiveTab(1)}
               statusRefreshFunction={refreshSyncTime}
               lastSyncTime={lastSyncData?.completedAt || null}
               setShowUnsyncedAlert={setShowUnsyncedAlert}
             />
           )}
           {activeTab === 1 && (
-            <DataFileUpload tabChangeFunction={() => setActiveTab(0)} />
+            <DataFileUpload onUploadComplete={() => setActiveTab(0)} />
           )}
         </Box>
       </Box>
