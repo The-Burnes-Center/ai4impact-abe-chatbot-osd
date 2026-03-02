@@ -127,45 +127,49 @@ def get_traffic_metrics():
         }
 
 
+def _scan_analytics(start_date):
+    """Scan analytics table for records on or after start_date. Returns list of items."""
+    items = []
+    last_evaluated_key = None
+    while True:
+        scan_params = {"FilterExpression": Key("date_key").gte(start_date)}
+        if last_evaluated_key:
+            scan_params["ExclusiveStartKey"] = last_evaluated_key
+        response = analytics_table.scan(**scan_params)
+        items.extend(response.get("Items", []))
+        last_evaluated_key = response.get("LastEvaluatedKey")
+        if not last_evaluated_key:
+            break
+    return items
+
+
 def get_agency_breakdown(days=30):
-    """Aggregate analytics by agency: message counts, unique users, top topics per agency."""
+    """Aggregate analytics by agency (excludes Unknown). Returns message counts, unique users, top topics."""
     if not analytics_table:
         return {"agencies": [], "total_messages": 0}
 
     try:
         start_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        items = _scan_analytics(start_date)
+
         agency_stats = defaultdict(lambda: {
-            "messages": 0,
-            "users": set(),
-            "topics": defaultdict(int),
-            "daily": defaultdict(int),
+            "messages": 0, "users": set(), "topics": defaultdict(int), "daily": defaultdict(int),
         })
         total = 0
 
-        last_evaluated_key = None
-        while True:
-            scan_params = {
-                "FilterExpression": Key("date_key").gte(start_date),
-            }
-            if last_evaluated_key:
-                scan_params["ExclusiveStartKey"] = last_evaluated_key
-            response = analytics_table.scan(**scan_params)
-
-            for item in response.get("Items", []):
-                ag = item.get("agency", "Unknown") or "Unknown"
-                uid = item.get("user_id", "")
-                topic = item.get("topic", "Other")
-                date_key = item.get("date_key", "")
-                agency_stats[ag]["messages"] += 1
-                agency_stats[ag]["users"].add(uid)
-                agency_stats[ag]["topics"][topic] += 1
-                if date_key:
-                    agency_stats[ag]["daily"][date_key] += 1
-                total += 1
-
-            last_evaluated_key = response.get("LastEvaluatedKey")
-            if not last_evaluated_key:
-                break
+        for item in items:
+            ag = item.get("agency", "") or ""
+            if not ag or ag == "Unknown":
+                continue
+            uid = item.get("user_id", "")
+            topic = item.get("topic", "Other")
+            date_key = item.get("date_key", "")
+            agency_stats[ag]["messages"] += 1
+            agency_stats[ag]["users"].add(uid)
+            agency_stats[ag]["topics"][topic] += 1
+            if date_key:
+                agency_stats[ag]["daily"][date_key] += 1
+            total += 1
 
         agencies = sorted(
             [
@@ -175,8 +179,7 @@ def get_agency_breakdown(days=30):
                     "unique_users": len(stats["users"]),
                     "top_topics": sorted(
                         [{"topic": t, "count": c} for t, c in stats["topics"].items()],
-                        key=lambda x: x["count"],
-                        reverse=True,
+                        key=lambda x: x["count"], reverse=True,
                     )[:5],
                     "daily_breakdown": sorted(
                         [{"date": d, "messages": c} for d, c in stats["daily"].items()],
@@ -185,8 +188,7 @@ def get_agency_breakdown(days=30):
                 }
                 for ag, stats in agency_stats.items()
             ],
-            key=lambda x: x["messages"],
-            reverse=True,
+            key=lambda x: x["messages"], reverse=True,
         )
 
         return {"agencies": agencies, "total_messages": total}
@@ -203,9 +205,11 @@ def get_faq_insights(days=30, agency_filter=None):
         start_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
         topic_counts = defaultdict(int)
         topic_samples = defaultdict(list)
+        topic_seen_questions = defaultdict(set)
         total = 0
 
         if agency_filter:
+            items = []
             last_evaluated_key = None
             while True:
                 query_params = {
@@ -215,39 +219,29 @@ def get_faq_insights(days=30, agency_filter=None):
                 if last_evaluated_key:
                     query_params["ExclusiveStartKey"] = last_evaluated_key
                 response = analytics_table.query(**query_params)
-
-                for item in response.get("Items", []):
-                    topic = item.get("topic", "Other")
-                    question = item.get("question", "")
-                    topic_counts[topic] += 1
-                    total += 1
-                    if len(topic_samples[topic]) < 5:
-                        topic_samples[topic].append(question)
-
+                items.extend(response.get("Items", []))
                 last_evaluated_key = response.get("LastEvaluatedKey")
                 if not last_evaluated_key:
                     break
         else:
-            last_evaluated_key = None
-            while True:
-                scan_params = {
-                    "FilterExpression": Key("date_key").gte(start_date),
-                }
-                if last_evaluated_key:
-                    scan_params["ExclusiveStartKey"] = last_evaluated_key
-                response = analytics_table.scan(**scan_params)
+            items = _scan_analytics(start_date)
 
-                for item in response.get("Items", []):
-                    topic = item.get("topic", "Other")
-                    question = item.get("question", "")
-                    topic_counts[topic] += 1
-                    total += 1
-                    if len(topic_samples[topic]) < 5:
-                        topic_samples[topic].append(question)
-
-                last_evaluated_key = response.get("LastEvaluatedKey")
-                if not last_evaluated_key:
-                    break
+        for item in items:
+            topic = item.get("topic", "Other")
+            question = item.get("question", "")
+            display_name = item.get("display_name", "")
+            agency = item.get("agency", "")
+            topic_counts[topic] += 1
+            total += 1
+            q_lower = question.strip().lower()
+            if q_lower and q_lower not in topic_seen_questions[topic] and len(topic_samples[topic]) < 5:
+                topic_seen_questions[topic].add(q_lower)
+                sample = {"question": question}
+                if display_name:
+                    sample["display_name"] = display_name
+                if agency:
+                    sample["agency"] = agency
+                topic_samples[topic].append(sample)
 
         topics = sorted(
             [
@@ -258,14 +252,77 @@ def get_faq_insights(days=30, agency_filter=None):
                 }
                 for topic, count in topic_counts.items()
             ],
-            key=lambda x: x["count"],
-            reverse=True,
+            key=lambda x: x["count"], reverse=True,
         )
 
         return {"topics": topics[:20], "total_classified": total}
     except Exception as e:
         print(f"Error getting FAQ insights: {e}")
         return {"topics": [], "total_classified": 0}
+
+
+def get_user_breakdown(days=30):
+    """Per-user analytics: message count, agency, topics, recent questions."""
+    if not analytics_table:
+        return {"users": [], "total_messages": 0}
+
+    try:
+        start_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        items = _scan_analytics(start_date)
+
+        user_stats = defaultdict(lambda: {
+            "messages": 0, "display_name": "", "agency": "",
+            "topics": defaultdict(int), "questions": [],
+            "seen_questions": set(),
+        })
+        total = 0
+
+        for item in items:
+            uid = item.get("user_id", "") or "unknown"
+            display_name = item.get("display_name", "")
+            agency = item.get("agency", "")
+            topic = item.get("topic", "Other")
+            question = item.get("question", "")
+            timestamp = item.get("timestamp", "")
+
+            user_stats[uid]["messages"] += 1
+            if display_name:
+                user_stats[uid]["display_name"] = display_name
+            if agency:
+                user_stats[uid]["agency"] = agency
+            user_stats[uid]["topics"][topic] += 1
+            q_lower = question.strip().lower()
+            if q_lower and q_lower not in user_stats[uid]["seen_questions"] and len(user_stats[uid]["questions"]) < 10:
+                user_stats[uid]["seen_questions"].add(q_lower)
+                user_stats[uid]["questions"].append({
+                    "question": question, "topic": topic, "timestamp": timestamp,
+                })
+            total += 1
+
+        users = sorted(
+            [
+                {
+                    "user_id": uid,
+                    "display_name": stats["display_name"] or uid[:20],
+                    "agency": stats["agency"] or "Unknown",
+                    "messages": stats["messages"],
+                    "top_topics": sorted(
+                        [{"topic": t, "count": c} for t, c in stats["topics"].items()],
+                        key=lambda x: x["count"], reverse=True,
+                    )[:5],
+                    "recent_questions": sorted(
+                        stats["questions"], key=lambda x: x["timestamp"], reverse=True,
+                    ),
+                }
+                for uid, stats in user_stats.items()
+            ],
+            key=lambda x: x["messages"], reverse=True,
+        )
+
+        return {"users": users, "total_messages": total}
+    except Exception as e:
+        print(f"Error getting user breakdown: {e}")
+        return {"users": [], "total_messages": 0}
 
 
 def lambda_handler(event, context):
@@ -318,6 +375,8 @@ def lambda_handler(event, context):
             }
         elif metric_type == "by_agency":
             response_data = get_agency_breakdown(days)
+        elif metric_type == "by_user":
+            response_data = get_user_breakdown(days)
         else:
             unique_users = get_unique_users_count()
             traffic = get_traffic_metrics()

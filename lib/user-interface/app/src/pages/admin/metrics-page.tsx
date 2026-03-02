@@ -33,6 +33,7 @@ import PeopleIcon from "@mui/icons-material/People";
 import ChatIcon from "@mui/icons-material/Chat";
 import ForumIcon from "@mui/icons-material/Forum";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import PersonIcon from "@mui/icons-material/Person";
 import { LineChart } from "@mui/x-charts/LineChart";
 import { BarChart } from "@mui/x-charts/BarChart";
 import AdminPageLayout from "../../components/admin-page-layout";
@@ -51,13 +52,31 @@ interface MetricsData {
   }>;
 }
 
+interface FAQSample {
+  question: string;
+  display_name?: string;
+  agency?: string;
+}
+
 interface FAQData {
   topics: Array<{
     topic: string;
     count: number;
-    sample_questions: string[];
+    sample_questions: FAQSample[];
   }>;
   total_classified: number;
+}
+
+interface UserData {
+  users: Array<{
+    user_id: string;
+    display_name: string;
+    agency: string;
+    messages: number;
+    top_topics: Array<{ topic: string; count: number }>;
+    recent_questions: Array<{ question: string; topic: string; timestamp: string }>;
+  }>;
+  total_messages: number;
 }
 
 interface AgencyData {
@@ -239,11 +258,22 @@ function FAQRow({ topic }: { topic: FAQData["topics"][0] }) {
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Sample questions:
               </Typography>
-              {topic.sample_questions.map((q, i) => (
-                <Typography key={i} variant="body2" sx={{ py: 0.3 }}>
-                  &bull; {q}
-                </Typography>
-              ))}
+              {topic.sample_questions.map((q, i) => {
+                const sample = typeof q === "string" ? { question: q } : q;
+                const badge = [sample.display_name, sample.agency].filter(Boolean).join(" · ");
+                return (
+                  <Box key={i} sx={{ py: 0.3 }}>
+                    <Typography variant="body2" component="span">
+                      &bull; {sample.question}
+                    </Typography>
+                    {badge && (
+                      <Typography variant="caption" color="text.secondary" component="span" sx={{ ml: 1 }}>
+                        — {badge}
+                      </Typography>
+                    )}
+                  </Box>
+                );
+              })}
             </Box>
           </Collapse>
         </TableCell>
@@ -471,11 +501,119 @@ function AgencyTab({ agencyData }: { agencyData: AgencyData | null }) {
   );
 }
 
+function UsersTab({ userData }: { userData: UserData | null }) {
+  const [expandedUser, setExpandedUser] = useState<string | null>(null);
+
+  if (!userData || userData.users.length === 0) {
+    return (
+      <Box sx={{ mt: 3, textAlign: "center", py: 8 }}>
+        <Typography variant="h4" color="text.secondary">
+          No user data yet
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 400, mx: "auto" }}>
+          User-level analytics will appear here once users start chatting.
+        </Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ mt: 3 }}>
+      <Alert severity="info" sx={{ mb: 3 }}>
+        <strong>{userData.total_messages}</strong> messages from{" "}
+        <strong>{userData.users.length}</strong> users in the last 30 days
+      </Alert>
+
+      <Card>
+        <CardContent>
+          <Typography variant="h4" gutterBottom>
+            All Users
+          </Typography>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell width={50} />
+                  <TableCell>User</TableCell>
+                  <TableCell>Agency</TableCell>
+                  <TableCell align="right">Messages</TableCell>
+                  <TableCell>Top Topics</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {userData.users.map((u) => {
+                  const isOpen = expandedUser === u.user_id;
+                  return (
+                    <React.Fragment key={u.user_id}>
+                      <TableRow
+                        hover
+                        sx={{ cursor: "pointer" }}
+                        onClick={() => setExpandedUser(isOpen ? null : u.user_id)}
+                      >
+                        <TableCell>
+                          <IconButton size="small" aria-label={isOpen ? "Collapse" : "Expand"}>
+                            {isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                          </IconButton>
+                        </TableCell>
+                        <TableCell>
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                            <PersonIcon fontSize="small" color="action" />
+                            <Typography variant="body2" fontWeight="bold">{u.display_name}</Typography>
+                          </Stack>
+                        </TableCell>
+                        <TableCell>
+                          <Chip label={u.agency} size="small" variant="outlined" />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography fontWeight="bold">{u.messages}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                            {u.top_topics.slice(0, 3).map((t) => (
+                              <Chip key={t.topic} label={`${t.topic} (${t.count})`} size="small" variant="outlined" />
+                            ))}
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell colSpan={5} sx={{ py: 0, borderBottom: isOpen ? undefined : "none" }}>
+                          <Collapse in={isOpen} timeout={200} unmountOnExit>
+                            <Box sx={{ py: 1.5, pl: 6 }}>
+                              <Typography variant="body2" color="text.secondary" gutterBottom>
+                                Recent questions:
+                              </Typography>
+                              {u.recent_questions.map((q, i) => (
+                                <Box key={i} sx={{ py: 0.3 }}>
+                                  <Typography variant="body2" component="span">
+                                    &bull; {q.question}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary" component="span" sx={{ ml: 1 }}>
+                                    — {q.topic}
+                                  </Typography>
+                                </Box>
+                              ))}
+                            </Box>
+                          </Collapse>
+                        </TableCell>
+                      </TableRow>
+                    </React.Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CardContent>
+      </Card>
+    </Box>
+  );
+}
+
 export default function MetricsPage() {
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState<MetricsData | null>(null);
   const [faqData, setFaqData] = useState<FAQData | null>(null);
   const [agencyData, setAgencyData] = useState<AgencyData | null>(null);
+  const [userData, setUserData] = useState<UserData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tabIndex, setTabIndex] = useState(0);
   const appContext = useContext(AppContext);
@@ -485,14 +623,16 @@ export default function MetricsPage() {
     try {
       setLoading(true);
       setError(null);
-      const [metricsRes, faqRes, agencyRes] = await Promise.all([
+      const [metricsRes, faqRes, agencyRes, userRes] = await Promise.all([
         apiClient.metrics.getMetrics(),
         apiClient.metrics.getFAQInsights(30).catch(() => null),
         apiClient.metrics.getAgencyBreakdown(30).catch(() => null),
+        apiClient.metrics.getUserBreakdown(30).catch(() => null),
       ]);
       setMetrics(metricsRes);
       setFaqData(faqRes);
       setAgencyData(agencyRes);
+      setUserData(userRes);
     } catch (e: any) {
       setError(e.message || "Failed to load metrics");
     } finally {
@@ -544,10 +684,12 @@ export default function MetricsPage() {
             <Tab label="Overview" />
             <Tab label="FAQ Insights" />
             <Tab label="By Agency" />
+            <Tab label="By User" />
           </Tabs>
           {tabIndex === 0 && metrics && <OverviewTab metrics={metrics} />}
           {tabIndex === 1 && <FAQTab faqData={faqData} />}
           {tabIndex === 2 && <AgencyTab agencyData={agencyData} />}
+          {tabIndex === 3 && <UsersTab userData={userData} />}
         </>
       )}
     </AdminPageLayout>

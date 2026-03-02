@@ -311,6 +311,28 @@ export class MetricClient {
     }
   }
 
+  async getUserBreakdown(days: number = 30) {
+    try {
+      const auth = await Utils.authenticate();
+      const response = await fetch(`${this.API}/metrics?type=by_user&days=${days}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': auth,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch user breakdown: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (err) {
+      console.log("Error retrieving user breakdown:", err);
+      throw err;
+    }
+  }
+
   async getTrafficDetails(days: number = 30) {
     try {
       const auth = await Utils.authenticate();
