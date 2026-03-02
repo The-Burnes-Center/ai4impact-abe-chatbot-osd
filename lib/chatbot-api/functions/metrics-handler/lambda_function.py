@@ -179,7 +179,8 @@ def get_agency_breakdown(days=30):
                         reverse=True,
                     )[:5],
                     "daily_breakdown": sorted(
-                        [{"date": d, "messages": c} for d, c in stats["daily"].items()]
+                        [{"date": d, "messages": c} for d, c in stats["daily"].items()],
+                        key=lambda x: x["date"],
                     ),
                 }
                 for ag, stats in agency_stats.items()
