@@ -97,6 +97,13 @@ export class TableStack extends Construct {
       projectionType: ProjectionType.ALL,
     });
 
+    analyticsTable.addGlobalSecondaryIndex({
+      indexName: 'AgencyIndex',
+      partitionKey: { name: 'agency', type: AttributeType.STRING },
+      sortKey: { name: 'timestamp', type: AttributeType.STRING },
+      projectionType: ProjectionType.ALL,
+    });
+
     this.analyticsTable = analyticsTable;
 
     const contractIndexTable = new Table(scope, 'ContractIndexTable', {

@@ -127,7 +127,74 @@ def get_traffic_metrics():
         }
 
 
-def get_faq_insights(days=30):
+def get_agency_breakdown(days=30):
+    """Aggregate analytics by agency: message counts, unique users, top topics per agency."""
+    if not analytics_table:
+        return {"agencies": [], "total_messages": 0}
+
+    try:
+        start_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        agency_stats = defaultdict(lambda: {
+            "messages": 0,
+            "users": set(),
+            "topics": defaultdict(int),
+            "daily": defaultdict(int),
+        })
+        total = 0
+
+        last_evaluated_key = None
+        while True:
+            scan_params = {
+                "FilterExpression": Key("date_key").gte(start_date),
+            }
+            if last_evaluated_key:
+                scan_params["ExclusiveStartKey"] = last_evaluated_key
+            response = analytics_table.scan(**scan_params)
+
+            for item in response.get("Items", []):
+                ag = item.get("agency", "Unknown") or "Unknown"
+                uid = item.get("user_id", "")
+                topic = item.get("topic", "Other")
+                date_key = item.get("date_key", "")
+                agency_stats[ag]["messages"] += 1
+                agency_stats[ag]["users"].add(uid)
+                agency_stats[ag]["topics"][topic] += 1
+                if date_key:
+                    agency_stats[ag]["daily"][date_key] += 1
+                total += 1
+
+            last_evaluated_key = response.get("LastEvaluatedKey")
+            if not last_evaluated_key:
+                break
+
+        agencies = sorted(
+            [
+                {
+                    "agency": ag,
+                    "messages": stats["messages"],
+                    "unique_users": len(stats["users"]),
+                    "top_topics": sorted(
+                        [{"topic": t, "count": c} for t, c in stats["topics"].items()],
+                        key=lambda x: x["count"],
+                        reverse=True,
+                    )[:5],
+                    "daily_breakdown": sorted(
+                        [{"date": d, "messages": c} for d, c in stats["daily"].items()]
+                    ),
+                }
+                for ag, stats in agency_stats.items()
+            ],
+            key=lambda x: x["messages"],
+            reverse=True,
+        )
+
+        return {"agencies": agencies, "total_messages": total}
+    except Exception as e:
+        print(f"Error getting agency breakdown: {e}")
+        return {"agencies": [], "total_messages": 0}
+
+
+def get_faq_insights(days=30, agency_filter=None):
     if not analytics_table:
         return {"topics": [], "total_classified": 0}
 
@@ -137,36 +204,49 @@ def get_faq_insights(days=30):
         topic_samples = defaultdict(list)
         total = 0
 
-        last_evaluated_key = None
-        while True:
-            params = {
-                "IndexName": "DateIndex",
-                "KeyConditionExpression": Key("date_key").gte(start_date),
-                "ScanIndexForward": False,
-            }
-            if last_evaluated_key:
-                params["ExclusiveStartKey"] = last_evaluated_key
+        if agency_filter:
+            last_evaluated_key = None
+            while True:
+                query_params = {
+                    "IndexName": "AgencyIndex",
+                    "KeyConditionExpression": Key("agency").eq(agency_filter) & Key("timestamp").gte(start_date),
+                }
+                if last_evaluated_key:
+                    query_params["ExclusiveStartKey"] = last_evaluated_key
+                response = analytics_table.query(**query_params)
 
-            # DateIndex has date_key as PK -- need to scan dates in range
-            # Since we can't do >= on a partition key, scan and filter instead
-            scan_params = {
-                "FilterExpression": Key("date_key").gte(start_date),
-            }
-            if last_evaluated_key:
-                scan_params["ExclusiveStartKey"] = last_evaluated_key
-            response = analytics_table.scan(**scan_params)
+                for item in response.get("Items", []):
+                    topic = item.get("topic", "Other")
+                    question = item.get("question", "")
+                    topic_counts[topic] += 1
+                    total += 1
+                    if len(topic_samples[topic]) < 5:
+                        topic_samples[topic].append(question)
 
-            for item in response.get("Items", []):
-                topic = item.get("topic", "Other")
-                question = item.get("question", "")
-                topic_counts[topic] += 1
-                total += 1
-                if len(topic_samples[topic]) < 5:
-                    topic_samples[topic].append(question)
+                last_evaluated_key = response.get("LastEvaluatedKey")
+                if not last_evaluated_key:
+                    break
+        else:
+            last_evaluated_key = None
+            while True:
+                scan_params = {
+                    "FilterExpression": Key("date_key").gte(start_date),
+                }
+                if last_evaluated_key:
+                    scan_params["ExclusiveStartKey"] = last_evaluated_key
+                response = analytics_table.scan(**scan_params)
 
-            last_evaluated_key = response.get("LastEvaluatedKey")
-            if not last_evaluated_key:
-                break
+                for item in response.get("Items", []):
+                    topic = item.get("topic", "Other")
+                    question = item.get("question", "")
+                    topic_counts[topic] += 1
+                    total += 1
+                    if len(topic_samples[topic]) < 5:
+                        topic_samples[topic].append(question)
+
+                last_evaluated_key = response.get("LastEvaluatedKey")
+                if not last_evaluated_key:
+                    break
 
         topics = sorted(
             [
@@ -223,9 +303,10 @@ def lambda_handler(event, context):
         qs = event.get("queryStringParameters") or {}
         metric_type = qs.get("type", "overview")
         days = int(qs.get("days", "30"))
+        agency_filter = qs.get("agency", None)
 
         if metric_type == "faq":
-            response_data = get_faq_insights(days)
+            response_data = get_faq_insights(days, agency_filter=agency_filter)
         elif metric_type == "traffic":
             traffic = get_traffic_metrics()
             response_data = {
@@ -234,6 +315,8 @@ def lambda_handler(event, context):
                 "avg_messages_per_session": traffic["avg_messages_per_session"],
                 "peak_hour": traffic["peak_hour"],
             }
+        elif metric_type == "by_agency":
+            response_data = get_agency_breakdown(days)
         else:
             unique_users = get_unique_users_count()
             traffic = get_traffic_metrics()

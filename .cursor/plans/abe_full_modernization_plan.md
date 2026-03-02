@@ -1,6 +1,6 @@
 ---
 name: ABE Full Modernization Plan
-overview: A comprehensive modernization plan for the ABE (Assistive Buyers Engine) chatbot covering security fixes, GenAI pipeline upgrades, CDK infrastructure hardening, backend Lambda improvements, frontend/UX overhaul, operational excellence, and production launch requirements from OSD stakeholders. Organized into 7 phases by priority.
+overview: A comprehensive modernization plan for the ABE (Assistive Buyers Engine) chatbot covering security fixes, GenAI pipeline upgrades, CDK infrastructure hardening, backend Lambda improvements, frontend/UX overhaul, operational excellence, and production launch requirements from OSD stakeholders. Includes a Phase 4 feature to enrich analytics with user display name and agency (parsed from UI username e.g. "Kumar, Dhruv (A&F)"). Organized into 7 phases by priority.
 todos:
   - id: phase1-secrets
     content: "Phase 1: Move Cognito credentials to Secrets Manager, externalize all hardcoded IDs -- guardrail ID externalized; Cognito secrets deferred to Phase 2 (TODO comment added)"
@@ -82,6 +82,9 @@ todos:
     status: completed
   - id: phase4-llm-validation
     content: "Phase 4: Add Pydantic (Python) + Zod (JS) validation for all 13 LLM-to-JSON parsing points"
+    status: pending
+  - id: phase4-analytics-agency-name
+    content: "Phase 4 [Analytics]: Enrich all analytics with user display name + agency parsed from UI username (e.g. 'Kumar, Dhruv (A&F)'); store per message; add agency filter/breakdown and admin-facing analytics UX"
     status: pending
   - id: phase5-websocket
     content: "Phase 5: Abstract WebSocket with react-use-websocket, move JWT from URL"
@@ -742,11 +745,61 @@ table.update_item(
   - New API endpoint: `GET /analytics/user-logs` (admin only) with pagination and filtering
   - Frontend: Searchable user activity log in admin panel
 
-**Phase 2 -- Agency Information (pending OSD clarification)**:
+**Phase 2 -- Agency + Display Name (see new feature below)**:
 
-- Need to understand what "Agency Information" means in context (user's agency? which agencies use ABE?)
-- If agency is a user attribute: add `agency` as a custom Cognito attribute, track per-session
-- If agency-level analytics: group metrics by agency for comparative dashboards
+- **Clarified**: The username displayed in the UI (e.g. "Kumar, Dhruv (A&F)") comes from the JWT `name` claim. The part before the parentheses is the **display name**, the part in parentheses is the **agency** (e.g. A&F). Track both per message and expose in analytics. See **New Feature: Analytics enriched with user name and agency** below.
+
+### New Feature: Analytics Enriched with User Name and Agency
+
+**Requirement**: The UI displays a username string such as `Kumar, Dhruv (A&F)` — where **Kumar, Dhruv** is the user’s name and **(A&F)** is their agency. Every message should be associated with both name and agency so analytics can be filtered and broken down by agency (and optionally by user name). Admins should be able to see usage and FAQ data by agency and user.
+
+#### Data model and source
+
+- **Source**: JWT ID token claim `name` (same value shown in the header menu). Format: `"<DisplayName> (Agency)"`. Agency is the substring inside the last matching pair of parentheses; display name is the rest (trimmed). If there are no parentheses, treat entire string as display name and agency as empty or "Unknown".
+- **Parsing**: Frontend parses once when sending the first message in a session (or on connect) and sends both in the WebSocket payload so the backend does not need to parse JWT.
+- **Storage**: Every analytics record (e.g. each FAQ classification write to `AnalyticsTable`) must include:
+  - `user_id` (existing — Cognito username)
+  - `display_name` (new — e.g. "Kumar, Dhruv")
+  - `agency` (new — e.g. "A&F")
+- **Backward compatibility**: Existing records without `display_name`/`agency` remain valid; new writes always include them when provided by the client. Queries and UI should treat missing agency as "Unknown" or "N/A".
+
+#### Implementation outline
+
+1. **Frontend**
+   - In [global-header.tsx](lib/user-interface/app/src/components/global-header.tsx) the UI already reads `result?.signInUserSession?.idToken?.payload?.name`. Add a small utility (e.g. in `utils` or `helpers`) to parse `"Name (Agency)"` → `{ displayName, agency }` (regex: last `(.*)` before end of string; handle missing parentheses).
+   - When building the WebSocket payload in [chat-input-panel.tsx](lib/user-interface/app/src/components/chatbot/chat-input-panel.tsx) and [useWebSocketChat.ts](lib/user-interface/app/src/hooks/useWebSocketChat.ts): in addition to `userId`, pass `displayName` and `agency` (read from JWT name at send time, or from a context that sets them after auth). Extend `SendOptions` and the `data` object sent to the WebSocket to include `display_name` and `agency`.
+   - Ensure the values are never undefined when the user is authenticated (fallback: displayName = name or userId, agency = "" or "Unknown").
+2. **Backend — WebSocket and FAQ classifier**
+   - [websocket-chat/index.mjs](lib/chatbot-api/functions/websocket-chat/index.mjs): Read `data.display_name` and `data.agency` from the incoming message. Pass them through to the FAQ classifier invoke payload (and any other analytics paths that record per-message data).
+   - [faq-classifier/lambda_function.py](lib/chatbot-api/functions/faq-classifier/lambda_function.py): Accept `display_name` and `agency` in the event; write them to `AnalyticsTable` on each `put_item` (new attributes on the same item: `display_name`, `agency`). Normalize empty/missing to a single sentinel (e.g. "Unknown") for agency so filters work.
+3. **Analytics table and metrics handler**
+   - **AnalyticsTable**: No schema change required (DynamoDB is schemaless). Add optional attributes `display_name` (String) and `agency` (String) to each analytics item written by the FAQ classifier. For efficient agency-based queries, add a **GSI** (e.g. `AgencyIndex`) with partition key `agency` and sort key `timestamp` (and project the attributes needed for admin views). This allows "all messages for agency A&F" and "top topics by agency" without full table scans.
+   - [metrics-handler/lambda_function.py](lib/chatbot-api/functions/metrics-handler/lambda_function.py): Extend response shapes as needed:
+     - **Overview / traffic**: Optionally include breakdown by agency (e.g. unique users per agency, message count per agency) when querying analytics (and sessions table if we also store agency on sessions). If sessions table does not have agency, derive from analytics aggregation.
+     - **FAQ**: Support optional query param `agency` to filter FAQ insights by agency. Return per-agency counts or top agencies for each topic.
+     - **New endpoint or mode**: e.g. `GET /metrics?mode=by_agency` or `GET /metrics/agencies` returning list of agencies with message counts, unique users, and date range filters.
+4. **Sessions table (optional)**
+   - If admins need "sessions by agency" or "sessions by user name" in the same way, add `display_name` and `agency` to the session handler payload and store them on the session record when creating/updating. Then metrics can aggregate from sessions as well. Prefer storing once per session (at create) to avoid duplication; use same parsing as frontend.
+
+#### Admin POV — what admins should see and do
+
+- **Filter by agency**: In the Analytics/Metrics dashboard, add an agency filter (dropdown or multi-select). When selected, all charts and tables (overview, FAQ, traffic) show only data for that agency (or "All agencies" by default).
+- **Agency breakdown**: A view (tab or section) showing:
+  - List of agencies with total messages, unique users, and (optionally) share of total usage.
+  - Top agencies by activity (e.g. last 7/30 days).
+- **Per-question attribution**: In FAQ Insights (or an export), each question row can show agency and optionally display name (or "Anonymous" if policy requires). Admins can see "which agency asks this most" or "what did users from A&F ask this week."
+- **Trends by agency**: Time-series (daily/weekly) of message volume or session count per agency, so admins can compare adoption and usage across agencies.
+- **Export**: CSV/export of analytics or FAQ data should include columns for `agency` and `display_name` (or user_id only, depending on privacy) so OSD can analyze in spreadsheets.
+- **Privacy and policy**: Consider whether display name should be shown in the UI or only stored for support; if only agency is needed for reporting, display name can be stored but not shown in admin tables (only in exports or audit logs). Document the choice in the plan or runbook.
+
+#### Acceptance criteria
+
+- Every chat message that triggers analytics (e.g. FAQ classification) results in a record that includes `user_id`, `display_name`, and `agency` when the client sends them.
+- Admins can filter Analytics/Metrics by agency and see consistent counts and FAQ data.
+- At least one agency-level summary view (e.g. "Usage by agency" with counts) is available in the admin dashboard.
+- Existing analytics continue to work; missing name/agency is handled gracefully (e.g. "Unknown" agency).
+
+---
 
 ### 4.4 [Issue #8] Fix Document Sync Timestamp in Data Dashboard
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import { Auth } from "aws-amplify";
 import { ApiClient } from "../../common/api-client/api-client";
 import { AppContext } from "../../common/app-context";
@@ -58,6 +58,17 @@ interface FAQData {
     sample_questions: string[];
   }>;
   total_classified: number;
+}
+
+interface AgencyData {
+  agencies: Array<{
+    agency: string;
+    messages: number;
+    unique_users: number;
+    top_topics: Array<{ topic: string; count: number }>;
+    daily_breakdown: Array<{ date: string; messages: number }>;
+  }>;
+  total_messages: number;
 }
 
 function KPICard({
@@ -312,10 +323,159 @@ function FAQTab({ faqData }: { faqData: FAQData | null }) {
   );
 }
 
+function AgencyTab({ agencyData }: { agencyData: AgencyData | null }) {
+  const [expandedAgency, setExpandedAgency] = useState<string | null>(null);
+
+  if (!agencyData || agencyData.agencies.length === 0) {
+    return (
+      <Box sx={{ mt: 3, textAlign: "center", py: 8 }}>
+        <Typography variant="h4" color="text.secondary">
+          No agency data yet
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 400, mx: "auto" }}>
+          Agency analytics will appear here once users start chatting. User names
+          containing an agency identifier (e.g. "A&F") are automatically parsed.
+        </Typography>
+      </Box>
+    );
+  }
+
+  const chartAgencies = agencyData.agencies.slice(0, 10);
+
+  return (
+    <Box sx={{ mt: 3 }}>
+      <Alert severity="info" sx={{ mb: 3 }}>
+        <strong>{agencyData.total_messages}</strong> messages from{" "}
+        <strong>{agencyData.agencies.length}</strong> agencies in the last 30 days
+      </Alert>
+
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KPICard
+            title="Agencies Active"
+            value={agencyData.agencies.length}
+            icon={<PeopleIcon />}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KPICard
+            title="Total Messages"
+            value={agencyData.total_messages}
+            icon={<ForumIcon />}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KPICard
+            title="Top Agency"
+            value={agencyData.agencies[0]?.agency ?? "N/A"}
+            icon={<TrendingUpIcon />}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <KPICard
+            title="Top Agency Messages"
+            value={agencyData.agencies[0]?.messages ?? 0}
+            icon={<ChatIcon />}
+          />
+        </Grid>
+      </Grid>
+
+      {chartAgencies.length > 0 && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h4" gutterBottom>
+              Messages by Agency
+            </Typography>
+            <Box sx={{ width: "100%", height: 350 }}>
+              <BarChart
+                yAxis={[{ data: chartAgencies.map((a) => a.agency), scaleType: "band" }]}
+                xAxis={[{ label: "Messages" }]}
+                series={[{ data: chartAgencies.map((a) => a.messages), label: "Messages" }]}
+                layout="horizontal"
+                height={320}
+                margin={{ left: 160 }}
+              />
+            </Box>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardContent>
+          <Typography variant="h4" gutterBottom>
+            All Agencies
+          </Typography>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell width={50} />
+                  <TableCell>Agency</TableCell>
+                  <TableCell align="right">Messages</TableCell>
+                  <TableCell align="right">Unique Users</TableCell>
+                  <TableCell align="right">Share</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {agencyData.agencies.map((ag) => {
+                  const isOpen = expandedAgency === ag.agency;
+                  const share = agencyData.total_messages > 0
+                    ? ((ag.messages / agencyData.total_messages) * 100).toFixed(1)
+                    : "0";
+                  return (
+                    <React.Fragment key={ag.agency}>
+                      <TableRow
+                        hover
+                        sx={{ cursor: "pointer" }}
+                        onClick={() => setExpandedAgency(isOpen ? null : ag.agency)}
+                      >
+                        <TableCell>
+                          <IconButton size="small" aria-label={isOpen ? "Collapse" : "Expand"}>
+                            {isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                          </IconButton>
+                        </TableCell>
+                        <TableCell>
+                          <Chip label={ag.agency} size="small" variant="outlined" />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography fontWeight="bold">{ag.messages}</Typography>
+                        </TableCell>
+                        <TableCell align="right">{ag.unique_users}</TableCell>
+                        <TableCell align="right">{share}%</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell colSpan={5} sx={{ py: 0, borderBottom: isOpen ? undefined : "none" }}>
+                          <Collapse in={isOpen} timeout={200} unmountOnExit>
+                            <Box sx={{ py: 1.5, pl: 6 }}>
+                              <Typography variant="body2" color="text.secondary" gutterBottom>
+                                Top topics:
+                              </Typography>
+                              {ag.top_topics.map((t, i) => (
+                                <Typography key={i} variant="body2" sx={{ py: 0.3 }}>
+                                  &bull; {t.topic} ({t.count})
+                                </Typography>
+                              ))}
+                            </Box>
+                          </Collapse>
+                        </TableCell>
+                      </TableRow>
+                    </React.Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CardContent>
+      </Card>
+    </Box>
+  );
+}
+
 export default function MetricsPage() {
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState<MetricsData | null>(null);
   const [faqData, setFaqData] = useState<FAQData | null>(null);
+  const [agencyData, setAgencyData] = useState<AgencyData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tabIndex, setTabIndex] = useState(0);
   const appContext = useContext(AppContext);
@@ -325,12 +485,14 @@ export default function MetricsPage() {
     try {
       setLoading(true);
       setError(null);
-      const [metricsRes, faqRes] = await Promise.all([
+      const [metricsRes, faqRes, agencyRes] = await Promise.all([
         apiClient.metrics.getMetrics(),
         apiClient.metrics.getFAQInsights(30).catch(() => null),
+        apiClient.metrics.getAgencyBreakdown(30).catch(() => null),
       ]);
       setMetrics(metricsRes);
       setFaqData(faqRes);
+      setAgencyData(agencyRes);
     } catch (e: any) {
       setError(e.message || "Failed to load metrics");
     } finally {
@@ -381,9 +543,11 @@ export default function MetricsPage() {
           >
             <Tab label="Overview" />
             <Tab label="FAQ Insights" />
+            <Tab label="By Agency" />
           </Tabs>
           {tabIndex === 0 && metrics && <OverviewTab metrics={metrics} />}
           {tabIndex === 1 && <FAQTab faqData={faqData} />}
+          {tabIndex === 2 && <AgencyTab agencyData={agencyData} />}
         </>
       )}
     </AdminPageLayout>

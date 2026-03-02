@@ -289,6 +289,28 @@ export class MetricClient {
     }
   }
 
+  async getAgencyBreakdown(days: number = 30) {
+    try {
+      const auth = await Utils.authenticate();
+      const response = await fetch(`${this.API}/metrics?type=by_agency&days=${days}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': auth,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch agency breakdown: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (err) {
+      console.log("Error retrieving agency breakdown:", err);
+      throw err;
+    }
+  }
+
   async getTrafficDetails(days: number = 30) {
     try {
       const auth = await Utils.authenticate();

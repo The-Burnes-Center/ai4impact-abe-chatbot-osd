@@ -159,6 +159,30 @@ export class Utils {
    * @param utcTimestamp - ISO 8601 timestamp string with Z suffix (e.g., "2026-02-20T14:17:00Z")
    * @returns Formatted date string in Eastern Time (e.g., "Feb 20, 2026, 9:17 AM")
    */
+  /**
+   * Parses a Cognito display name like "Kumar, Dhruv (A&F)" into
+   * { displayName: "Kumar, Dhruv", agency: "A&F" }.
+   * If no parenthesized suffix exists, agency is "Unknown".
+   */
+  static parseUserIdentity(rawName: string | null | undefined): {
+    displayName: string;
+    agency: string;
+  } {
+    if (!rawName || rawName.trim().length === 0) {
+      return { displayName: "Unknown", agency: "Unknown" };
+    }
+
+    const match = rawName.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+    if (match) {
+      return {
+        displayName: match[1].trim(),
+        agency: match[2].trim(),
+      };
+    }
+
+    return { displayName: rawName.trim(), agency: "Unknown" };
+  }
+
   static formatToEasternTime(utcTimestamp: string | null | undefined): string {
     if (!utcTimestamp) {
       return 'N/A';

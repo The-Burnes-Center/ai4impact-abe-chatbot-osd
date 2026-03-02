@@ -70,9 +70,15 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
     if (props.running) return;
 
     let username: string | undefined;
+    let displayName = "";
+    let agency = "";
     try {
       const user = await Auth.currentAuthenticatedUser();
       username = user.username;
+      const rawName = user?.signInUserSession?.idToken?.payload?.name ?? "";
+      const identity = Utils.parseUserIdentity(rawName);
+      displayName = identity.displayName;
+      agency = identity.agency;
     } catch {
       addNotification("error", "Please sign in to continue.");
       return;
@@ -110,6 +116,8 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
     send({
       userMessage: messageToSend,
       userId: username,
+      displayName,
+      agency,
       sessionId: props.session.id,
       messageHistory: messageHistoryRef.current.slice(0, -2),
 

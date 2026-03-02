@@ -20,6 +20,8 @@ export interface StreamingStatus {
 interface SendOptions {
   userMessage: string;
   userId: string;
+  displayName?: string;
+  agency?: string;
   sessionId: string;
   messageHistory: ChatBotHistoryItem[];
   retrievalSource?: string;
@@ -83,6 +85,8 @@ export function useWebSocketChat() {
               chatHistory: assembleHistory(opts.messageHistory),
               user_id: opts.userId,
               session_id: opts.sessionId,
+              display_name: opts.displayName ?? "",
+              agency: opts.agency ?? "",
               retrievalSource: opts.retrievalSource ?? "kb",
             },
           })

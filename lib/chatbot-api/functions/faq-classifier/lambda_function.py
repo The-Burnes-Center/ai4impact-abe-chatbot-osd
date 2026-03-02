@@ -56,6 +56,8 @@ def lambda_handler(event, context):
         user_message = event.get("userMessage", "")
         user_id = event.get("userId", "")
         session_id = event.get("sessionId", "")
+        display_name = event.get("displayName", "")
+        agency = event.get("agency", "") or "Unknown"
         timestamp = event.get("timestamp", datetime.now(timezone.utc).isoformat())
 
         if not user_message or len(user_message.strip()) < 3:
@@ -79,6 +81,8 @@ def lambda_handler(event, context):
             "question": user_message[:500],
             "user_id": user_id,
             "session_id": session_id,
+            "display_name": display_name,
+            "agency": agency,
             "date_key": date_key,
             "confidence": str(confidence),
         })
