@@ -27,8 +27,9 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { AppContext } from "../../common/app-context";
 import { ApiClient } from "../../common/api-client/api-client";
 import { Utils } from "../../common/utils";
-import { getColumnDefinition } from "./columns";
+import { getColumnDefinition, METRIC_DESCRIPTIONS } from "./columns";
 import { useNotifications } from "../../components/notif-manager";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 
 function scoreColor(pct: number): "success" | "warning" | "error" {
   if (pct >= 75) return "success";
@@ -42,17 +43,27 @@ function scoreBg(pct: number) {
   return "#ffebee";
 }
 
-function SummaryCard({ title, pct }: { title: string; pct: number }) {
+function SummaryCard({ title, pct, description }: { title: string; pct: number; description: string }) {
   return (
-    <Paper sx={{ p: 2, bgcolor: scoreBg(pct), textAlign: "center" }}>
-      <Typography variant="subtitle2" color="text.secondary">
-        {title}
-      </Typography>
-      <Typography variant="h4" fontWeight="bold">
-        {pct.toFixed(0)}%
-      </Typography>
-      <Chip label={scoreColor(pct)} color={scoreColor(pct)} size="small" />
-    </Paper>
+    <Tooltip
+      title={<Typography variant="body2" sx={{ p: 0.5 }}>{description}</Typography>}
+      placement="top"
+      arrow
+      enterDelay={200}
+    >
+      <Paper sx={{ p: 2, bgcolor: scoreBg(pct), textAlign: "center", cursor: "help" }}>
+        <Stack direction="row" justifyContent="center" alignItems="center" spacing={0.5}>
+          <Typography variant="subtitle2" color="text.secondary">
+            {title}
+          </Typography>
+          <InfoOutlinedIcon sx={{ fontSize: 14, color: "text.secondary" }} />
+        </Stack>
+        <Typography variant="h4" fontWeight="bold">
+          {pct.toFixed(0)}%
+        </Typography>
+        <Chip label={scoreColor(pct)} color={scoreColor(pct)} size="small" />
+      </Paper>
+    </Tooltip>
   );
 }
 
@@ -228,13 +239,13 @@ function DetailedEvaluationPage() {
       {summaryMetrics && (
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 4 }}>
-            <SummaryCard title="Answer Quality" pct={summaryMetrics.answer} />
+            <SummaryCard title="Answer Quality" pct={summaryMetrics.answer} description={METRIC_DESCRIPTIONS.answerQuality.detail} />
           </Grid>
           <Grid size={{ xs: 12, md: 4 }}>
-            <SummaryCard title="Retrieval Quality" pct={summaryMetrics.retrieval} />
+            <SummaryCard title="Retrieval Quality" pct={summaryMetrics.retrieval} description={METRIC_DESCRIPTIONS.retrievalQuality.detail} />
           </Grid>
           <Grid size={{ xs: 12, md: 4 }}>
-            <SummaryCard title="Response Quality" pct={summaryMetrics.response} />
+            <SummaryCard title="Response Quality" pct={summaryMetrics.response} description={METRIC_DESCRIPTIONS.responseQuality.detail} />
           </Grid>
         </Grid>
       )}

@@ -11,13 +11,16 @@ import {
   AccordionSummary,
   AccordionDetails,
   Chip,
+  Tooltip,
 } from "@mui/material";
 import Grid from "@mui/material/Grid2";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { LineChart } from "@mui/x-charts/LineChart";
 import { useState, useEffect, useMemo, useContext, useCallback } from "react";
 import { ApiClient } from "../../common/api-client/api-client";
 import { AppContext } from "../../common/app-context";
+import { METRIC_DESCRIPTIONS } from "./columns";
 
 interface DashboardProps {
   onRunEval: () => void;
@@ -40,16 +43,28 @@ function ScoreCard({
   title,
   pct,
   metrics,
+  description,
 }: {
   title: string;
   pct: number;
-  metrics: { label: string; value: number }[];
+  metrics: { label: string; value: number; tooltip: string }[];
+  description: string;
 }) {
   return (
     <Paper sx={{ p: 2.5, bgcolor: scoreBg(pct), height: "100%" }}>
-      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-        {title}
-      </Typography>
+      <Tooltip
+        title={<Typography variant="body2" sx={{ p: 0.5 }}>{description}</Typography>}
+        placement="top"
+        arrow
+        enterDelay={200}
+      >
+        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ cursor: "help", mb: 0.5 }}>
+          <Typography variant="subtitle2" color="text.secondary">
+            {title}
+          </Typography>
+          <InfoOutlinedIcon sx={{ fontSize: 14, color: "text.secondary" }} />
+        </Stack>
+      </Tooltip>
       <Stack direction="row" alignItems="baseline" spacing={1}>
         <Typography variant="h4" fontWeight="bold">
           {pct.toFixed(0)}%
@@ -63,9 +78,11 @@ function ScoreCard({
         sx={{ height: 6, borderRadius: 3, my: 1.5 }}
       />
       {metrics.map((m) => (
-        <Typography key={m.label} variant="body2" color="text.secondary">
-          {m.label}: {m.value.toFixed(0)}%
-        </Typography>
+        <Tooltip key={m.label} title={m.tooltip} placement="right" arrow>
+          <Typography variant="body2" color="text.secondary" sx={{ cursor: "help" }}>
+            {m.label}: {m.value.toFixed(0)}%
+          </Typography>
+        </Tooltip>
       ))}
     </Paper>
   );
@@ -166,9 +183,10 @@ export default function CurrentEvalTab({ onRunEval, onViewLibrary }: DashboardPr
           <ScoreCard
             title="Answer Quality"
             pct={answerQuality}
+            description={METRIC_DESCRIPTIONS.answerQuality.detail}
             metrics={[
-              { label: "Correctness", value: latest.average_correctness * 100 },
-              { label: "Similarity", value: latest.average_similarity * 100 },
+              { label: "Correctness", value: latest.average_correctness * 100, tooltip: METRIC_DESCRIPTIONS.correctness },
+              { label: "Similarity", value: latest.average_similarity * 100, tooltip: METRIC_DESCRIPTIONS.similarity },
             ]}
           />
         </Grid>
@@ -176,9 +194,10 @@ export default function CurrentEvalTab({ onRunEval, onViewLibrary }: DashboardPr
           <ScoreCard
             title="Retrieval Quality"
             pct={retrievalQuality}
+            description={METRIC_DESCRIPTIONS.retrievalQuality.detail}
             metrics={[
-              { label: "Context Precision", value: latest.average_context_precision * 100 },
-              { label: "Context Recall", value: latest.average_context_recall * 100 },
+              { label: "Context Precision", value: latest.average_context_precision * 100, tooltip: METRIC_DESCRIPTIONS.contextPrecision },
+              { label: "Context Recall", value: latest.average_context_recall * 100, tooltip: METRIC_DESCRIPTIONS.contextRecall },
             ]}
           />
         </Grid>
@@ -186,9 +205,10 @@ export default function CurrentEvalTab({ onRunEval, onViewLibrary }: DashboardPr
           <ScoreCard
             title="Response Quality"
             pct={responseQuality}
+            description={METRIC_DESCRIPTIONS.responseQuality.detail}
             metrics={[
-              { label: "Relevancy", value: latest.average_response_relevancy * 100 },
-              { label: "Faithfulness", value: latest.average_faithfulness * 100 },
+              { label: "Relevancy", value: latest.average_response_relevancy * 100, tooltip: METRIC_DESCRIPTIONS.responseRelevancy },
+              { label: "Faithfulness", value: latest.average_faithfulness * 100, tooltip: METRIC_DESCRIPTIONS.faithfulness },
             ]}
           />
         </Grid>

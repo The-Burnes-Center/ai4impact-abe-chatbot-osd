@@ -2,7 +2,8 @@ import { AdminDataType } from "../../common/types";
 import { DateTime } from "luxon";
 import { Utils } from "../../common/utils";
 import { useNavigate } from "react-router-dom";
-import { Button, Tooltip, Chip, Stack } from "@mui/material";
+import { Button, Tooltip, Chip, Stack, Typography, Box } from "@mui/material";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { TruncatedTextCell } from "../../components/truncated-text-call";
 
 export interface ColumnDefinition {
@@ -15,41 +16,66 @@ export interface ColumnDefinition {
   disableSort?: boolean;
 }
 
+export const METRIC_DESCRIPTIONS = {
+  answerQuality: {
+    short: "Are the chatbot's answers correct? High = answers match expected responses. Low = answers contain errors or miss key information.",
+    detail: "Measures how well the chatbot's answers match the expected responses you provided in your test file. High scores mean the chatbot is giving accurate, complete answers. Low scores mean the chatbot is producing incorrect or incomplete answers -- review the per-question breakdown to identify which topics need better source documents.",
+  },
+  retrievalQuality: {
+    short: "Is the chatbot finding the right documents? High = pulling relevant sources. Low = missing or irrelevant documents.",
+    detail: "Measures whether the chatbot is searching through your uploaded documents effectively. High scores mean it finds the right information to answer questions. Low scores mean it's either pulling irrelevant documents or missing key documents -- this usually means your knowledge base documents need to be updated, reorganized, or are missing content on certain topics.",
+  },
+  responseQuality: {
+    short: "Is the chatbot's response trustworthy? High = on-topic, evidence-based. Low = off-topic or making things up.",
+    detail: "Measures whether the chatbot stays on-topic and only says things supported by your documents. High scores mean the chatbot is reliable and grounded. Low scores mean it may be going off-topic or generating claims not backed by any source document (hallucinating) -- this is the most critical metric for trust.",
+  },
+  correctness: "High = the chatbot's facts match the expected answer. Low = the chatbot is stating incorrect facts or missing important details. Review the source documents for these topics.",
+  similarity: "High = the chatbot's answer conveys the same meaning as the expected answer. Low = the answer diverges in meaning, even if partially correct. Consider refining your knowledge base content.",
+  contextPrecision: "High = the documents pulled by the chatbot are relevant to the question. Low = the chatbot is pulling unrelated documents, which may confuse its answers. Check if your documents are well-structured and clearly titled.",
+  contextRecall: "High = the retrieved documents contain all the info needed to answer. Low = the chatbot can't find enough information in your documents. You may need to add more content covering these topics.",
+  responseRelevancy: "High = the chatbot directly answers the question asked. Low = the chatbot goes off-topic or provides irrelevant information instead of addressing the user's question.",
+  faithfulness: "High = every claim in the answer is backed by a source document. Low = the chatbot is making up information not found in your documents (hallucinating). This is critical -- low faithfulness means users may receive unreliable information.",
+};
+
 function scoreColor(pct: number): "success" | "warning" | "error" {
   if (pct >= 75) return "success";
   if (pct >= 50) return "warning";
   return "error";
 }
 
-function QualityChip({ value, label }: { value: number | undefined; label: string }) {
-  if (value === undefined || value === null) return <span>N/A</span>;
-  const pct = value * 100;
+function HeaderWithInfo({ label, tooltip }: { label: string; tooltip: string }) {
   return (
-    <Tooltip title={label} placement="top" arrow>
-      <Chip
-        label={`${pct.toFixed(0)}%`}
-        color={scoreColor(pct)}
-        size="small"
-        variant="outlined"
-        sx={{ cursor: "help", fontWeight: "bold" }}
-      />
+    <Tooltip
+      title={<Typography variant="body2" sx={{ p: 0.5 }}>{tooltip}</Typography>}
+      placement="top"
+      arrow
+      enterDelay={200}
+    >
+      <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, cursor: "help" }}>
+        {label}
+        <InfoOutlinedIcon sx={{ fontSize: 14, color: "text.secondary" }} />
+      </Box>
     </Tooltip>
   );
 }
 
-function MetricColumnWithTooltip({ value, description }: { value: any; description: string }) {
-  if (value === undefined || value === null) return <span>N/A</span>;
-  const pct = parseFloat(value) * 100;
+function scoreLabel(pct: number): string {
+  if (pct >= 75) return "Good";
+  if (pct >= 50) return "Needs improvement";
+  return "Poor";
+}
+
+function CellTooltipContent({ metrics }: { metrics: { label: string; pct: number; hint: string }[] }) {
   return (
-    <Tooltip title={description} placement="top" arrow>
-      <Chip
-        label={`${pct.toFixed(0)}%`}
-        color={scoreColor(pct)}
-        size="small"
-        variant="outlined"
-        sx={{ cursor: "help" }}
-      />
-    </Tooltip>
+    <Box sx={{ p: 0.5 }}>
+      {metrics.map((m) => (
+        <Typography key={m.label} variant="body2" sx={{ mb: 0.5 }}>
+          <strong>{m.label}: {m.pct.toFixed(0)}%</strong> ({scoreLabel(m.pct)})
+          <br />
+          <span style={{ opacity: 0.85, fontSize: "0.85em" }}>{m.hint}</span>
+        </Typography>
+      ))}
+    </Box>
   );
 }
 
@@ -98,15 +124,20 @@ export function getColumnDefinition(
     },
     {
       id: "answerQuality",
-      header: "Answer Quality",
+      header: <HeaderWithInfo label="Answer Quality" tooltip={METRIC_DESCRIPTIONS.answerQuality.short} />,
       cell: (item) => {
-        const avg = ((item.average_correctness || 0) + (item.average_similarity || 0)) / 2;
+        const corr = (item.average_correctness || 0) * 100;
+        const sim = (item.average_similarity || 0) * 100;
+        const avg = (corr + sim) / 2;
         return (
           <Tooltip
-            title={`Correctness: ${((item.average_correctness || 0) * 100).toFixed(0)}% | Similarity: ${((item.average_similarity || 0) * 100).toFixed(0)}%`}
+            title={<CellTooltipContent metrics={[
+              { label: "Correctness", pct: corr, hint: corr >= 75 ? "Answers are factually accurate" : corr >= 50 ? "Some answers have factual gaps" : "Many answers contain incorrect facts" },
+              { label: "Similarity", pct: sim, hint: sim >= 75 ? "Answers match expected meaning well" : sim >= 50 ? "Answers partially match expected meaning" : "Answers diverge significantly from expected" },
+            ]} />}
             arrow
           >
-            <Chip label={`${(avg * 100).toFixed(0)}%`} color={scoreColor(avg * 100)} size="small" variant="outlined" sx={{ fontWeight: "bold", cursor: "help" }} />
+            <Chip label={`${avg.toFixed(0)}%`} color={scoreColor(avg)} size="small" variant="outlined" sx={{ fontWeight: "bold", cursor: "help" }} />
           </Tooltip>
         );
       },
@@ -115,15 +146,20 @@ export function getColumnDefinition(
     },
     {
       id: "retrievalQuality",
-      header: "Retrieval Quality",
+      header: <HeaderWithInfo label="Retrieval Quality" tooltip={METRIC_DESCRIPTIONS.retrievalQuality.short} />,
       cell: (item) => {
-        const avg = ((item.average_context_precision || 0) + (item.average_context_recall || 0)) / 2;
+        const prec = (item.average_context_precision || 0) * 100;
+        const rec = (item.average_context_recall || 0) * 100;
+        const avg = (prec + rec) / 2;
         return (
           <Tooltip
-            title={`Precision: ${((item.average_context_precision || 0) * 100).toFixed(0)}% | Recall: ${((item.average_context_recall || 0) * 100).toFixed(0)}%`}
+            title={<CellTooltipContent metrics={[
+              { label: "Precision", pct: prec, hint: prec >= 75 ? "Retrieved documents are relevant" : prec >= 50 ? "Some irrelevant documents pulled" : "Many irrelevant documents -- review document structure" },
+              { label: "Recall", pct: rec, hint: rec >= 75 ? "Key information is being found" : rec >= 50 ? "Some information is missing from results" : "Critical content not found -- add more source documents" },
+            ]} />}
             arrow
           >
-            <Chip label={`${(avg * 100).toFixed(0)}%`} color={scoreColor(avg * 100)} size="small" variant="outlined" sx={{ fontWeight: "bold", cursor: "help" }} />
+            <Chip label={`${avg.toFixed(0)}%`} color={scoreColor(avg)} size="small" variant="outlined" sx={{ fontWeight: "bold", cursor: "help" }} />
           </Tooltip>
         );
       },
@@ -132,15 +168,20 @@ export function getColumnDefinition(
     },
     {
       id: "responseQuality",
-      header: "Response Quality",
+      header: <HeaderWithInfo label="Response Quality" tooltip={METRIC_DESCRIPTIONS.responseQuality.short} />,
       cell: (item) => {
-        const avg = ((item.average_response_relevancy || 0) + (item.average_faithfulness || 0)) / 2;
+        const rel = (item.average_response_relevancy || 0) * 100;
+        const faith = (item.average_faithfulness || 0) * 100;
+        const avg = (rel + faith) / 2;
         return (
           <Tooltip
-            title={`Relevancy: ${((item.average_response_relevancy || 0) * 100).toFixed(0)}% | Faithfulness: ${((item.average_faithfulness || 0) * 100).toFixed(0)}%`}
+            title={<CellTooltipContent metrics={[
+              { label: "Relevancy", pct: rel, hint: rel >= 75 ? "Answers are on-topic" : rel >= 50 ? "Some answers stray from the question" : "Answers frequently miss the point of the question" },
+              { label: "Faithfulness", pct: faith, hint: faith >= 75 ? "Answers are grounded in source documents" : faith >= 50 ? "Some claims not supported by documents" : "High hallucination risk -- chatbot is making up information" },
+            ]} />}
             arrow
           >
-            <Chip label={`${(avg * 100).toFixed(0)}%`} color={scoreColor(avg * 100)} size="small" variant="outlined" sx={{ fontWeight: "bold", cursor: "help" }} />
+            <Chip label={`${avg.toFixed(0)}%`} color={scoreColor(avg)} size="small" variant="outlined" sx={{ fontWeight: "bold", cursor: "help" }} />
           </Tooltip>
         );
       },
@@ -186,12 +227,17 @@ export function getColumnDefinition(
     },
     {
       id: "answerQ",
-      header: "Answer",
+      header: <HeaderWithInfo label="Answer" tooltip={METRIC_DESCRIPTIONS.answerQuality.short} />,
       cell: (item) => {
-        const avg = ((item.correctness || 0) + (item.similarity || 0)) / 2;
+        const corr = (item.correctness || 0) * 100;
+        const sim = (item.similarity || 0) * 100;
+        const avg = (corr + sim) / 2;
         return (
-          <Tooltip title={`Correctness: ${((item.correctness || 0) * 100).toFixed(0)}% | Similarity: ${((item.similarity || 0) * 100).toFixed(0)}%`} arrow>
-            <Chip label={`${(avg * 100).toFixed(0)}%`} color={scoreColor(avg * 100)} size="small" variant="outlined" sx={{ cursor: "help" }} />
+          <Tooltip title={<CellTooltipContent metrics={[
+            { label: "Correctness", pct: corr, hint: corr >= 75 ? "Facts match expected answer" : corr >= 50 ? "Some facts are off" : "Answer has significant factual errors" },
+            { label: "Similarity", pct: sim, hint: sim >= 75 ? "Meaning aligns well" : sim >= 50 ? "Partially aligned" : "Answer conveys different meaning" },
+          ]} />} arrow>
+            <Chip label={`${avg.toFixed(0)}%`} color={scoreColor(avg)} size="small" variant="outlined" sx={{ cursor: "help" }} />
           </Tooltip>
         );
       },
@@ -199,12 +245,17 @@ export function getColumnDefinition(
     },
     {
       id: "retrievalQ",
-      header: "Retrieval",
+      header: <HeaderWithInfo label="Retrieval" tooltip={METRIC_DESCRIPTIONS.retrievalQuality.short} />,
       cell: (item) => {
-        const avg = ((item.context_precision || 0) + (item.context_recall || 0)) / 2;
+        const prec = (item.context_precision || 0) * 100;
+        const rec = (item.context_recall || 0) * 100;
+        const avg = (prec + rec) / 2;
         return (
-          <Tooltip title={`Precision: ${((item.context_precision || 0) * 100).toFixed(0)}% | Recall: ${((item.context_recall || 0) * 100).toFixed(0)}%`} arrow>
-            <Chip label={`${(avg * 100).toFixed(0)}%`} color={scoreColor(avg * 100)} size="small" variant="outlined" sx={{ cursor: "help" }} />
+          <Tooltip title={<CellTooltipContent metrics={[
+            { label: "Precision", pct: prec, hint: prec >= 75 ? "Relevant docs retrieved" : prec >= 50 ? "Some irrelevant docs" : "Mostly irrelevant docs pulled" },
+            { label: "Recall", pct: rec, hint: rec >= 75 ? "All needed info found" : rec >= 50 ? "Some info missing" : "Key information not found" },
+          ]} />} arrow>
+            <Chip label={`${avg.toFixed(0)}%`} color={scoreColor(avg)} size="small" variant="outlined" sx={{ cursor: "help" }} />
           </Tooltip>
         );
       },
@@ -212,12 +263,17 @@ export function getColumnDefinition(
     },
     {
       id: "responseQ",
-      header: "Response",
+      header: <HeaderWithInfo label="Response" tooltip={METRIC_DESCRIPTIONS.responseQuality.short} />,
       cell: (item) => {
-        const avg = ((item.response_relevancy || 0) + (item.faithfulness || 0)) / 2;
+        const rel = (item.response_relevancy || 0) * 100;
+        const faith = (item.faithfulness || 0) * 100;
+        const avg = (rel + faith) / 2;
         return (
-          <Tooltip title={`Relevancy: ${((item.response_relevancy || 0) * 100).toFixed(0)}% | Faithfulness: ${((item.faithfulness || 0) * 100).toFixed(0)}%`} arrow>
-            <Chip label={`${(avg * 100).toFixed(0)}%`} color={scoreColor(avg * 100)} size="small" variant="outlined" sx={{ cursor: "help" }} />
+          <Tooltip title={<CellTooltipContent metrics={[
+            { label: "Relevancy", pct: rel, hint: rel >= 75 ? "Directly answers the question" : rel >= 50 ? "Partially addresses the question" : "Off-topic response" },
+            { label: "Faithfulness", pct: faith, hint: faith >= 75 ? "Grounded in documents" : faith >= 50 ? "Some unsupported claims" : "Contains hallucinated information" },
+          ]} />} arrow>
+            <Chip label={`${avg.toFixed(0)}%`} color={scoreColor(avg)} size="small" variant="outlined" sx={{ cursor: "help" }} />
           </Tooltip>
         );
       },
