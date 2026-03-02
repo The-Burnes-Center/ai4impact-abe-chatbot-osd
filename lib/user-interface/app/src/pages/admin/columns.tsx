@@ -2,7 +2,7 @@ import { AdminDataType } from "../../common/types";
 import { DateTime } from "luxon";
 import { Utils } from "../../common/utils";
 import { useNavigate } from "react-router-dom";
-import { Button, Tooltip } from "@mui/material";
+import { Button, Tooltip, Chip, Stack } from "@mui/material";
 import { TruncatedTextCell } from "../../components/truncated-text-call";
 
 export interface ColumnDefinition {
@@ -15,15 +15,40 @@ export interface ColumnDefinition {
   disableSort?: boolean;
 }
 
-function MetricColumnWithTooltip({ value, description }) {
-  if (value === undefined || value === null) return "N/A";
-  const displayValue = parseFloat(value).toFixed(2);
+function scoreColor(pct: number): "success" | "warning" | "error" {
+  if (pct >= 75) return "success";
+  if (pct >= 50) return "warning";
+  return "error";
+}
 
+function QualityChip({ value, label }: { value: number | undefined; label: string }) {
+  if (value === undefined || value === null) return <span>N/A</span>;
+  const pct = value * 100;
+  return (
+    <Tooltip title={label} placement="top" arrow>
+      <Chip
+        label={`${pct.toFixed(0)}%`}
+        color={scoreColor(pct)}
+        size="small"
+        variant="outlined"
+        sx={{ cursor: "help", fontWeight: "bold" }}
+      />
+    </Tooltip>
+  );
+}
+
+function MetricColumnWithTooltip({ value, description }: { value: any; description: string }) {
+  if (value === undefined || value === null) return <span>N/A</span>;
+  const pct = parseFloat(value) * 100;
   return (
     <Tooltip title={description} placement="top" arrow>
-      <span style={{ cursor: "help", borderBottom: "1px dotted #888" }}>
-        {displayValue}
-      </span>
+      <Chip
+        label={`${pct.toFixed(0)}%`}
+        color={scoreColor(pct)}
+        size="small"
+        variant="outlined"
+        sx={{ cursor: "help" }}
+      />
     </Tooltip>
   );
 }
@@ -32,48 +57,36 @@ export function getColumnDefinition(
   documentType: AdminDataType,
   onProblemClick: (item: any) => void
 ): ColumnDefinition[] {
-  function ViewDetailsButton({ evaluationId }) {
+  function ViewDetailsButton({ evaluationId }: { evaluationId: string }) {
     const navigate = useNavigate();
-
-    const viewDetailedEvaluation = (id) => {
-      navigate(`/admin/llm-evaluation/${id}`);
-    };
-
     return (
       <Button
-        onClick={() => viewDetailedEvaluation(evaluationId)}
+        onClick={() => navigate(`/admin/llm-evaluation/details/${evaluationId}`)}
         variant="text"
         size="small"
       >
-        View Details
+        View
       </Button>
     );
   }
 
-  const EVAL_SUMMARY_COLUMN_DEFINITIONS = [
+  const numericSort = (field: string) => (a: any, b: any) => {
+    const aVal = parseFloat(a[field]) || 0;
+    const bVal = parseFloat(b[field]) || 0;
+    return aVal - bVal;
+  };
+
+  const EVAL_SUMMARY_COLUMN_DEFINITIONS: ColumnDefinition[] = [
     {
       id: "evaluationName",
-      header: "Evaluation Name",
+      header: "Name",
       cell: (item) => (
-        <TruncatedTextCell
-          text={item.evaluation_name || "Unnamed Evaluation"}
-          maxLength={50}
-        />
-      ),
-    },
-    {
-      id: "evalTestCaseKey",
-      header: "Test Case Filename",
-      cell: (item) => (
-        <TruncatedTextCell
-          text={item.test_cases_key || "Unnamed Test Case"}
-          maxLength={50}
-        />
+        <TruncatedTextCell text={item.evaluation_name || "Unnamed"} maxLength={40} />
       ),
     },
     {
       id: "timestamp",
-      header: "Timestamp",
+      header: "Date",
       cell: (item) =>
         DateTime.fromISO(new Date(item.Timestamp).toISOString()).toLocaleString(
           DateTime.DATETIME_SHORT
@@ -83,361 +96,174 @@ export function getColumnDefinition(
         new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime(),
     },
     {
-      id: "averageSimilarity",
-      header: "Average Similarity",
-      cell: (item) =>
-        MetricColumnWithTooltip({
-          value: item.average_similarity,
-          description:
-            "Semantic similarity between chatbot response and reference answer (0-1)",
-        }),
-      sortingField: "average_similarity",
-      sortingComparator: (a, b) => {
-        const aVal =
-          a.average_similarity === undefined || a.average_similarity === null
-            ? 0
-            : parseFloat(a.average_similarity);
-        const bVal =
-          b.average_similarity === undefined || b.average_similarity === null
-            ? 0
-            : parseFloat(b.average_similarity);
-        return aVal - bVal;
+      id: "answerQuality",
+      header: "Answer Quality",
+      cell: (item) => {
+        const avg = ((item.average_correctness || 0) + (item.average_similarity || 0)) / 2;
+        return (
+          <Tooltip
+            title={`Correctness: ${((item.average_correctness || 0) * 100).toFixed(0)}% | Similarity: ${((item.average_similarity || 0) * 100).toFixed(0)}%`}
+            arrow
+          >
+            <Chip label={`${(avg * 100).toFixed(0)}%`} color={scoreColor(avg * 100)} size="small" variant="outlined" sx={{ fontWeight: "bold", cursor: "help" }} />
+          </Tooltip>
+        );
       },
-      width: "10%",
-    },
-    {
-      id: "averageRelevance",
-      header: "Average Relevance",
-      cell: (item) =>
-        MetricColumnWithTooltip({
-          value: item.average_relevance,
-          description:
-            "How relevant the response is to the original question (0-1)",
-        }),
-      sortingField: "average_relevance",
-      sortingComparator: (a, b) => {
-        const aVal =
-          a.average_relevance === undefined || a.average_relevance === null
-            ? 0
-            : parseFloat(a.average_relevance);
-        const bVal =
-          b.average_relevance === undefined || b.average_relevance === null
-            ? 0
-            : parseFloat(b.average_relevance);
-        return aVal - bVal;
-      },
-      width: "10%",
-    },
-    {
-      id: "averageCorrectness",
-      header: "Average Correctness",
-      cell: (item) =>
-        MetricColumnWithTooltip({
-          value: item.average_correctness,
-          description:
-            "F1-score combining precision and recall between response and reference answer (0-1)",
-        }),
       sortingField: "average_correctness",
-      sortingComparator: (a, b) => {
-        const aVal =
-          a.average_correctness === undefined ||
-          a.average_correctness === null
-            ? 0
-            : parseFloat(a.average_correctness);
-        const bVal =
-          b.average_correctness === undefined ||
-          b.average_correctness === null
-            ? 0
-            : parseFloat(b.average_correctness);
-        return aVal - bVal;
-      },
-      width: "10%",
+      sortingComparator: numericSort("average_correctness"),
     },
     {
-      id: "averageContextPrecision",
-      header: "Context Precision",
-      cell: (item) =>
-        MetricColumnWithTooltip({
-          value: item.average_context_precision,
-          description:
-            "How relevant/precise the retrieved context is to the question - measures if the retrieved chunks are focused and relevant (0-1)",
-        }),
+      id: "retrievalQuality",
+      header: "Retrieval Quality",
+      cell: (item) => {
+        const avg = ((item.average_context_precision || 0) + (item.average_context_recall || 0)) / 2;
+        return (
+          <Tooltip
+            title={`Precision: ${((item.average_context_precision || 0) * 100).toFixed(0)}% | Recall: ${((item.average_context_recall || 0) * 100).toFixed(0)}%`}
+            arrow
+          >
+            <Chip label={`${(avg * 100).toFixed(0)}%`} color={scoreColor(avg * 100)} size="small" variant="outlined" sx={{ fontWeight: "bold", cursor: "help" }} />
+          </Tooltip>
+        );
+      },
       sortingField: "average_context_precision",
-      sortingComparator: (a, b) => {
-        const aVal =
-          a.average_context_precision === undefined ||
-          a.average_context_precision === null
-            ? 0
-            : parseFloat(a.average_context_precision);
-        const bVal =
-          b.average_context_precision === undefined ||
-          b.average_context_precision === null
-            ? 0
-            : parseFloat(b.average_context_precision);
-        return aVal - bVal;
-      },
-      width: "10%",
+      sortingComparator: numericSort("average_context_precision"),
     },
     {
-      id: "averageContextRecall",
-      header: "Context Recall",
-      cell: (item) =>
-        MetricColumnWithTooltip({
-          value: item.average_context_recall,
-          description:
-            "How well the retrieved context covers the information needed for a correct answer - measures if all necessary information was retrieved (0-1)",
-        }),
-      sortingField: "average_context_recall",
-      sortingComparator: (a, b) => {
-        const aVal =
-          a.average_context_recall === undefined ||
-          a.average_context_recall === null
-            ? 0
-            : parseFloat(a.average_context_recall);
-        const bVal =
-          b.average_context_recall === undefined ||
-          b.average_context_recall === null
-            ? 0
-            : parseFloat(b.average_context_recall);
-        return aVal - bVal;
+      id: "responseQuality",
+      header: "Response Quality",
+      cell: (item) => {
+        const avg = ((item.average_response_relevancy || 0) + (item.average_faithfulness || 0)) / 2;
+        return (
+          <Tooltip
+            title={`Relevancy: ${((item.average_response_relevancy || 0) * 100).toFixed(0)}% | Faithfulness: ${((item.average_faithfulness || 0) * 100).toFixed(0)}%`}
+            arrow
+          >
+            <Chip label={`${(avg * 100).toFixed(0)}%`} color={scoreColor(avg * 100)} size="small" variant="outlined" sx={{ fontWeight: "bold", cursor: "help" }} />
+          </Tooltip>
+        );
       },
-      width: "10%",
-    },
-    {
-      id: "averageResponseRelevancy",
-      header: "Response Relevancy",
-      cell: (item) =>
-        MetricColumnWithTooltip({
-          value: item.average_response_relevancy,
-          description:
-            "How relevant the response is to the original question - measures if the response directly addresses what was asked (0-1)",
-        }),
-      sortingField: "average_response_relevancy",
-      sortingComparator: (a, b) => {
-        const aVal =
-          a.average_response_relevancy === undefined ||
-          a.average_response_relevancy === null
-            ? 0
-            : parseFloat(a.average_response_relevancy);
-        const bVal =
-          b.average_response_relevancy === undefined ||
-          b.average_response_relevancy === null
-            ? 0
-            : parseFloat(b.average_response_relevancy);
-        return aVal - bVal;
-      },
-      width: "10%",
-    },
-    {
-      id: "averageFaithfulness",
-      header: "Faithfulness",
-      cell: (item) =>
-        MetricColumnWithTooltip({
-          value: item.average_faithfulness,
-          description:
-            "How faithful/grounded the response is to the retrieved context - measures if the response contains only information from the context without hallucination (0-1)",
-        }),
       sortingField: "average_faithfulness",
-      sortingComparator: (a, b) => {
-        const aVal =
-          a.average_faithfulness === undefined ||
-          a.average_faithfulness === null
-            ? 0
-            : parseFloat(a.average_faithfulness);
-        const bVal =
-          b.average_faithfulness === undefined ||
-          b.average_faithfulness === null
-            ? 0
-            : parseFloat(b.average_faithfulness);
-        return aVal - bVal;
-      },
-      width: "10%",
+      sortingComparator: numericSort("average_faithfulness"),
+    },
+    {
+      id: "totalQuestions",
+      header: "Q&A",
+      cell: (item) => item.total_questions || "—",
+      width: "60px",
     },
     {
       id: "viewDetails",
-      header: "View Details",
-      cell: (item) => (
-        <ViewDetailsButton evaluationId={item.EvaluationId} />
-      ),
+      header: "",
+      cell: (item) => <ViewDetailsButton evaluationId={item.EvaluationId} />,
       disableSort: true,
+      width: "80px",
     },
   ];
 
-  const DETAILED_EVAL_COLUMN_DEFINITIONS = [
+  const DETAILED_EVAL_COLUMN_DEFINITIONS: ColumnDefinition[] = [
     {
       id: "question",
       header: "Question",
       cell: (item) => (
-        <TruncatedTextCell
-          text={item.question || "No question available"}
-          maxLength={50}
-        />
+        <TruncatedTextCell text={item.question || "N/A"} maxLength={50} />
       ),
     },
     {
       id: "expectedResponse",
-      header: "Expected Response",
+      header: "Expected",
       cell: (item) => (
-        <TruncatedTextCell
-          text={item.expected_response || "No expected response available"}
-          maxLength={50}
-        />
+        <TruncatedTextCell text={item.expected_response || "N/A"} maxLength={40} />
       ),
     },
     {
       id: "actualResponse",
-      header: "Actual Response",
+      header: "Actual",
       cell: (item) => (
-        <TruncatedTextCell
-          text={item.actual_response || "No actual response available"}
-          maxLength={50}
-        />
+        <TruncatedTextCell text={item.actual_response || "N/A"} maxLength={40} />
       ),
     },
     {
-      id: "similarity",
-      header: "Similarity",
-      cell: (item) =>
-        MetricColumnWithTooltip({
-          value: item.similarity,
-          description:
-            "Semantic similarity between chatbot response and reference answer (0-1)",
-        }),
-      sortingField: "similarity",
-    },
-    {
-      id: "relevance",
-      header: "Relevance",
-      cell: (item) =>
-        MetricColumnWithTooltip({
-          value: item.relevance,
-          description:
-            "How relevant the response is to the original question (0-1)",
-        }),
-      sortingField: "relevance",
-    },
-    {
-      id: "correctness",
-      header: "Correctness",
-      cell: (item) =>
-        MetricColumnWithTooltip({
-          value: item.correctness,
-          description:
-            "F1-score combining precision and recall between response and reference answer (0-1)",
-        }),
+      id: "answerQ",
+      header: "Answer",
+      cell: (item) => {
+        const avg = ((item.correctness || 0) + (item.similarity || 0)) / 2;
+        return (
+          <Tooltip title={`Correctness: ${((item.correctness || 0) * 100).toFixed(0)}% | Similarity: ${((item.similarity || 0) * 100).toFixed(0)}%`} arrow>
+            <Chip label={`${(avg * 100).toFixed(0)}%`} color={scoreColor(avg * 100)} size="small" variant="outlined" sx={{ cursor: "help" }} />
+          </Tooltip>
+        );
+      },
       sortingField: "correctness",
     },
     {
-      id: "contextPrecision",
-      header: "Context Precision",
-      cell: (item) =>
-        MetricColumnWithTooltip({
-          value: item.context_precision,
-          description:
-            "How relevant/precise the retrieved context is to the question - measures if the retrieved chunks are focused and relevant (0-1)",
-        }),
+      id: "retrievalQ",
+      header: "Retrieval",
+      cell: (item) => {
+        const avg = ((item.context_precision || 0) + (item.context_recall || 0)) / 2;
+        return (
+          <Tooltip title={`Precision: ${((item.context_precision || 0) * 100).toFixed(0)}% | Recall: ${((item.context_recall || 0) * 100).toFixed(0)}%`} arrow>
+            <Chip label={`${(avg * 100).toFixed(0)}%`} color={scoreColor(avg * 100)} size="small" variant="outlined" sx={{ cursor: "help" }} />
+          </Tooltip>
+        );
+      },
       sortingField: "context_precision",
     },
     {
-      id: "contextRecall",
-      header: "Context Recall",
-      cell: (item) =>
-        MetricColumnWithTooltip({
-          value: item.context_recall,
-          description:
-            "How well the retrieved context covers the information needed for a correct answer - measures if all necessary information was retrieved (0-1)",
-        }),
-      sortingField: "context_recall",
-    },
-    {
-      id: "responseRelevancy",
-      header: "Response Relevancy",
-      cell: (item) =>
-        MetricColumnWithTooltip({
-          value: item.response_relevancy,
-          description:
-            "How relevant the response is to the original question - measures if the response directly addresses what was asked (0-1)",
-        }),
-      sortingField: "response_relevancy",
-    },
-    {
-      id: "faithfulness",
-      header: "Faithfulness",
-      cell: (item) =>
-        MetricColumnWithTooltip({
-          value: item.faithfulness,
-          description:
-            "How faithful/grounded the response is to the retrieved context - measures if the response contains only information from the context without hallucination (0-1)",
-        }),
+      id: "responseQ",
+      header: "Response",
+      cell: (item) => {
+        const avg = ((item.response_relevancy || 0) + (item.faithfulness || 0)) / 2;
+        return (
+          <Tooltip title={`Relevancy: ${((item.response_relevancy || 0) * 100).toFixed(0)}% | Faithfulness: ${((item.faithfulness || 0) * 100).toFixed(0)}%`} arrow>
+            <Chip label={`${(avg * 100).toFixed(0)}%`} color={scoreColor(avg * 100)} size="small" variant="outlined" sx={{ cursor: "help" }} />
+          </Tooltip>
+        );
+      },
       sortingField: "faithfulness",
     },
     {
       id: "retrievedContext",
-      header: "Retrieved Context",
+      header: "Context",
       cell: (item) => (
-        <TruncatedTextCell
-          text={item.retrieved_context || "No context available"}
-          maxLength={50}
-        />
+        <TruncatedTextCell text={item.retrieved_context || "N/A"} maxLength={40} />
       ),
     },
   ];
 
-  const FEEDBACK_COLUMN_DEFINITIONS = [
+  const FEEDBACK_COLUMN_DEFINITIONS: ColumnDefinition[] = [
     {
       id: "problem",
       header: "Problem",
-      cell: (item) => {
-        return (
-          <Button
-            onClick={() => onProblemClick(item)}
-            variant="text"
-            size="small"
-          >
-            {item.Problem}
-          </Button>
-        );
-      },
+      cell: (item) => (
+        <Button onClick={() => onProblemClick(item)} variant="text" size="small">
+          {item.Problem}
+        </Button>
+      ),
     },
-    {
-      id: "topic",
-      header: "Topic",
-      cell: (item) => item.Topic,
-    },
+    { id: "topic", header: "Topic", cell: (item) => item.Topic },
     {
       id: "createdAt",
       header: "Submission date",
       cell: (item) =>
-        DateTime.fromISO(
-          new Date(item.CreatedAt).toISOString()
-        ).toLocaleString(DateTime.DATETIME_SHORT),
+        DateTime.fromISO(new Date(item.CreatedAt).toISOString()).toLocaleString(
+          DateTime.DATETIME_SHORT
+        ),
     },
-    {
-      id: "prompt",
-      header: "User Prompt",
-      cell: (item) => item.UserPrompt,
-    },
+    { id: "prompt", header: "User Prompt", cell: (item) => item.UserPrompt },
   ];
 
-  const FILES_COLUMN_DEFINITIONS = [
-    {
-      id: "name",
-      header: "Name",
-      cell: (item) => item.Key!,
-    },
+  const FILES_COLUMN_DEFINITIONS: ColumnDefinition[] = [
+    { id: "name", header: "Name", cell: (item) => item.Key },
     {
       id: "createdAt",
       header: "Upload date",
       cell: (item) =>
-        DateTime.fromISO(
-          new Date(item.LastModified).toISOString()
-        ).toLocaleString(DateTime.DATETIME_SHORT),
+        DateTime.fromISO(new Date(item.LastModified).toISOString()).toLocaleString(
+          DateTime.DATETIME_SHORT
+        ),
     },
-    {
-      id: "size",
-      header: "Size",
-      cell: (item) => Utils.bytesToSize(item.Size!),
-    },
+    { id: "size", header: "Size", cell: (item) => Utils.bytesToSize(item.Size) },
   ];
 
   switch (documentType) {

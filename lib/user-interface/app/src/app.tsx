@@ -80,11 +80,11 @@ function App() {
                     <Route index element={<LlmEvaluationPage />} />
                     <Route
                       path=":evaluationId"
-                      element={<DetailedEvaluationPage documentType="detailedEvaluation" />}
+                      element={<DetailedEvaluationPage />}
                     />
                     <Route
                       path="details/:evaluationId"
-                      element={<DetailedEvaluationPage documentType="detailedEvaluation" />}
+                      element={<DetailedEvaluationPage />}
                     />
                   </Route>
                 </Route>

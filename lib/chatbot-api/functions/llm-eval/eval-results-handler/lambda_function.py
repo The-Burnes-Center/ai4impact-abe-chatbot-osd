@@ -6,14 +6,12 @@ from boto3.dynamodb.conditions import Key
 from datetime import datetime
 from decimal import Decimal
 
-# Retrieve DynamoDB table names from environment variables
 EVALUATION_SUMMARIES_TABLE = os.environ.get("EVALUATION_SUMMARIES_TABLE") or os.environ.get("EVAL_SUMMARIES_TABLE")
 EVALUATION_RESULTS_TABLE = os.environ.get("EVALUATION_RESULTS_TABLE") or os.environ.get("EVAL_RESULTS_TABLE")
 
-# Initialize a DynamoDB resource using boto3
 dynamodb = boto3.resource("dynamodb", region_name='us-east-1')
+sfn_client = boto3.client("stepfunctions", region_name='us-east-1')
 
-# Connect to the specified DynamoDB tables
 summaries_table = dynamodb.Table(EVALUATION_SUMMARIES_TABLE)
 results_table = dynamodb.Table(EVALUATION_RESULTS_TABLE)
 
@@ -33,17 +31,22 @@ def get_evaluation_summaries(continuation_token=None, limit=10):
         try:
             # First try with PartitionKey
             query_params = {
-                "KeyConditionExpression": Key("PartitionKey").eq("Evaluation"),  # Match all evaluations
-                "ProjectionExpression": "#eid, #ts, #as, #ar, #ac, #tq, #en, #tk",
+                "KeyConditionExpression": Key("PartitionKey").eq("Evaluation"),
+                "ProjectionExpression": "#eid, #ts, #as, #ar, #ac, #tq, #en, #tk, #acp, #acr, #arr, #af, #ea",
                 "ExpressionAttributeNames": {
                     "#eid": "EvaluationId",
-                    "#ts": "Timestamp",  # Reserved keyword
+                    "#ts": "Timestamp",
                     "#as": "average_similarity",
                     "#ar": "average_relevance",
                     "#ac": "average_correctness",
                     "#tq": "total_questions",
                     "#en": "evaluation_name",
-                    "#tk": "test_cases_key"
+                    "#tk": "test_cases_key",
+                    "#acp": "average_context_precision",
+                    "#acr": "average_context_recall",
+                    "#arr": "average_response_relevancy",
+                    "#af": "average_faithfulness",
+                    "#ea": "executionArn",
                 },
                 "Limit": limit,
                 "ScanIndexForward": False  # Get the most recent evaluations first
@@ -164,16 +167,129 @@ def get_evaluation_results(evaluation_id, continuation_token=None, limit=10):
             'body': json.dumps({"error": str(e), "table": EVALUATION_RESULTS_TABLE})
         }
 
-def lambda_handler(event, context):
-    # Get the origin from the request
-    origin = event.get('headers', {}).get('origin') or event.get('headers', {}).get('Origin') or 'https://dcf43zj2k8alr.cloudfront.net'
-    
-    # Add CORS headers for all responses with specific origin
+def get_eval_status(evaluation_id):
     headers = {
-        'Access-Control-Allow-Origin': origin,
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json',
+    }
+    try:
+        resp = summaries_table.query(
+            KeyConditionExpression=Key("PartitionKey").eq("Evaluation"),
+            FilterExpression="EvaluationId = :eid",
+            ExpressionAttributeValues={":eid": evaluation_id},
+            Limit=1,
+        )
+        items = resp.get("Items", [])
+        if not items:
+            return {"statusCode": 404, "headers": headers, "body": json.dumps({"error": "Evaluation not found"})}
+
+        item = items[0]
+        execution_arn = item.get("executionArn")
+        if not execution_arn:
+            status = "SUCCEEDED" if item.get("average_correctness") is not None else "UNKNOWN"
+            return {
+                "statusCode": 200,
+                "headers": headers,
+                "body": json.dumps({"evaluationId": evaluation_id, "status": status, "steps": [], "message": "No executionArn recorded"})
+            }
+
+        desc = sfn_client.describe_execution(executionArn=execution_arn)
+        overall_status = desc.get("status", "UNKNOWN")
+        start_date = desc.get("startDate")
+
+        elapsed_seconds = 0
+        if start_date:
+            from datetime import timezone
+            elapsed_seconds = int((datetime.now(timezone.utc) - start_date).total_seconds())
+
+        history = sfn_client.get_execution_history(executionArn=execution_arn, reverseOrder=True, maxResults=200)
+        events = history.get("events", [])
+
+        steps = [
+            {"name": "Splitting Test Cases", "status": "pending"},
+            {"name": "Evaluating Test Cases", "status": "pending", "chunksCompleted": 0, "chunksTotal": 0},
+            {"name": "Aggregating Results", "status": "pending"},
+            {"name": "Saving Results", "status": "pending"},
+            {"name": "Cleanup", "status": "pending"},
+        ]
+        current_step = "pending"
+
+        step_name_map = {
+            "Split Test Cases": 0,
+            "Aggregate Results": 2,
+            "Save Results": 3,
+            "CleanupChunks": 4,
+            "Cleanup Chunks": 4,
+        }
+
+        map_started = False
+        map_exited = False
+        iter_started = 0
+        iter_succeeded = 0
+        iter_failed = 0
+
+        for evt in events:
+            evt_type = evt.get("type", "")
+            detail = evt.get("stateEnteredEventDetails", {}) or evt.get("stateExitedEventDetails", {})
+            name = detail.get("name", "")
+
+            if evt_type == "TaskStateEntered" and name in step_name_map:
+                idx = step_name_map[name]
+                if steps[idx]["status"] == "pending":
+                    steps[idx]["status"] = "running"
+                    current_step = steps[idx]["name"]
+            elif evt_type == "TaskStateExited" and name in step_name_map:
+                idx = step_name_map[name]
+                steps[idx]["status"] = "completed"
+
+            elif evt_type == "MapStateEntered":
+                map_started = True
+                steps[1]["status"] = "running"
+                current_step = "Evaluating Test Cases"
+            elif evt_type == "MapStateExited":
+                map_exited = True
+                steps[1]["status"] = "completed"
+            elif evt_type == "MapIterationStarted":
+                iter_started += 1
+            elif evt_type == "MapIterationSucceeded":
+                iter_succeeded += 1
+            elif evt_type == "MapIterationFailed":
+                iter_failed += 1
+
+            elif evt_type == "ExecutionSucceeded":
+                for s in steps:
+                    s["status"] = "completed"
+                current_step = "completed"
+            elif evt_type == "ExecutionFailed":
+                current_step = "failed"
+
+        if map_started:
+            steps[0]["status"] = "completed"
+        if map_started and not map_exited:
+            steps[1]["chunksTotal"] = iter_started
+            steps[1]["chunksCompleted"] = iter_succeeded
+
+        result = {
+            "evaluationId": evaluation_id,
+            "status": overall_status,
+            "currentStep": current_step,
+            "steps": steps,
+            "startedAt": start_date.isoformat() if start_date else None,
+            "elapsedSeconds": elapsed_seconds,
+        }
+        return {"statusCode": 200, "headers": headers, "body": json.dumps(result)}
+
+    except ClientError as e:
+        return {"statusCode": 500, "headers": headers, "body": json.dumps({"error": str(e)})}
+    except Exception as e:
+        return {"statusCode": 500, "headers": headers, "body": json.dumps({"error": str(e)})}
+
+
+def lambda_handler(event, context):
+    headers = {
+        'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
         'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
-        'Access-Control-Allow-Credentials': 'true'  # Important for credentials
     }
     
     # Handle OPTIONS request (preflight)
@@ -193,7 +309,6 @@ def lambda_handler(event, context):
 
         if operation == 'get_evaluation_summaries':
             result = get_evaluation_summaries(continuation_token, limit)
-            # Add CORS headers to the result
             if 'headers' in result:
                 result['headers'].update(headers)
             else:
@@ -207,7 +322,19 @@ def lambda_handler(event, context):
                     'body': json.dumps('evaluation_id is required for retrieving evaluation results.')
                 }
             result = get_evaluation_results(evaluation_id, continuation_token, limit)
-            # Add CORS headers to the result
+            if 'headers' in result:
+                result['headers'].update(headers)
+            else:
+                result['headers'] = headers
+            return result
+        elif operation == 'get_eval_status':
+            if not evaluation_id:
+                return {
+                    'statusCode': 400,
+                    'headers': headers,
+                    'body': json.dumps({'error': 'evaluation_id is required'})
+                }
+            result = get_eval_status(evaluation_id)
             if 'headers' in result:
                 result['headers'].update(headers)
             else:

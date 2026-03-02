@@ -1,8 +1,8 @@
-langchain-aws
-langchain-community
-langchain
-ragas
-datasets
-pandas
-boto3
-nltk
+ragas==0.2.14
+langchain-aws>=0.2
+langchain-community>=0.3
+langchain>=0.3
+datasets>=3.0
+pandas>=2.2
+boto3>=1.35
+nltk>=3.9

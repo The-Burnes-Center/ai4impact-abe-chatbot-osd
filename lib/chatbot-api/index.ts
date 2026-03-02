@@ -97,6 +97,7 @@ export class ChatBotApi extends Construct {
         contractIndexBucket: buckets.contractIndexBucket,
         contractIndexTable: tables.contractIndexTable,
         tradeIndexTable: tables.tradeIndexTable,
+        testLibraryTable: tables.testLibraryTable,
       })
 
     const wsAuthorizer = new WebSocketLambdaAuthorizer('WebSocketAuthorizer', props.authentication.lambdaAuthorizer, {identitySource: ['route.request.querystring.Authorization']});
@@ -486,5 +487,18 @@ export class ChatBotApi extends Construct {
       integration: s3GetTestCasesAPIIntegration,
       authorizer: httpAuthorizer,
     })
+
+    const testLibraryIntegration = new HttpLambdaIntegration('TestLibraryIntegration', lambdaFunctions.testLibraryFunction);
+    restBackend.restAPI.addRoutes({
+      path: "/test-library",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/test-library",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: testLibraryIntegration,
+      authorizer: httpAuthorizer,
+    });
   }
 }

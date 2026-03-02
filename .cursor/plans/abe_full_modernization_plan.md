@@ -53,6 +53,9 @@ todos:
   - id: phase2-eval-fix
     content: "Phase 2 [Issue #5]: Fix LLM evaluation pipeline -- removed mock fallbacks (MockSentenceTransformer, cosine_similarity=0.5) that produced garbage metrics; simplified aggregate Lambda to only aggregate pre-computed RAGAS scores; removed broken live/retrieval eval paths + Cognito creds from env; fixed generate-response parseChunk null guard, added JSON.parse try/catch, synced stale prompt with grounding rules (Rules 8-10, Section 11); removed perform_retrieval_evaluation from step-functions."
     status: completed
+  - id: phase2-eval-quality-platform
+    content: "Phase 2 [Issue #5 continued]: Eval Quality Monitoring Platform -- pinned RAGAS 0.2.14, fixed RAGAS API (LangchainLLMWrapper + ChatBedrockConverse + EvaluationDataset), fixed Dockerfile NLTK punkt_tab, fixed DDB projection for all RAG metrics, added Map state .addCatch(), fixed CORS, built Test Library backend (DynamoDB + CRUD Lambda + dedup/versioning), built live eval progress backend (Step Functions polling), redesigned UI into 4-tab quality platform (Dashboard with graphs, Run Evaluation with 3 sources + live progress, History with grouped metrics, Test Library with full CRUD)"
+    status: completed
   - id: phase2-tool-use-repeat
     content: "Phase 2 [BUG]: Fix duplicate/restarting response on tool-use queries -- pre-tool preamble text was not included in assistant message history, causing Claude to repeat itself after KB retrieval. Fixed in websocket-chat and generate-response by tracking currentIterationText and adding it as a text content block in the assistant message before the tool_use block."
     status: completed
@@ -305,6 +308,48 @@ The current RAG pipeline has fundamental quality and cost issues.
 - 2.12 Eval Pipeline Fix: Removed all mock fallbacks (MockSentenceTransformer, MockNumpy, cosine_similarity=0.5) that silently produced garbage metrics. Simplified aggregate Lambda to only aggregate pre-computed RAGAS scores (-600 lines). Removed broken live/retrieval eval paths, Cognito creds, WebSocket endpoint, ECR/Cognito IAM permissions from aggregate Lambda. Fixed generate-response: added parseChunk null guard, JSON.parse try/catch, synced stale prompt with grounding rules. Removed `perform_retrieval_evaluation: true` from step-functions.
 
 **Files modified:** `knowledge-base.ts`, `claude3Sonnet.mjs` (websocket-chat), `claude3Sonnet.mjs` (generate-response), `index.mjs` (generate-response), `lambda_function.py` (aggregate-eval-results), `requirements.txt` (aggregate-eval-results), `step-functions.ts`
+
+### Eval Quality Monitoring Platform -- 2026-03-02
+
+**Status: COMPLETE** -- Full eval pipeline fix + quality monitoring platform built. Pending deployment.
+
+**What was implemented:**
+
+**Backend -- Eval Pipeline Fix (Phase 1 of eval plan):**
+- Pinned RAGAS to 0.2.14 (latest with Bedrock support) in `eval/requirements.txt` with all compatible deps
+- Rewrote `eval/lambda_function.py` to use RAGAS 0.2.14 API: `LangchainLLMWrapper`, `LangchainEmbeddingsWrapper`, `ChatBedrockConverse`, `SingleTurnSample`, `EvaluationDataset`
+- Fixed `eval/Dockerfile` to download both `punkt` and `punkt_tab` NLTK data
+- Fixed `eval-results-handler` DDB projection to include all RAG metrics (`average_context_precision`, `average_context_recall`, `average_response_relevancy`, `average_faithfulness`, `executionArn`)
+- Added `.addCatch()` to `processTestCasesMap` in Step Functions for graceful error handling
+- Fixed hardcoded CORS origin in `results-to-ddb` (replaced CloudFront domain with `*`)
+
+**Backend -- Test Library (Master Dataset):**
+- New `TestLibraryTable` DynamoDB table with `NormalizedQuestionIndex` GSI for case-insensitive dedup
+- New `test-library-handler` Lambda with 9 operations: `list`, `get`, `create`, `update`, `revert`, `delete`, `bulk_import`, `export`, `stats`
+- Deduplication: case-insensitive question matching, version history preservation, import summaries (`{added, updated, unchanged}`)
+- New `POST /test-library` API route
+
+**Backend -- Live Eval Progress:**
+- `start-llm-eval` Lambda now stores `executionArn` in DDB summaries table + supports `testCasesInline` for running from master library
+- New `get_eval_status` operation in `eval-results-handler` polls Step Functions `DescribeExecution` + `GetExecutionHistory`
+- Returns structured step-level progress with chunk counts and elapsed time
+- IAM: `states:DescribeExecution`, `states:GetExecutionHistory` on eval state machine; `dynamodb:PutItem` + `s3:PutObject` for start-llm-eval
+
+**Frontend -- Complete UI Redesign:**
+- Restructured from confusing 4-tab layout to purpose-driven 4 tabs: Dashboard, Run Evaluation, History, Test Library (`#dashboard`, `#run`, `#history`, `#library`)
+- **Dashboard**: 3 color-coded score cards (Answer/Retrieval/Response Quality), line chart trends over time (MUI X Charts), expandable individual metrics, running eval banner, empty state with CTA
+- **Run Evaluation**: 3 source options (Upload New, Past Uploads, Master Library), configure step with eval name, live progress stepper (MUI Stepper + LinearProgress, 5s polling, sessionStorage persistence)
+- **History**: Simplified table with 3 grouped quality columns (color-coded chips with tooltips), running eval progress indicators
+- **Test Library**: Searchable table, Add/Edit/Delete dialogs, bulk import with summary dialog, JSON/CSV export, version history with revert, source tracking
+- **Detailed Eval Page**: Summary header with 3 score cards, grouped per-question metrics, CSV export with formula injection escaping, fixed navigation to `#history`
+- Metrics grouped everywhere: Answer Quality = avg(correctness, similarity), Retrieval Quality = avg(context_precision, context_recall), Response Quality = avg(response_relevancy, faithfulness)
+- Color coding: green >= 75%, yellow 50-74%, red < 50%
+
+**Files created:** `lib/chatbot-api/functions/llm-eval/test-library-handler/lambda_function.py`, `lib/user-interface/app/src/pages/admin/test-library-tab.tsx`
+
+**Files modified:** `eval/requirements.txt`, `eval/lambda_function.py`, `eval/Dockerfile`, `eval-results-handler/lambda_function.py`, `results-to-ddb/lambda_function.py`, `start-llm-eval/index.mjs`, `step-functions.ts`, `functions.ts`, `tables.ts`, `index.ts`, `app.tsx`, `evaluations-client.ts`, `columns.tsx`, `current-eval-tab.tsx`, `detailed-evaluation-page.tsx`, `llm-evaluation-page.tsx`, `new-eval-tab.tsx`, `past-evals-tab.tsx`
+
+**Verified:** CDK synth passed, TypeScript compile clean (CDK + frontend), Python syntax check passed, Vite build clean.
 
 ### Contract Index Implementation & Post-Deploy Fixes (2026-02-25)
 
@@ -1298,7 +1343,7 @@ In [deploy.yml](.github/workflows/deploy.yml):
 | 2   | Non-clickable hyperlinks                        | Phase 2 | 2.3     | Needs data verification                                                |
 | 3   | Enhanced analytics (FAQ, logs, traffic, agency) | Phase 4 | 4.3     | **DEPLOYED 2026-02-21** -- FAQ tracking (Haiku classification), MUI dashboard with charts, enhanced traffic stats. Agency info pending OSD clarification. |
 | 4   | Plug-and-play chatbot                           | Phase 7 | 7.0     | Pending scoping call                                                   |
-| 5   | LLM evaluation fix                              | Phase 2 | 2.12    | Root cause identified                                                  |
+| 5   | LLM evaluation fix                              | Phase 2 | 2.12    | **COMPLETE 2026-03-02** -- RAGAS 0.2.14 pinned, pipeline fixed, quality monitoring platform with Test Library, visual graphs, live progress |
 | 6   | Error page with acronyms                        | Phase 1 | 1.9     | **DEPLOYED 2026-02-10** -- sanitized error messages + replaced alert() |
 | 7   | Source file Access Denied                       | Phase 1 | 1.8     | **DEPLOYED 2026-02-10** -- fixed dedup + pre-signed URLs               |
 | 8   | Incorrect sync timestamp                        | Phase 4 | 4.4     | **COMPLETED** -- Backend returns ISO 8601 UTC timestamps with status; frontend converts to Eastern Time (America/New_York); removed fragile custom parsing in documents-tab |
@@ -1379,7 +1424,7 @@ graph TD
 ### Estimated Effort
 
 - **Phase 1** (Security + Critical Bugs): ~~1-2 weeks, 1-2 engineers~~ **COMPLETE -- deployed 2026-02-10** -- includes Issue #6, #7, tool-use crash fix
-- **Phase 2** (GenAI + Data Fixes): 2-3 weeks, 1 engineer with GenAI expertise -- includes Issue #1, #2, #5
+- **Phase 2** (GenAI + Data Fixes): ~~2-3 weeks, 1 engineer with GenAI expertise~~ **MOSTLY COMPLETE** -- Issue #2 (hyperlinks), #5 (eval pipeline + quality monitoring platform), chunking, prompt caching, model upgrades, RAG grounding, Contract Index all deployed. Remaining: Issue #1 Trade Index (awaiting Excel from client).
 - **Phase 3** (CDK Hardening): ~~2-3 weeks, 1 infrastructure engineer~~ **COMPLETE -- deployed 2026-02-18, 2026-02-20** -- CDK Nag, Construct refactor, DynamoDB/S3/Lambda hardening, env parameterization, WAF + CloudFront modernization, API Gateway access logging + throttling, monitoring construct with alarms + dashboard + SNS alerts.
 - **Phase 4** (Backend + Analytics): ~~2-3 weeks, 1-2 engineers~~ **PARTIALLY COMPLETE -- deployed 2026-02-21** -- Issue #3 (enhanced analytics with FAQ tracking, MUI dashboard, Haiku classification) and Issue #8 (sync timestamp) deployed. Remaining: 4.1 shared Lambda Layer, 4.2 session race condition, 4.8 Pydantic/Zod validation.
 - **Phase 5** (Frontend + Admin): 3-4 weeks, 1-2 frontend engineers -- includes Issue #9

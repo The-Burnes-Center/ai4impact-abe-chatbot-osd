@@ -7,7 +7,6 @@ export class EvaluationsClient {
     this.API = _appConfig.httpEndpoint.slice(0, -1);
   }
 
-  // Fetch evaluation summaries
   async getEvaluationSummaries(continuationToken?: any, limit: number = 10) {
     try {
       const auth = await Utils.authenticate();
@@ -19,70 +18,41 @@ export class EvaluationsClient {
         body.continuation_token = continuationToken;
       }
 
-      try {
-        const response = await fetch(`${this.API}/eval-results-handler`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": auth,
-            "Accept": "application/json"
-          },
-          body: JSON.stringify(body),
-          mode: "cors",
-          credentials: "same-origin"
-        });
-        
-        if (response.status === 404) {
-          // Return an empty result structure instead of throwing an error
+      const response = await fetch(`${this.API}/eval-results-handler`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: auth,
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (response.status === 404) {
+        return { Items: [], NextPageToken: null };
+      }
+      if (!response.ok) {
+        const errorText = await response.text();
+        if (
+          errorText.includes("ResourceNotFoundException") ||
+          errorText.includes("ValidationException")
+        ) {
           return { Items: [], NextPageToken: null };
         }
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          // Check for specific DynamoDB errors
-          if (errorText.includes("ResourceNotFoundException") || errorText.includes("ValidationException")) {
-            return { 
-              Items: [], 
-              NextPageToken: null,
-              error: "Database error: The evaluation summaries could not be retrieved. This may be due to missing tables or incorrect configuration."
-            };
-          }
-          throw new Error(`Failed to get evaluation summaries: ${response.status} ${response.statusText} - ${errorText}`);
-        }
-
-        // Get the response text first to log it in case of parsing errors
-        const responseText = await response.text();
-        
-        try {
-          // Then parse it as JSON
-          const result = JSON.parse(responseText);
-          
-          // Check if result has Items property, if not create an empty structure
-          if (!result.Items) {
-            return { Items: [], NextPageToken: null };
-          }
-          
-          return result;
-        } catch (parseError) {
-          throw new Error(`Invalid JSON response from server: ${parseError.message}`);
-        }
-      } catch (fetchError) {
-        // Handle CORS errors specifically
-        if (fetchError.message.includes("CORS") || 
-            fetchError.message.includes("cross-origin") || 
-            fetchError.message.includes("Cross-Origin")) {
-          throw new Error("Cross-Origin Request Blocked: The API doesn't allow requests from this origin. Please check CORS configuration on the API Gateway.");
-        }
-        throw fetchError;
+        throw new Error(`Failed to get evaluation summaries: ${response.status}`);
       }
+
+      const result = await response.json();
+      return result.Items ? result : { Items: [], NextPageToken: null };
     } catch (error) {
-      // Rethrow the error for the component to handle
       throw error;
     }
   }
 
-  // Fetch detailed evaluation results
-  async getEvaluationResults(evaluationId: string, continuationToken?: any, limit: number = 10) {
+  async getEvaluationResults(
+    evaluationId: string,
+    continuationToken?: any,
+    limit: number = 10
+  ) {
     try {
       const auth = await Utils.authenticate();
       const body: any = {
@@ -94,206 +64,214 @@ export class EvaluationsClient {
         body.continuation_token = continuationToken;
       }
 
-      try {
-        const response = await fetch(`${this.API}/eval-results-handler`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": auth,
-            "Accept": "application/json"
-          },
-          body: JSON.stringify(body),
-          mode: "cors",
-          credentials: "same-origin"
-        });
-        
-        if (response.status === 404) {
-          // Return an empty result structure instead of throwing an error
-          return { 
-            Items: [], 
-            NextPageToken: null,
-            error: "API endpoint not found: The results handler API is not available or improperly configured."
-          };
-        }
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          
-          // Check for specific DynamoDB errors
-          if (errorText.includes("ResourceNotFoundException") || errorText.includes("ValidationException")) {
-            return { 
-              Items: [], 
-              NextPageToken: null,
-              error: "Database error: The evaluation data could not be retrieved. This may be due to missing tables or incorrect configuration."
-            };
-          }
-          
-          // Check for other common errors
-          if (errorText.includes("AccessDeniedException")) {
-            return {
-              Items: [],
-              NextPageToken: null,
-              error: "Access denied: The Lambda function doesn't have permission to access the DynamoDB table."
-            };
-          }
-          
-          return {
-            Items: [],
-            NextPageToken: null,
-            error: `Failed to get evaluation results: ${response.status} ${response.statusText} - ${errorText}`
-          };
-        }
-
-        // Get the response text first to log it in case of parsing errors
-        const responseText = await response.text();
-        
-        try {
-          // Then parse it as JSON
-          const result = JSON.parse(responseText);
-          
-          // Check if result has Items property, if not create an empty structure
-          if (!result.Items) {
-            return { Items: [], NextPageToken: null };
-          }
-          
-          return result;
-        } catch (parseError) {
-          return {
-            Items: [],
-            NextPageToken: null,
-            error: `Invalid JSON response from server: ${parseError.message}`
-          };
-        }
-      } catch (fetchError) {
-        // Handle CORS errors specifically
-        if (fetchError.message.includes("CORS") || 
-            fetchError.message.includes("cross-origin") || 
-            fetchError.message.includes("Cross-Origin")) {
-          return {
-            Items: [],
-            NextPageToken: null,
-            error: "Cross-Origin Request Blocked: The API doesn't allow requests from this origin. Please check CORS configuration on the API Gateway."
-          };
-        }
-        
-        return {
-          Items: [],
-          NextPageToken: null,
-          error: `Network error: ${fetchError.message}`
-        };
-      }
-    } catch (error) {
-      return {
-        Items: [],
-        NextPageToken: null,
-        error: `Client error: ${error.message}`
-      };
-    }
-  }
-  async startNewEvaluation(evaluationName: string, testCaseFile: string) {
-    try {
-      const auth = await Utils.authenticate();
-      const body: any = {
-        evaluation_name: evaluationName,
-        testCasesKey: testCaseFile,
-      };
-      
-      try {
-        const response = await fetch(`${this.API}/eval-run-handler`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": auth,
-            "Accept": "application/json"
-          },
-          body: JSON.stringify(body),
-          mode: "cors",
-          credentials: "same-origin"
-        });
-        
-        if (response.status === 404) {
-          throw new Error("Evaluation service is not available. The API endpoint could not be found. Please ensure the backend is deployed correctly.");
-        }
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Failed to start new evaluation: ${response.status} ${response.statusText} - ${errorText}`);
-        }
-
-        // Get the response text first to log it in case of parsing errors
-        const responseText = await response.text();
-        
-        try {
-          // Then parse it as JSON
-          const result = JSON.parse(responseText);
-          return result;
-        } catch (parseError) {
-          throw new Error(`Invalid JSON response from server: ${parseError.message}`);
-        }
-      } catch (fetchError) {
-        // Handle CORS errors specifically
-        if (fetchError.message.includes("CORS") || 
-            fetchError.message.includes("cross-origin") || 
-            fetchError.message.includes("Cross-Origin")) {
-          throw new Error("Cross-Origin Request Blocked: The API doesn't allow requests from this origin. Please check CORS configuration on the API Gateway.");
-        }
-        throw fetchError;
-      }
-    } catch (error) {
-      // Rethrow the error for the component to handle
-      throw error;
-    }
-  }
-
-   // Returns a URL from the this.API that allows one file upload to S3 with that exact filename
-   async getUploadURL(fileName: string, fileType : string): Promise<string> {    
-    if (!fileType) {
-      throw new Error('Must have valid file type!');
-    }
-
-    try {
-      const auth = await Utils.authenticate();
-      const response = await fetch(this.API + '/signed-url-test-cases', {
-        method: 'POST',
+      const response = await fetch(`${this.API}/eval-results-handler`, {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization' : auth
+          "Content-Type": "application/json",
+          Authorization: auth,
         },
-        body: JSON.stringify({ fileName, fileType }),
-        credentials: "same-origin"
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to get upload URL');
+        return { Items: [], NextPageToken: null };
       }
 
-      const data = await response.json();
-      return data.signedUrl;
-    } catch (error) {
-      throw error;
+      const result = await response.json();
+      return result.Items ? result : { Items: [], NextPageToken: null };
+    } catch {
+      return { Items: [], NextPageToken: null };
     }
   }
 
-  // Returns a list of documents in the S3 bucket
-  async getDocuments(continuationToken?: string, pageIndex?: number) {
+  async startNewEvaluation(
+    evaluationName: string,
+    testCaseFile?: string,
+    testCasesInline?: Array<{ question: string; expectedResponse: string }>
+  ) {
     const auth = await Utils.authenticate();
-    const response = await fetch(this.API + '/s3-test-cases-bucket-data', {
-      method: 'POST',
+    const body: any = { evaluation_name: evaluationName };
+    if (testCaseFile) body.testCasesKey = testCaseFile;
+    if (testCasesInline) body.testCasesInline = testCasesInline;
+
+    const response = await fetch(`${this.API}/eval-run-handler`, {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization' : auth
+        "Content-Type": "application/json",
+        Authorization: auth,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to start evaluation: ${response.status} - ${errorText}`);
+    }
+    return response.json();
+  }
+
+  async getEvalStatus(evaluationId: string) {
+    const auth = await Utils.authenticate();
+    const response = await fetch(`${this.API}/eval-results-handler`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: auth,
       },
       body: JSON.stringify({
-        continuationToken: continuationToken,
-        pageIndex: pageIndex,
+        operation: "get_eval_status",
+        evaluation_id: evaluationId,
       }),
-      credentials: "same-origin"
     });
     if (!response.ok) {
-      throw new Error('Failed to get files');
+      throw new Error(`Failed to get eval status: ${response.status}`);
     }
-    
-    const result = await response.json();
-    return result;
+    return response.json();
+  }
+
+  async getUploadURL(fileName: string, fileType: string): Promise<string> {
+    if (!fileType) throw new Error("Must have valid file type!");
+    const auth = await Utils.authenticate();
+    const response = await fetch(`${this.API}/signed-url-test-cases`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: auth,
+      },
+      body: JSON.stringify({ fileName, fileType }),
+    });
+    if (!response.ok) throw new Error("Failed to get upload URL");
+    const data = await response.json();
+    return data.signedUrl;
+  }
+
+  async getDocuments(continuationToken?: string, pageIndex?: number) {
+    const auth = await Utils.authenticate();
+    const response = await fetch(`${this.API}/s3-test-cases-bucket-data`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: auth,
+      },
+      body: JSON.stringify({ continuationToken, pageIndex }),
+    });
+    if (!response.ok) throw new Error("Failed to get files");
+    return response.json();
+  }
+
+  // --- Test Library ---
+  async listTestLibrary(search?: string, continuationToken?: any, limit = 25) {
+    const auth = await Utils.authenticate();
+    const response = await fetch(`${this.API}/test-library`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: auth },
+      body: JSON.stringify({
+        operation: "list",
+        search,
+        continuation_token: continuationToken,
+        limit,
+      }),
+    });
+    if (!response.ok) throw new Error("Failed to list test library");
+    return response.json();
+  }
+
+  async getTestLibraryItem(questionId: string) {
+    const auth = await Utils.authenticate();
+    const response = await fetch(`${this.API}/test-library`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: auth },
+      body: JSON.stringify({ operation: "get", question_id: questionId }),
+    });
+    if (!response.ok) throw new Error("Failed to get test library item");
+    return response.json();
+  }
+
+  async createTestLibraryItem(question: string, expectedResponse: string) {
+    const auth = await Utils.authenticate();
+    const response = await fetch(`${this.API}/test-library`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: auth },
+      body: JSON.stringify({ operation: "create", question, expectedResponse }),
+    });
+    if (!response.ok) throw new Error("Failed to create test library item");
+    return response.json();
+  }
+
+  async updateTestLibraryItem(questionId: string, expectedResponse: string) {
+    const auth = await Utils.authenticate();
+    const response = await fetch(`${this.API}/test-library`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: auth },
+      body: JSON.stringify({
+        operation: "update",
+        question_id: questionId,
+        expectedResponse,
+      }),
+    });
+    if (!response.ok) throw new Error("Failed to update test library item");
+    return response.json();
+  }
+
+  async revertTestLibraryItem(questionId: string, versionIndex: number) {
+    const auth = await Utils.authenticate();
+    const response = await fetch(`${this.API}/test-library`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: auth },
+      body: JSON.stringify({
+        operation: "revert",
+        question_id: questionId,
+        version_index: versionIndex,
+      }),
+    });
+    if (!response.ok) throw new Error("Failed to revert test library item");
+    return response.json();
+  }
+
+  async deleteTestLibraryItem(questionId: string) {
+    const auth = await Utils.authenticate();
+    const response = await fetch(`${this.API}/test-library`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: auth },
+      body: JSON.stringify({ operation: "delete", question_id: questionId }),
+    });
+    if (!response.ok) throw new Error("Failed to delete test library item");
+    return response.json();
+  }
+
+  async bulkImportTestLibrary(
+    items: Array<{ question: string; expectedResponse: string }>,
+    source = "import"
+  ) {
+    const auth = await Utils.authenticate();
+    const response = await fetch(`${this.API}/test-library`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: auth },
+      body: JSON.stringify({ operation: "bulk_import", items, source }),
+    });
+    if (!response.ok) throw new Error("Failed to bulk import");
+    return response.json();
+  }
+
+  async exportTestLibrary() {
+    const auth = await Utils.authenticate();
+    const response = await fetch(`${this.API}/test-library`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: auth },
+      body: JSON.stringify({ operation: "export" }),
+    });
+    if (!response.ok) throw new Error("Failed to export test library");
+    return response.json();
+  }
+
+  async getTestLibraryStats() {
+    const auth = await Utils.authenticate();
+    const response = await fetch(`${this.API}/test-library`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: auth },
+      body: JSON.stringify({ operation: "stats" }),
+    });
+    if (!response.ok) throw new Error("Failed to get test library stats");
+    return response.json();
   }
 }

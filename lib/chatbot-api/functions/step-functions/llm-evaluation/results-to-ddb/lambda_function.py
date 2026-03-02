@@ -101,10 +101,9 @@ def add_evaluation(evaluation_id, evaluation_name, average_similarity,
         return {
             'statusCode': 200,
             'headers': {
-                'Access-Control-Allow-Origin': 'https://dcf43zj2k8alr.cloudfront.net',
+                'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
                 'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
-                'Access-Control-Allow-Credentials': 'true'
             },
             'body': json.dumps({
                 'message': 'Evaluation added successfully',
@@ -115,10 +114,9 @@ def add_evaluation(evaluation_id, evaluation_name, average_similarity,
         return {
             'statusCode': 500,
             'headers': {
-                'Access-Control-Allow-Origin': 'https://dcf43zj2k8alr.cloudfront.net',
+                'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
                 'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
-                'Access-Control-Allow-Credentials': 'true'
             },
             'body': json.dumps(str(error))
         }

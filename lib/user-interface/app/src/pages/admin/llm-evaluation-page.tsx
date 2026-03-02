@@ -1,13 +1,13 @@
 import { Tabs, Tab, Box } from "@mui/material";
 import { useNavigate, useLocation } from "react-router-dom";
 import CurrentEvalTab from "./current-eval-tab";
-import NewEvalTab from "./new-eval-tab.tsx";
-import PastEvalsTab from "./past-evals-tab.tsx";
-import TestCasesTab from "./test-cases-tab.tsx";
+import NewEvalTab from "./new-eval-tab";
+import PastEvalsTab from "./past-evals-tab";
+import TestLibraryTab from "./test-library-tab";
 import { useState, useEffect } from "react";
 import AdminPageLayout from "../../components/admin-page-layout";
 
-const TAB_IDS = ["current-eval", "past-evals", "add-test-cases", "new-eval"];
+const TAB_IDS = ["dashboard", "run", "history", "library"];
 
 export default function LlmEvaluationPage() {
   const [activeTab, setActiveTab] = useState(0);
@@ -20,7 +20,7 @@ export default function LlmEvaluationPage() {
     if (tabIndex >= 0) {
       setActiveTab(tabIndex);
     } else if (!location.hash) {
-      navigate(`/admin/llm-evaluation#current-eval`, { replace: true });
+      navigate(`/admin/llm-evaluation#dashboard`, { replace: true });
     }
   }, [location, navigate]);
 
@@ -31,9 +31,9 @@ export default function LlmEvaluationPage() {
 
   return (
     <AdminPageLayout
-      title="LLM Evaluation"
-      description="Evaluate and track the performance of the AI system."
-      breadcrumbLabel="LLM Evaluation"
+      title="Quality Monitoring"
+      description="Monitor, test, and curate your chatbot's response quality."
+      breadcrumbLabel="Quality Monitoring"
     >
       <Box>
         <Tabs
@@ -41,34 +41,23 @@ export default function LlmEvaluationPage() {
           onChange={(_, newValue) => handleTabChange(newValue)}
           sx={{ borderBottom: 1, borderColor: "divider" }}
         >
-          <Tab label="Current Evaluation" />
-          <Tab label="Past Evaluations" />
-          <Tab label="Add Test Cases" />
-          <Tab label="New Evaluation" />
+          <Tab label="Dashboard" />
+          <Tab label="Run Evaluation" />
+          <Tab label="History" />
+          <Tab label="Test Library" />
         </Tabs>
         <Box sx={{ pt: 2 }}>
           {activeTab === 0 && (
             <CurrentEvalTab
-              tabChangeFunction={() => handleTabChange(0)}
-              addTestCasesHandler={() => handleTabChange(2)}
-              newEvalHandler={() => handleTabChange(3)}
+              onRunEval={() => handleTabChange(1)}
+              onViewLibrary={() => handleTabChange(3)}
             />
           )}
           {activeTab === 1 && (
-            <PastEvalsTab
-              tabChangeFunction={() => handleTabChange(1)}
-              documentType="evaluationSummary"
-            />
+            <NewEvalTab onComplete={() => handleTabChange(2)} />
           )}
-          {activeTab === 2 && (
-            <TestCasesTab tabChangeFunction={() => handleTabChange(2)} />
-          )}
-          {activeTab === 3 && (
-            <NewEvalTab
-              tabChangeFunction={() => handleTabChange(3)}
-              documentType="file"
-            />
-          )}
+          {activeTab === 2 && <PastEvalsTab />}
+          {activeTab === 3 && <TestLibraryTab />}
         </Box>
       </Box>
     </AdminPageLayout>

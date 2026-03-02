@@ -9,7 +9,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt --target "${LAMBDA_TASK_ROOT}"
 
 # Download nltk data if required for BLEU score
-RUN python -m nltk.downloader -d ${LAMBDA_TASK_ROOT}/nltk_data punkt
+RUN python -m nltk.downloader -d ${LAMBDA_TASK_ROOT}/nltk_data punkt punkt_tab
 
 # Set the CMD to your handler (function name)
 CMD ["lambda_function.lambda_handler"]

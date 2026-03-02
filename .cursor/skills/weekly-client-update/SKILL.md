@@ -25,9 +25,16 @@ For each commit, read the full message and diff to understand the actual changes
 git show <hash> --stat --format="%B"
 ```
 
-## Step 2: Check the Modernization Plan
+## Step 2: Check the Project Tracker & Modernization Plan
 
-Read `.cursor/plans/abe_full_modernization_plan.md` and cross-reference:
+**Project Tracker (Google Sheets):** https://docs.google.com/spreadsheets/d/1ywAW9d1BFet3qla7D4bnjQiR6Zcul3IUUWO3ONq16sA/edit?usp=sharing
+
+Cross-reference the tracker to understand:
+- Which tracker items moved to "Completed" this week?
+- Which items are "In Progress" and what's the target completion date?
+- Which items are "Blocker" or "Not Yet Started" and need client input?
+
+Also read `.cursor/plans/abe_full_modernization_plan.md` and cross-reference:
 - Which plan items were completed this week?
 - Which items are in progress?
 - Are there any blocked items that need client input?
@@ -60,7 +67,8 @@ Quick update on the progress we made on ABE this past week. [One sentence framin
 
 Important links
 - GitHub Repo: https://github.com/The-Burnes-Center/ai4impact-abe-chatbot-osd
-- Non-Prod Deployment Link: https://d9sp8dj4m42ru.cloudfront.net/
+- Project Tracker: https://docs.google.com/spreadsheets/d/1ywAW9d1BFet3qla7D4bnjQiR6Zcul3IUUWO3ONq16sA/edit?usp=sharing
+- Non-Prod Deployment Link: https://d39g9hl1ouzq6z.cloudfront.net/
 
 [Optional: "Items we need your support on" section if there are blockers]
 - [Specific ask with context]

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useRef, useMemo } from "react";
+import { useState, useEffect, useContext, useRef, useMemo } from "react";
 import {
   Table,
   TableHead,
@@ -20,24 +20,52 @@ import {
   DialogContent,
   DialogActions,
   Stack,
+  Tooltip,
 } from "@mui/material";
+import Grid from "@mui/material/Grid2";
 import { useParams, useNavigate } from "react-router-dom";
 import { AppContext } from "../../common/app-context";
 import { ApiClient } from "../../common/api-client/api-client";
 import { Utils } from "../../common/utils";
 import { getColumnDefinition } from "./columns";
 import { useNotifications } from "../../components/notif-manager";
-import { AdminDataType } from "../../common/types";
 
-export interface DetailedEvalProps {
-  documentType: AdminDataType;
+function scoreColor(pct: number): "success" | "warning" | "error" {
+  if (pct >= 75) return "success";
+  if (pct >= 50) return "warning";
+  return "error";
 }
 
-const findFirstSortableColumn = (columns) => {
-  return columns.find((col) => col.sortingField) || columns[0];
-};
+function scoreBg(pct: number) {
+  if (pct >= 75) return "#e8f5e9";
+  if (pct >= 50) return "#fff8e1";
+  return "#ffebee";
+}
 
-function DetailedEvaluationPage(props: DetailedEvalProps) {
+function SummaryCard({ title, pct }: { title: string; pct: number }) {
+  return (
+    <Paper sx={{ p: 2, bgcolor: scoreBg(pct), textAlign: "center" }}>
+      <Typography variant="subtitle2" color="text.secondary">
+        {title}
+      </Typography>
+      <Typography variant="h4" fontWeight="bold">
+        {pct.toFixed(0)}%
+      </Typography>
+      <Chip label={scoreColor(pct)} color={scoreColor(pct)} size="small" />
+    </Paper>
+  );
+}
+
+function escapeCSVValue(val: any): string {
+  const str = typeof val === "string" ? val : String(val ?? "");
+  const escaped = str.replace(/"/g, '""');
+  if (/^[=+\-@\t\r]/.test(escaped)) {
+    return `"'${escaped}"`;
+  }
+  return `"${escaped}"`;
+}
+
+function DetailedEvaluationPage() {
   const { evaluationId } = useParams();
   const navigate = useNavigate();
   const appContext = useContext(AppContext);
@@ -46,7 +74,7 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
   const { addNotification } = useNotifications();
   const [evaluationName, setEvaluationName] = useState("");
   const [currentPageIndex, setCurrentPageIndex] = useState(1);
-  const [pages, setPages] = useState([]);
+  const [pages, setPages] = useState<any[]>([]);
   const needsRefresh = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [isContextModalVisible, setContextModalVisible] = useState(false);
@@ -54,46 +82,35 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
   const [selectedQuestion, setSelectedQuestion] = useState("");
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [allItems, setAllItems] = useState<any[]>([]);
 
   useEffect(() => {
     setCurrentPageIndex(1);
     fetchEvaluationDetails({ pageIndex: 1 });
   }, [evaluationId]);
 
-  const onProblemClick = (ProblemItem): void => {
-    console.log("ProblemItem: ", ProblemItem);
-    navigate(
-      `/admin/llm-evaluation/${evaluationId}/problem/${ProblemItem.question_id}`
-    );
-  };
-
-  const handleContextClick = (item) => {
+  const handleContextClick = (item: any) => {
     setSelectedContext(item.retrieved_context || "No context available");
     setSelectedQuestion(item.question || "Unknown question");
     setContextModalVisible(true);
   };
 
-  const fetchEvaluationDetails = async (params: {
-    pageIndex?: number;
-    nextPageToken?;
-  }) => {
+  const fetchEvaluationDetails = async (params: { pageIndex?: number; nextPageToken?: any }) => {
     setLoading(true);
     try {
       const result = await apiClient.evaluations.getEvaluationResults(
-        evaluationId,
-        params.nextPageToken
+        evaluationId!,
+        params.nextPageToken,
+        100
       );
 
       if (result.error) {
-        console.error("Error from API:", result.error);
         setError(result.error);
-        addNotification("error", result.error);
         setLoading(false);
         return;
       }
 
       setError(null);
-
       setPages((current) => {
         if (needsRefresh.current) {
           needsRefresh.current = false;
@@ -102,78 +119,37 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
         if (typeof params.pageIndex !== "undefined") {
           current[params.pageIndex - 1] = result;
           return [...current];
-        } else {
-          return [...current, result];
         }
+        return [...current, result];
       });
-      if (result.Items && result.Items.length > 0) {
-        const name = result.Items[0].evaluation_name || "Unnamed Evaluation";
-        setEvaluationName(name);
-      } else {
-        console.warn("No evaluation details found");
-        setError("No details found for this evaluation.");
-        addNotification("warning", "No details found for this evaluation.");
+      if (result.Items?.length > 0) {
+        setEvaluationName(result.Items[0].evaluation_name || "Unnamed");
+        setAllItems(result.Items);
       }
     } catch (error) {
-      console.error("Error fetching evaluation details:", error);
-      const errorMessage = Utils.getErrorMessage(error);
-      console.error("Error details:", errorMessage);
-      const errorMsg = `Error fetching evaluation details: ${errorMessage}`;
-      setError(errorMsg);
-      addNotification("error", errorMsg);
+      setError(`Error: ${Utils.getErrorMessage(error)}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const onNextPageClick = async () => {
-    const continuationToken = pages[currentPageIndex - 1]?.NextPageToken;
-    if (continuationToken) {
-      if (pages.length <= currentPageIndex || needsRefresh.current) {
-        await fetchEvaluationDetails({
-          nextPageToken: continuationToken,
-        });
-      }
-      setCurrentPageIndex((current) =>
-        Math.min(pages.length + 1, current + 1)
-      );
-    }
-  };
-
-  const onPreviousPageClick = () => {
-    setCurrentPageIndex((current) => Math.max(1, current - 1));
-  };
-
-  const getCustomColumnDefinitions = () => {
-    const baseColumns = getColumnDefinition(
-      props.documentType,
-      onProblemClick
+  const columnDefinitions = useMemo(() => {
+    const base = getColumnDefinition("detailedEvaluation", () => {});
+    return base.map((col) =>
+      col.id === "retrievedContext"
+        ? {
+            ...col,
+            cell: (item: any) => (
+              <Button onClick={() => handleContextClick(item)} variant="text" size="small">
+                View
+              </Button>
+            ),
+          }
+        : col
     );
+  }, []);
 
-    const updatedColumns = baseColumns.map((column) => {
-      if (column.id === "retrievedContext") {
-        return {
-          ...column,
-          cell: (item) => (
-            <Button
-              onClick={() => handleContextClick(item)}
-              variant="text"
-              size="small"
-            >
-              View Context
-            </Button>
-          ),
-        };
-      }
-      return column;
-    });
-
-    return updatedColumns;
-  };
-
-  const columnDefinitions = getCustomColumnDefinitions();
-  const currentPageItems =
-    pages[Math.min(pages.length - 1, currentPageIndex - 1)]?.Items || [];
+  const currentPageItems = pages[Math.min(pages.length - 1, currentPageIndex - 1)]?.Items || [];
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -186,53 +162,39 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
 
   const sortedItems = useMemo(() => {
     if (!sortField || !currentPageItems.length) return currentPageItems;
-    const col = columnDefinitions.find((c) => c.sortingField === sortField);
-    if (!col || !col.sortingComparator) {
-      return [...currentPageItems].sort((a, b) => {
-        const aVal = a[sortField] ?? "";
-        const bVal = b[sortField] ?? "";
-        const cmp = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-        return sortDirection === "asc" ? cmp : -cmp;
-      });
-    }
-    const sorted = [...currentPageItems].sort(col.sortingComparator);
+    const sorted = [...currentPageItems].sort((a: any, b: any) => {
+      const aVal = a[sortField] ?? "";
+      const bVal = b[sortField] ?? "";
+      return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+    });
     return sortDirection === "desc" ? sorted.reverse() : sorted;
-  }, [currentPageItems, sortField, sortDirection, columnDefinitions]);
+  }, [currentPageItems, sortField, sortDirection]);
+
+  const summaryMetrics = useMemo(() => {
+    if (allItems.length === 0) return null;
+    const avg = (field: string) => {
+      const vals = allItems.map((i) => parseFloat(i[field]) || 0);
+      return vals.reduce((a, b) => a + b, 0) / vals.length;
+    };
+    return {
+      answer: ((avg("correctness") + avg("similarity")) / 2) * 100,
+      retrieval: ((avg("context_precision") + avg("context_recall")) / 2) * 100,
+      response: ((avg("response_relevancy") + avg("faithfulness")) / 2) * 100,
+    };
+  }, [allItems]);
 
   const handleDownload = () => {
-    const csvContent = convertToCSV(sortedItems);
-    const BOM = "\uFEFF";
-    const csvContentWithBOM = BOM + csvContent;
-    const blob = new Blob([csvContentWithBOM], {
-      type: "text/csv;charset=utf-8;",
-    });
-    const link = document.createElement("a");
-    if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob);
-      link.setAttribute("href", url);
-      link.setAttribute("download", "table_data.csv");
-      link.style.visibility = "hidden";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  };
-
-  const convertToCSV = (data: readonly unknown[]): string => {
-    if (data.length === 0) {
-      return "";
-    }
-    const headers = Object.keys(data[0] as object).join(",");
-    const rows = data.map((item) =>
-      Object.values(item as object)
-        .map((value) =>
-          typeof value === "string"
-            ? `"${value.replace(/"/g, '""')}"`
-            : String(value)
-        )
-        .join(",")
+    if (sortedItems.length === 0) return;
+    const headers = Object.keys(sortedItems[0] as object);
+    const rows = sortedItems.map((item: any) =>
+      headers.map((h) => escapeCSVValue(item[h])).join(",")
     );
-    return [headers, ...rows].join("\n");
+    const csv = "\uFEFF" + headers.join(",") + "\n" + rows.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `evaluation-${evaluationId}.csv`;
+    link.click();
   };
 
   return (
@@ -241,34 +203,43 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
         <Link
           component="button"
           underline="hover"
-          onClick={() => navigate("/admin/llm-evaluation")}
+          onClick={() => navigate("/admin/llm-evaluation#history")}
         >
-          LLM Evaluation
+          Quality Monitoring
         </Link>
         <Typography color="text.primary">
-          Evaluation {evaluationName || evaluationId}
+          {evaluationName || evaluationId}
         </Typography>
       </Breadcrumbs>
 
-      <Stack
-        direction="row"
-        justifyContent="space-between"
-        alignItems="center"
-      >
-        <Typography variant="h4">Evaluation Details</Typography>
-        <Button onClick={() => navigate(-1)} variant="text">
-          Back to Evaluations
+      <Stack direction="row" justifyContent="space-between" alignItems="center">
+        <Typography variant="h5">Evaluation Details</Typography>
+        <Button
+          onClick={() => navigate("/admin/llm-evaluation#history")}
+          variant="text"
+        >
+          Back to History
         </Button>
       </Stack>
 
-      <Stack
-        direction="row"
-        justifyContent="space-between"
-        alignItems="center"
-      >
-        <Typography variant="h5">Detailed Results</Typography>
+      {summaryMetrics && (
+        <Grid container spacing={2}>
+          <Grid size={{ xs: 12, md: 4 }}>
+            <SummaryCard title="Answer Quality" pct={summaryMetrics.answer} />
+          </Grid>
+          <Grid size={{ xs: 12, md: 4 }}>
+            <SummaryCard title="Retrieval Quality" pct={summaryMetrics.retrieval} />
+          </Grid>
+          <Grid size={{ xs: 12, md: 4 }}>
+            <SummaryCard title="Response Quality" pct={summaryMetrics.response} />
+          </Grid>
+        </Grid>
+      )}
+
+      <Stack direction="row" justifyContent="space-between" alignItems="center">
+        <Typography variant="h6">Per-Question Results</Typography>
         <Button onClick={handleDownload} variant="outlined" size="small">
-          Download Table
+          Export CSV
         </Button>
       </Stack>
 
@@ -279,7 +250,7 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
       ) : sortedItems.length === 0 ? (
         <Box sx={{ textAlign: "center", p: 4 }}>
           <Chip
-            label={error || "No details found for this evaluation."}
+            label={error || "No details found"}
             color={error ? "error" : "warning"}
             variant="outlined"
           />
@@ -297,12 +268,8 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
                     {col.sortingField ? (
                       <TableSortLabel
                         active={sortField === col.sortingField}
-                        direction={
-                          sortField === col.sortingField
-                            ? sortDirection
-                            : "asc"
-                        }
-                        onClick={() => handleSort(col.sortingField)}
+                        direction={sortField === col.sortingField ? sortDirection : "asc"}
+                        onClick={() => handleSort(col.sortingField!)}
                       >
                         {col.header}
                       </TableSortLabel>
@@ -314,7 +281,7 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
               </TableRow>
             </TableHead>
             <TableBody>
-              {sortedItems.map((item, index) => (
+              {sortedItems.map((item: any, index: number) => (
                 <TableRow key={item.question_id || index} hover>
                   {columnDefinitions.map((col) => (
                     <TableCell key={col.id}>{col.cell(item)}</TableCell>
@@ -331,7 +298,7 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
           <Button
             size="small"
             disabled={currentPageIndex <= 1}
-            onClick={onPreviousPageClick}
+            onClick={() => setCurrentPageIndex((c) => Math.max(1, c - 1))}
           >
             Previous
           </Button>
@@ -341,7 +308,13 @@ function DetailedEvaluationPage(props: DetailedEvalProps) {
           <Button
             size="small"
             disabled={!pages[currentPageIndex - 1]?.NextPageToken}
-            onClick={onNextPageClick}
+            onClick={async () => {
+              const token = pages[currentPageIndex - 1]?.NextPageToken;
+              if (token) {
+                await fetchEvaluationDetails({ nextPageToken: token });
+                setCurrentPageIndex((c) => c + 1);
+              }
+            }}
           >
             Next
           </Button>

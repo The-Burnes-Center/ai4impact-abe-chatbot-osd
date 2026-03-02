@@ -26,6 +26,7 @@ interface LambdaFunctionStackProps {
   readonly contractIndexBucket: s3.Bucket;
   readonly contractIndexTable: Table;
   readonly tradeIndexTable: Table;
+  readonly testLibraryTable: Table;
 }
 
 const LAMBDA_DEFAULTS: Partial<lambda.FunctionProps> = {
@@ -55,6 +56,7 @@ export class LambdaFunctionStack extends Construct {
   public readonly tradeIndexParserFunction: lambda.Function;
   public readonly tradeIndexQueryFunction: lambda.Function;
   public readonly tradeIndexApiFunction: lambda.Function;
+  public readonly testLibraryFunction: lambda.Function;
 
   constructor(scope: Construct, id: string, props: LambdaFunctionStackProps) {
     super(scope, id);
@@ -681,6 +683,29 @@ websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
   resources: [tradeIndexQueryFunction.functionArn],
 }));
 
+const testLibraryFunction = new lambda.Function(scope, 'TestLibraryHandlerFunction', {
+  ...LAMBDA_DEFAULTS,
+  runtime: lambda.Runtime.PYTHON_3_12,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/test-library-handler')),
+  handler: 'lambda_function.lambda_handler',
+  environment: {
+    "TEST_LIBRARY_TABLE": props.testLibraryTable.tableName,
+  },
+  timeout: cdk.Duration.seconds(30),
+});
+testLibraryFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: [
+    'dynamodb:GetItem',
+    'dynamodb:PutItem',
+    'dynamodb:UpdateItem',
+    'dynamodb:DeleteItem',
+    'dynamodb:Query',
+  ],
+  resources: [props.testLibraryTable.tableArn, props.testLibraryTable.tableArn + "/index/*"],
+}));
+this.testLibraryFunction = testLibraryFunction;
+
 this.stepFunctionsStack = new StepFunctionsStack(scope, 'StepFunctionsStack', {
   knowledgeBase: props.knowledgeBase,
   evalSummariesTable: props.evalSummariesTable,
@@ -689,5 +714,14 @@ this.stepFunctionsStack = new StepFunctionsStack(scope, 'StepFunctionsStack', {
   evalResultsBucket: props.evalResultsBucket,
   wsEndpoint: props.wsApiEndpoint
 });
+
+evalResultsAPIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: [
+    'states:DescribeExecution',
+    'states:GetExecutionHistory',
+  ],
+  resources: [this.stepFunctionsStack.llmEvalStateMachine.stateMachineArn + '/*'],
+}));
 }
 }

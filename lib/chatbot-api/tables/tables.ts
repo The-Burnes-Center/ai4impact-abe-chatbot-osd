@@ -10,6 +10,7 @@ export class TableStack extends Construct {
   public readonly analyticsTable: Table;
   public readonly contractIndexTable: Table;
   public readonly tradeIndexTable: Table;
+  public readonly testLibraryTable: Table;
 
   constructor(scope: Construct, id: string) {
     super(scope, id);
@@ -123,5 +124,22 @@ export class TableStack extends Construct {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
     this.tradeIndexTable = tradeIndexTable;
+
+    const testLibraryTable = new Table(scope, 'TestLibraryTable', {
+      partitionKey: { name: 'PartitionKey', type: AttributeType.STRING },
+      sortKey: { name: 'QuestionId', type: AttributeType.STRING },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    testLibraryTable.addGlobalSecondaryIndex({
+      indexName: 'NormalizedQuestionIndex',
+      partitionKey: { name: 'questionNormalized', type: AttributeType.STRING },
+      sortKey: { name: 'QuestionId', type: AttributeType.STRING },
+      projectionType: ProjectionType.KEYS_ONLY,
+    });
+
+    this.testLibraryTable = testLibraryTable;
   }
 }

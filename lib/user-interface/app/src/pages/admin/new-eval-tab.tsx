@@ -12,328 +12,423 @@ import {
   TableCell,
   TableContainer,
   Radio,
+  RadioGroup,
+  FormControlLabel,
   CircularProgress,
   Alert,
+  Stepper,
+  Step,
+  StepLabel,
+  StepContent,
+  LinearProgress,
+  Chip,
   IconButton,
 } from "@mui/material";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import { useCallback, useContext, useEffect, useState } from "react";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import ErrorIcon from "@mui/icons-material/Error";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppContext } from "../../common/app-context";
 import { ApiClient } from "../../common/api-client/api-client";
 import { Utils } from "../../common/utils";
 import { useNotifications } from "../../components/notif-manager";
-import { getColumnDefinition } from "./columns";
-import { AdminDataType } from "../../common/types";
-import { useNavigate } from "react-router-dom";
 
-export interface FileUploadTabProps {
-  tabChangeFunction: () => void;
-  documentType: AdminDataType;
+interface RunEvalTabProps {
+  onComplete: () => void;
 }
 
-export default function NewEvalTab(props: FileUploadTabProps) {
+type SourceType = "upload" | "past" | "library";
+
+interface EvalStep {
+  name: string;
+  status: string;
+  chunksCompleted?: number;
+  chunksTotal?: number;
+}
+
+export default function NewEvalTab({ onComplete }: RunEvalTabProps) {
   const appContext = useContext(AppContext);
-  const apiClient = new ApiClient(appContext);
+  const apiClient = useMemo(() => new ApiClient(appContext), [appContext]);
   const { addNotification } = useNotifications();
-  const navigate = useNavigate();
 
-  const [evalName, setEvalName] = useState<string>("SampleEvalName");
-  const [globalError, setGlobalError] = useState<string | undefined>(undefined);
+  const [sourceType, setSourceType] = useState<SourceType>("upload");
+  const [evalName, setEvalName] = useState("");
+  const [globalError, setGlobalError] = useState<string | undefined>();
 
-  const [loading, setLoading] = useState(true);
-  const [currentPageIndex, setCurrentPageIndex] = useState(1);
-  const [pages, setPages] = useState<any[]>([]);
-  const [selectedFile, setSelectedFile] = useState<any | null>(null);
+  const [pastFiles, setPastFiles] = useState<any[]>([]);
+  const [selectedFile, setSelectedFile] = useState<any>(null);
+  const [loadingFiles, setLoadingFiles] = useState(false);
 
-  const onProblemClick = (newEvaluationItem) => {
-    console.log("New Evaluation item: ", newEvaluationItem);
-    if (newEvaluationItem && newEvaluationItem.EvaluationId) {
-      navigate(`/admin/llm-evaluation/${newEvaluationItem.EvaluationId}`, {
-        replace: true,
-      });
-    }
-  };
+  const [libraryCount, setLibraryCount] = useState<number | null>(null);
 
-  const onNewEvaluation = async () => {
-    setGlobalError(undefined);
+  const [uploading, setUploading] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-    if (evalName === "SampleEvalName" || evalName.trim() === "") {
-      setGlobalError("Please enter a name for the evaluation");
-      return;
-    }
-
-    if (!selectedFile) {
-      setGlobalError("Please select a file for evaluation");
-      return;
-    }
-
-    console.log("Selected file:", selectedFile);
-    const fileExtension = selectedFile.Key.toLowerCase().split(".").pop();
-    console.log("Detected file extension:", fileExtension);
-
-    if (fileExtension !== "json" && fileExtension !== "csv") {
-      console.log("Invalid file extension:", fileExtension);
-      setGlobalError(
-        `Please select a valid test case file (.json or .csv). Got: ${fileExtension}`
-      );
-      return;
-    }
-
-    try {
-      setLoading(true);
-
-      console.log("Starting evaluation with file:", selectedFile.Key);
-      const result = await apiClient.evaluations.startNewEvaluation(
-        evalName,
-        selectedFile.Key
-      );
-      console.log("Evaluation result:", result);
-
-      addNotification(
-        "success",
-        "Evaluation started successfully. It may take a few minutes to complete."
-      );
-
-      props.tabChangeFunction();
-    } catch (error) {
-      console.error("Error starting evaluation:", error);
-      const errorMessage = Utils.getErrorMessage(error);
-
-      if (
-        errorMessage.includes("NetworkError") ||
-        errorMessage.includes("Failed to fetch")
-      ) {
-        setGlobalError(
-          "Network error: Unable to connect to the evaluation service"
-        );
-        addNotification(
-          "error",
-          "Network error: Unable to connect to the evaluation service"
-        );
-      } else if (
-        errorMessage.includes("Unauthorized") ||
-        errorMessage.includes("403")
-      ) {
-        setGlobalError(
-          "Authorization error: You don't have permission to start evaluations"
-        );
-        addNotification(
-          "error",
-          "Authorization error: You don't have permission to start evaluations"
-        );
-      } else {
-        setGlobalError(`Error starting evaluation: ${errorMessage}`);
-        addNotification(
-          "error",
-          `Error starting evaluation: ${errorMessage}`
-        );
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /** Function to get documents */
-  const getDocuments = useCallback(
-    async (params: { continuationToken?: string; pageIndex?: number }) => {
-      setLoading(true);
-      try {
-        const result = await apiClient.evaluations.getDocuments(
-          params?.continuationToken,
-          params?.pageIndex
-        );
-        setPages((current) => {
-          if (typeof params.pageIndex !== "undefined") {
-            current[params.pageIndex - 1] = result;
-            return [...current];
-          } else {
-            return [...current, result];
-          }
-        });
-      } catch (error) {
-        console.error(Utils.getErrorMessage(error));
-      }
-
-      console.log(pages);
-      setLoading(false);
-    },
-    [appContext, props.documentType]
+  const [running, setRunning] = useState(false);
+  const [evaluationId, setEvaluationId] = useState<string | null>(() =>
+    sessionStorage.getItem("runningEvalId")
   );
+  const [evalStatus, setEvalStatus] = useState<string>("PENDING");
+  const [evalSteps, setEvalSteps] = useState<EvalStep[]>([]);
+  const [elapsed, setElapsed] = useState(0);
+  const pollRef = useRef<NodeJS.Timeout | null>(null);
+
+  const loadPastFiles = useCallback(async () => {
+    setLoadingFiles(true);
+    try {
+      const result = await apiClient.evaluations.getDocuments();
+      setPastFiles(result?.Contents || []);
+    } catch {
+      setPastFiles([]);
+    } finally {
+      setLoadingFiles(false);
+    }
+  }, [apiClient]);
+
+  const loadLibraryStats = useCallback(async () => {
+    try {
+      const stats = await apiClient.evaluations.getTestLibraryStats();
+      setLibraryCount(stats.total ?? 0);
+    } catch {
+      setLibraryCount(0);
+    }
+  }, [apiClient]);
 
   useEffect(() => {
-    getDocuments({});
-  }, [getDocuments]);
+    loadPastFiles();
+    loadLibraryStats();
+  }, [loadPastFiles, loadLibraryStats]);
 
-  const onNextPageClick = async () => {
-    const continuationToken =
-      pages[currentPageIndex - 1]?.NextContinuationToken;
+  useEffect(() => {
+    if (evaluationId) {
+      setRunning(true);
+      startPolling(evaluationId);
+    }
+    return () => stopPolling();
+  }, []);
 
-    if (continuationToken) {
-      if (pages.length <= currentPageIndex) {
-        await getDocuments({ continuationToken });
+  const startPolling = (id: string) => {
+    stopPolling();
+    const poll = async () => {
+      try {
+        const status = await apiClient.evaluations.getEvalStatus(id);
+        setEvalStatus(status.status);
+        setEvalSteps(status.steps || []);
+        setElapsed(status.elapsedSeconds || 0);
+
+        if (status.status === "SUCCEEDED" || status.status === "FAILED" || status.status === "TIMED_OUT" || status.status === "ABORTED") {
+          stopPolling();
+          sessionStorage.removeItem("runningEvalId");
+          if (status.status === "SUCCEEDED") {
+            addNotification("success", "Evaluation completed successfully!");
+          } else {
+            addNotification("error", `Evaluation ${status.status.toLowerCase()}`);
+          }
+        }
+      } catch {
+        /* keep polling */
       }
-      setCurrentPageIndex((current) =>
-        Math.min(pages.length + 1, current + 1)
-      );
+    };
+    poll();
+    pollRef.current = setInterval(poll, 5000);
+  };
+
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
     }
   };
 
-  const onPreviousPageClick = async () => {
-    setCurrentPageIndex((current) =>
-      Math.max(1, Math.min(pages.length - 1, current - 1))
-    );
-  };
-
-  const refreshPage = async () => {
-    if (currentPageIndex <= 1) {
-      await getDocuments({ pageIndex: currentPageIndex });
-    } else {
-      const continuationToken =
-        pages[currentPageIndex - 2]?.NextContinuationToken!;
-      await getDocuments({ continuationToken });
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (ext !== "json" && ext !== "csv") {
+      setGlobalError("Only .json and .csv files are supported");
+      return;
+    }
+    setUploading(true);
+    setGlobalError(undefined);
+    try {
+      const signedUrl = await apiClient.evaluations.getUploadURL(file.name, file.type);
+      await fetch(signedUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      setUploadedFile(`test-cases/${file.name}`);
+      addNotification("success", `Uploaded ${file.name}`);
+    } catch (err) {
+      setGlobalError(`Upload failed: ${Utils.getErrorMessage(err)}`);
+    } finally {
+      setUploading(false);
     }
   };
 
-  const columnDefinitions = getColumnDefinition(
-    props.documentType,
-    onProblemClick
-  );
+  const handleRun = async () => {
+    setGlobalError(undefined);
+    const name = evalName.trim() || `Eval - ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
 
-  const currentItems =
-    pages[Math.min(pages.length - 1, currentPageIndex - 1)]?.Contents || [];
+    try {
+      setRunning(true);
+      let result: any;
 
-  return (
-    <Stack spacing={2}>
-      {globalError && <Alert severity="error">{globalError}</Alert>}
+      if (sourceType === "upload") {
+        if (!uploadedFile) {
+          setGlobalError("Please upload a file first");
+          setRunning(false);
+          return;
+        }
+        result = await apiClient.evaluations.startNewEvaluation(name, uploadedFile);
+      } else if (sourceType === "past") {
+        if (!selectedFile) {
+          setGlobalError("Please select a file");
+          setRunning(false);
+          return;
+        }
+        result = await apiClient.evaluations.startNewEvaluation(name, selectedFile.Key);
+      } else {
+        const exported = await apiClient.evaluations.exportTestLibrary();
+        if (!exported.items || exported.items.length === 0) {
+          setGlobalError("Test library is empty. Add Q&A pairs first.");
+          setRunning(false);
+          return;
+        }
+        result = await apiClient.evaluations.startNewEvaluation(name, undefined, exported.items);
+      }
 
-      <Paper sx={{ p: 2 }}>
-        <Stack direction="row" spacing={2} alignItems="center">
-          <Typography variant="body1">Evaluation Name:</Typography>
-          <TextField
-            value={evalName}
-            placeholder="SampleEvalName"
-            onChange={(e) => setEvalName(e.target.value)}
-            size="small"
-          />
-          <Button
-            variant="contained"
-            onClick={onNewEvaluation}
-            disabled={!selectedFile}
-          >
-            Create New Evaluation
-          </Button>
-        </Stack>
-      </Paper>
+      const id = result.evaluationId;
+      setEvaluationId(id);
+      sessionStorage.setItem("runningEvalId", id);
+      startPolling(id);
+    } catch (err) {
+      setGlobalError(`Failed to start: ${Utils.getErrorMessage(err)}`);
+      setRunning(false);
+    }
+  };
 
-      <Stack spacing={1}>
-        <Stack
-          direction="row"
-          justifyContent="space-between"
-          alignItems="center"
-        >
-          <Box>
-            <Typography variant="h6">Files</Typography>
+  const canRun =
+    (sourceType === "upload" && !!uploadedFile) ||
+    (sourceType === "past" && !!selectedFile) ||
+    (sourceType === "library" && (libraryCount ?? 0) > 0);
+
+  if (running) {
+    const overallPct = evalSteps.length > 0
+      ? (evalSteps.filter((s) => s.status === "completed").length / evalSteps.length) * 100
+      : 0;
+
+    const isTerminal = ["SUCCEEDED", "FAILED", "TIMED_OUT", "ABORTED"].includes(evalStatus);
+
+    return (
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          {isTerminal ? `Evaluation ${evalStatus.toLowerCase()}` : "Evaluation in progress"}
+        </Typography>
+
+        <Stepper orientation="vertical" activeStep={evalSteps.findIndex((s) => s.status === "running")}>
+          {evalSteps.map((step, i) => (
+            <Step key={step.name} completed={step.status === "completed"}>
+              <StepLabel
+                error={step.status === "failed"}
+                icon={
+                  step.status === "completed" ? <CheckCircleIcon color="success" /> :
+                  step.status === "failed" ? <ErrorIcon color="error" /> :
+                  step.status === "running" ? <CircularProgress size={24} /> :
+                  undefined
+                }
+              >
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography>{step.name}</Typography>
+                  {step.status === "running" && step.chunksTotal ? (
+                    <Chip size="small" label={`${step.chunksCompleted}/${step.chunksTotal} chunks`} />
+                  ) : step.status === "completed" ? (
+                    <Chip size="small" label="Done" color="success" variant="outlined" />
+                  ) : null}
+                </Stack>
+              </StepLabel>
+              {step.status === "running" && step.chunksTotal ? (
+                <StepContent>
+                  <LinearProgress
+                    variant="determinate"
+                    value={(step.chunksCompleted! / step.chunksTotal) * 100}
+                    sx={{ height: 8, borderRadius: 4 }}
+                  />
+                </StepContent>
+              ) : null}
+            </Step>
+          ))}
+        </Stepper>
+
+        <Box sx={{ mt: 3 }}>
+          <LinearProgress variant="determinate" value={overallPct} sx={{ height: 10, borderRadius: 5, mb: 1 }} />
+          <Stack direction="row" justifyContent="space-between">
             <Typography variant="body2" color="text.secondary">
-              Please select a test case file for your next evaluation. Press the
-              refresh button to see the latest test case files.
+              {overallPct.toFixed(0)}% complete
             </Typography>
-          </Box>
-          <IconButton
-            onClick={refreshPage}
-            aria-label="Refresh test case documents"
-          >
-            <RefreshIcon />
-          </IconButton>
-        </Stack>
-
-        {loading ? (
-          <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
-            <CircularProgress />
-          </Box>
-        ) : currentItems.length === 0 ? (
-          <Box sx={{ textAlign: "center", p: 4 }}>
-            <Typography color="text.secondary">
-              No test case files uploaded. Please upload a test case file before
-              running an evaluation.
+            <Typography variant="body2" color="text.secondary">
+              {Math.floor(elapsed / 60)}m {elapsed % 60}s elapsed
             </Typography>
-          </Box>
-        ) : (
-          <TableContainer component={Paper}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell padding="checkbox" sx={{ fontWeight: "bold" }}>
-                    Select
-                  </TableCell>
-                  {columnDefinitions.map((col) => (
-                    <TableCell key={col.id} sx={{ fontWeight: "bold" }}>
-                      {col.header}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {currentItems.map((item, index) => (
-                  <TableRow
-                    key={item.Key || index}
-                    hover
-                    selected={selectedFile?.Key === item.Key}
-                    onClick={() =>
-                      setSelectedFile((prev) =>
-                        prev?.Key === item.Key ? null : item
-                      )
-                    }
-                    sx={{ cursor: "pointer" }}
-                  >
-                    <TableCell padding="checkbox">
-                      <Radio
-                        checked={selectedFile?.Key === item.Key}
-                        onChange={() =>
-                          setSelectedFile((prev) =>
-                            prev?.Key === item.Key ? null : item
-                          )
-                        }
-                      />
-                    </TableCell>
-                    {columnDefinitions.map((col) => (
-                      <TableCell key={col.id}>{col.cell(item)}</TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
+          </Stack>
+        </Box>
 
-        {pages.length > 0 && (
-          <Stack
-            direction="row"
-            justifyContent="center"
-            spacing={2}
-            sx={{ py: 1 }}
-          >
-            <Button
-              size="small"
-              disabled={currentPageIndex <= 1}
-              onClick={onPreviousPageClick}
-            >
-              Previous
+        {isTerminal && (
+          <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
+            <Button variant="contained" onClick={onComplete}>
+              View Results
             </Button>
-            <Typography variant="body2" sx={{ alignSelf: "center" }}>
-              Page {currentPageIndex}
-            </Typography>
             <Button
-              size="small"
-              disabled={
-                !pages[currentPageIndex - 1]?.NextContinuationToken
-              }
-              onClick={onNextPageClick}
+              variant="outlined"
+              onClick={() => {
+                setRunning(false);
+                setEvaluationId(null);
+                setEvalSteps([]);
+                setEvalStatus("PENDING");
+              }}
             >
-              Next
+              Run Another
             </Button>
           </Stack>
         )}
-      </Stack>
+      </Paper>
+    );
+  }
+
+  return (
+    <Stack spacing={3}>
+      {globalError && <Alert severity="error">{globalError}</Alert>}
+
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Step 1: Choose Test Case Source
+        </Typography>
+        <RadioGroup value={sourceType} onChange={(e) => setSourceType(e.target.value as SourceType)}>
+          <FormControlLabel value="upload" control={<Radio />} label="Upload New File" />
+          <FormControlLabel value="past" control={<Radio />} label="Select from Past Uploads" />
+          <FormControlLabel
+            value="library"
+            control={<Radio />}
+            label={`Use Master Library${libraryCount !== null ? ` (${libraryCount} Q&A pairs)` : ""}`}
+          />
+        </RadioGroup>
+      </Paper>
+
+      {sourceType === "upload" && (
+        <Paper sx={{ p: 3 }}>
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept=".json,.csv"
+            onChange={handleFileUpload}
+            style={{ display: "none" }}
+          />
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Button
+              variant="outlined"
+              startIcon={<CloudUploadIcon />}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+            >
+              {uploading ? "Uploading..." : "Choose File"}
+            </Button>
+            {uploadedFile && (
+              <Chip label={uploadedFile.split("/").pop()} color="success" variant="outlined" />
+            )}
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+            Supported formats: JSON, CSV. File will be auto-added to the Test Library.
+          </Typography>
+        </Paper>
+      )}
+
+      {sourceType === "past" && (
+        <Paper sx={{ p: 2 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+            <Typography variant="subtitle1">Past Uploads</Typography>
+            <IconButton onClick={loadPastFiles} size="small">
+              <RefreshIcon />
+            </IconButton>
+          </Stack>
+          {loadingFiles ? (
+            <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
+              <CircularProgress size={28} />
+            </Box>
+          ) : pastFiles.length === 0 ? (
+            <Typography color="text.secondary" align="center" sx={{ py: 3 }}>
+              No test case files found. Upload one first.
+            </Typography>
+          ) : (
+            <TableContainer sx={{ maxHeight: 300 }}>
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell padding="checkbox" />
+                    <TableCell>File</TableCell>
+                    <TableCell>Date</TableCell>
+                    <TableCell>Size</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {pastFiles.map((file) => (
+                    <TableRow
+                      key={file.Key}
+                      hover
+                      selected={selectedFile?.Key === file.Key}
+                      onClick={() => setSelectedFile(selectedFile?.Key === file.Key ? null : file)}
+                      sx={{ cursor: "pointer" }}
+                    >
+                      <TableCell padding="checkbox">
+                        <Radio checked={selectedFile?.Key === file.Key} size="small" />
+                      </TableCell>
+                      <TableCell>{file.Key}</TableCell>
+                      <TableCell>
+                        {new Date(file.LastModified).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>{Utils.bytesToSize(file.Size)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Paper>
+      )}
+
+      {sourceType === "library" && (
+        <Paper sx={{ p: 3 }}>
+          <Typography>
+            All {libraryCount ?? 0} Q&A pairs from the master library will be used for evaluation.
+          </Typography>
+        </Paper>
+      )}
+
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Step 2: Configure & Run
+        </Typography>
+        <Stack direction="row" spacing={2} alignItems="center">
+          <TextField
+            label="Evaluation Name"
+            placeholder={`Eval - ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
+            value={evalName}
+            onChange={(e) => setEvalName(e.target.value)}
+            size="small"
+            sx={{ minWidth: 300 }}
+          />
+          <Button variant="contained" onClick={handleRun} disabled={!canRun} size="large">
+            Run Evaluation
+          </Button>
+        </Stack>
+        {canRun && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            {sourceType === "upload" && uploadedFile
+              ? `Selected: ${uploadedFile.split("/").pop()}`
+              : sourceType === "past" && selectedFile
+                ? `Selected: ${selectedFile.Key}`
+                : sourceType === "library"
+                  ? `Using all ${libraryCount} Q&A pairs from master library`
+                  : ""}
+          </Typography>
+        )}
+      </Paper>
     </Stack>
   );
 }

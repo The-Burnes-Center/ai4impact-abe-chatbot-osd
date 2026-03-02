@@ -330,7 +330,11 @@ export class StepFunctionsStack extends Construct {
             retryOnServiceExceptions: true,
         });
       
-        // Add error handling to each step
+        processTestCasesMap.addCatch(catchAndPassEvaluationId, {
+            errors: ['States.ALL'],
+            resultPath: '$.error'
+        });
+
         splitTestCasesTask.addCatch(catchAndPassEvaluationId, {
             errors: ['States.ALL'],
             resultPath: '$.error'
@@ -375,6 +379,8 @@ export class StepFunctionsStack extends Construct {
             handler: 'index.handler',
             environment: {
                 "STATE_MACHINE_ARN": this.llmEvalStateMachine.stateMachineArn,
+                "EVAL_SUMMARIES_TABLE": props.evalSummariesTable.tableName,
+                "TEST_CASES_BUCKET": props.evalTestCasesBucket.bucketName,
             },
             timeout: cdk.Duration.seconds(30),
         });
@@ -382,6 +388,16 @@ export class StepFunctionsStack extends Construct {
             effect: iam.Effect.ALLOW,
             actions: ['states:StartExecution'],
             resources: [this.llmEvalStateMachine.stateMachineArn], 
+        }));
+        startLlmEvalStateMachineFunction.addToRolePolicy(new iam.PolicyStatement({
+            effect: iam.Effect.ALLOW,
+            actions: ['dynamodb:PutItem'],
+            resources: [props.evalSummariesTable.tableArn],
+        }));
+        startLlmEvalStateMachineFunction.addToRolePolicy(new iam.PolicyStatement({
+            effect: iam.Effect.ALLOW,
+            actions: ['s3:PutObject'],
+            resources: [props.evalTestCasesBucket.bucketArn + "/*"],
         }));
         this.startLlmEvalStateMachineFunction = startLlmEvalStateMachineFunction;
     }
