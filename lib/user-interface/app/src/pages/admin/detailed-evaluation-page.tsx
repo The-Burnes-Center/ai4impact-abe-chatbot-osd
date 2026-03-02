@@ -23,7 +23,7 @@ import {
   Tooltip,
 } from "@mui/material";
 import Grid from "@mui/material/Grid2";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { AppContext } from "../../common/app-context";
 import { ApiClient } from "../../common/api-client/api-client";
 import { Utils } from "../../common/utils";
@@ -68,11 +68,12 @@ function escapeCSVValue(val: any): string {
 function DetailedEvaluationPage() {
   const { evaluationId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const appContext = useContext(AppContext);
   const apiClient = new ApiClient(appContext);
   const [loading, setLoading] = useState(true);
   const { addNotification } = useNotifications();
-  const [evaluationName, setEvaluationName] = useState("");
+  const [evaluationName, setEvaluationName] = useState(searchParams.get("name") || "");
   const [currentPageIndex, setCurrentPageIndex] = useState(1);
   const [pages, setPages] = useState<any[]>([]);
   const needsRefresh = useRef(false);
@@ -123,7 +124,9 @@ function DetailedEvaluationPage() {
         return [...current, result];
       });
       if (result.Items?.length > 0) {
-        setEvaluationName(result.Items[0].evaluation_name || "Unnamed");
+        if (!evaluationName && result.Items[0].evaluation_name) {
+          setEvaluationName(result.Items[0].evaluation_name);
+        }
         setAllItems(result.Items);
       }
     } catch (error) {

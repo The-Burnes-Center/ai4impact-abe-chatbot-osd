@@ -96,22 +96,47 @@ export default function PastEvalsTab() {
           return;
         }
 
+        const mapped = result.Items.map((evaluation: any) => ({
+          ...evaluation,
+          EvaluationId: evaluation.EvaluationId,
+          evaluation_name: evaluation.evaluation_name || "Unnamed",
+          Timestamp: evaluation.Timestamp,
+          average_similarity: typeof evaluation.average_similarity === "number" ? evaluation.average_similarity : 0,
+          average_relevance: typeof evaluation.average_relevance === "number" ? evaluation.average_relevance : 0,
+          average_correctness: typeof evaluation.average_correctness === "number" ? evaluation.average_correctness : 0,
+          average_context_precision: typeof evaluation.average_context_precision === "number" ? evaluation.average_context_precision : 0,
+          average_context_recall: typeof evaluation.average_context_recall === "number" ? evaluation.average_context_recall : 0,
+          average_response_relevancy: typeof evaluation.average_response_relevancy === "number" ? evaluation.average_response_relevancy : 0,
+          average_faithfulness: typeof evaluation.average_faithfulness === "number" ? evaluation.average_faithfulness : 0,
+          total_questions: evaluation.total_questions || 0,
+        }));
+
+        const deduped = new Map<string, any>();
+        for (const item of mapped) {
+          const id = item.EvaluationId;
+          if (!id) continue;
+          const existing = deduped.get(id);
+          if (!existing) {
+            deduped.set(id, item);
+          } else {
+            const hasScores = (e: any) => e.average_correctness > 0 || e.average_similarity > 0;
+            if (hasScores(item) && !hasScores(existing)) {
+              deduped.set(id, { ...item, executionArn: existing.executionArn || item.executionArn });
+            } else if (!hasScores(item) && hasScores(existing)) {
+              deduped.set(id, { ...existing, executionArn: item.executionArn || existing.executionArn });
+            } else {
+              const itemTime = new Date(item.Timestamp).getTime();
+              const existingTime = new Date(existing.Timestamp).getTime();
+              if (itemTime > existingTime) {
+                deduped.set(id, { ...item, executionArn: existing.executionArn || item.executionArn });
+              }
+            }
+          }
+        }
+
         const processedResult = {
           ...result,
-          Items: result.Items.map((evaluation: any) => ({
-            ...evaluation,
-            EvaluationId: evaluation.EvaluationId,
-            evaluation_name: evaluation.evaluation_name || "Unnamed",
-            Timestamp: evaluation.Timestamp,
-            average_similarity: typeof evaluation.average_similarity === "number" ? evaluation.average_similarity : 0,
-            average_relevance: typeof evaluation.average_relevance === "number" ? evaluation.average_relevance : 0,
-            average_correctness: typeof evaluation.average_correctness === "number" ? evaluation.average_correctness : 0,
-            average_context_precision: typeof evaluation.average_context_precision === "number" ? evaluation.average_context_precision : 0,
-            average_context_recall: typeof evaluation.average_context_recall === "number" ? evaluation.average_context_recall : 0,
-            average_response_relevancy: typeof evaluation.average_response_relevancy === "number" ? evaluation.average_response_relevancy : 0,
-            average_faithfulness: typeof evaluation.average_faithfulness === "number" ? evaluation.average_faithfulness : 0,
-            total_questions: evaluation.total_questions || 0,
-          })),
+          Items: Array.from(deduped.values()),
         };
 
         setError(null);
@@ -201,7 +226,7 @@ export default function PastEvalsTab() {
             </TableHead>
             <TableBody>
               {sortedItems.map((item: any, index: number) => {
-                const isRunning = item.status === "RUNNING" || (item.executionArn && !item.average_correctness);
+                const isRunning = item.status === "RUNNING" && !(item.average_correctness > 0 || item.average_similarity > 0);
                 return (
                   <TableRow key={item.EvaluationId || index} hover sx={isRunning ? { opacity: 0.7 } : {}}>
                     {columnDefinitions.map((col) => (

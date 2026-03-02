@@ -33,41 +33,101 @@ def convert_from_decimal(item):
     else:
         return item
 
-# function to add a new evaluation (summary and detailed results) to DynamoDB
+def _find_existing_placeholder(evaluation_id):
+    """Find the existing placeholder record created by start-llm-eval."""
+    from boto3.dynamodb.conditions import Key, Attr
+    try:
+        resp = summaries_table.query(
+            KeyConditionExpression=Key("PartitionKey").eq("Evaluation"),
+            FilterExpression=Attr("EvaluationId").eq(evaluation_id),
+            ScanIndexForward=False,
+        )
+        items = resp.get("Items", [])
+        for item in items:
+            if item.get("executionArn"):
+                return item
+        return items[0] if items else None
+    except Exception as e:
+        logger.warning(f"Could not find placeholder for {evaluation_id}: {e}")
+        return None
+
 def add_evaluation(evaluation_id, evaluation_name, average_similarity,
                    average_relevance, average_correctness, total_questions, 
                    detailed_results, test_cases_key, 
                    average_context_precision=None, average_context_recall=None, 
                    average_response_relevancy=None, average_faithfulness=None):
     try:
-        timestamp = str(datetime.now())
-        # Add evaluation summary
-        summary_item = {
-            'EvaluationId': evaluation_id,
-            'Timestamp': timestamp,
-            'average_similarity': Decimal(str(average_similarity)),
-            'average_relevance': Decimal(str(average_relevance)),
-            'average_correctness': Decimal(str(average_correctness)),
-            'total_questions': total_questions,
-            'evaluation_name': evaluation_name.strip() if evaluation_name else None,
-            'test_cases_key': test_cases_key,
-            'PartitionKey': "Evaluation" 
-        }
-        
-        # Add the RAG metrics if they exist
-        if average_context_precision is not None:
-            summary_item['average_context_precision'] = Decimal(str(average_context_precision))
-        if average_context_recall is not None:
-            summary_item['average_context_recall'] = Decimal(str(average_context_recall))
-        if average_response_relevancy is not None:
-            summary_item['average_response_relevancy'] = Decimal(str(average_response_relevancy))
-        if average_faithfulness is not None:
-            summary_item['average_faithfulness'] = Decimal(str(average_faithfulness))
+        existing = _find_existing_placeholder(evaluation_id)
 
-        # Remove None values
-        summary_item = {k: v for k, v in summary_item.items() if v is not None}
+        if existing:
+            pk = existing["PartitionKey"]
+            ts = existing["Timestamp"]
+            update_expr_parts = [
+                "SET average_similarity = :sim",
+                "average_relevance = :rel",
+                "average_correctness = :cor",
+                "total_questions = :tq",
+                "#st = :done",
+            ]
+            expr_values = {
+                ":sim": Decimal(str(average_similarity)),
+                ":rel": Decimal(str(average_relevance)),
+                ":cor": Decimal(str(average_correctness)),
+                ":tq": total_questions,
+                ":done": "COMPLETED",
+            }
+            expr_names = {"#st": "status"}
+            if evaluation_name and evaluation_name.strip():
+                update_expr_parts.append("evaluation_name = :en")
+                expr_values[":en"] = evaluation_name.strip()
+            if test_cases_key:
+                update_expr_parts.append("test_cases_key = :tk")
+                expr_values[":tk"] = test_cases_key
+            if average_context_precision is not None:
+                update_expr_parts.append("average_context_precision = :cp")
+                expr_values[":cp"] = Decimal(str(average_context_precision))
+            if average_context_recall is not None:
+                update_expr_parts.append("average_context_recall = :cr")
+                expr_values[":cr"] = Decimal(str(average_context_recall))
+            if average_response_relevancy is not None:
+                update_expr_parts.append("average_response_relevancy = :rr")
+                expr_values[":rr"] = Decimal(str(average_response_relevancy))
+            if average_faithfulness is not None:
+                update_expr_parts.append("average_faithfulness = :fa")
+                expr_values[":fa"] = Decimal(str(average_faithfulness))
 
-        summaries_table.put_item(Item=summary_item)
+            summaries_table.update_item(
+                Key={"PartitionKey": pk, "Timestamp": ts},
+                UpdateExpression=", ".join(update_expr_parts),
+                ExpressionAttributeValues=expr_values,
+                ExpressionAttributeNames=expr_names,
+            )
+            logger.info(f"Updated existing placeholder for {evaluation_id} at Timestamp={ts}")
+        else:
+            timestamp = str(datetime.now())
+            summary_item = {
+                'EvaluationId': evaluation_id,
+                'Timestamp': timestamp,
+                'average_similarity': Decimal(str(average_similarity)),
+                'average_relevance': Decimal(str(average_relevance)),
+                'average_correctness': Decimal(str(average_correctness)),
+                'total_questions': total_questions,
+                'evaluation_name': evaluation_name.strip() if evaluation_name else None,
+                'test_cases_key': test_cases_key,
+                'PartitionKey': "Evaluation",
+                'status': 'COMPLETED',
+            }
+            if average_context_precision is not None:
+                summary_item['average_context_precision'] = Decimal(str(average_context_precision))
+            if average_context_recall is not None:
+                summary_item['average_context_recall'] = Decimal(str(average_context_recall))
+            if average_response_relevancy is not None:
+                summary_item['average_response_relevancy'] = Decimal(str(average_response_relevancy))
+            if average_faithfulness is not None:
+                summary_item['average_faithfulness'] = Decimal(str(average_faithfulness))
+            summary_item = {k: v for k, v in summary_item.items() if v is not None}
+            summaries_table.put_item(Item=summary_item)
+            logger.info(f"Created new summary for {evaluation_id}")
 
         # Add detailed results (batch write)
         with results_table.batch_writer() as batch:

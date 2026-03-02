@@ -57,11 +57,12 @@ export function getColumnDefinition(
   documentType: AdminDataType,
   onProblemClick: (item: any) => void
 ): ColumnDefinition[] {
-  function ViewDetailsButton({ evaluationId }: { evaluationId: string }) {
+  function ViewDetailsButton({ evaluationId, evalName }: { evaluationId: string; evalName?: string }) {
     const navigate = useNavigate();
+    const qs = evalName ? `?name=${encodeURIComponent(evalName)}` : "";
     return (
       <Button
-        onClick={() => navigate(`/admin/llm-evaluation/details/${evaluationId}`)}
+        onClick={() => navigate(`/admin/llm-evaluation/details/${evaluationId}${qs}`)}
         variant="text"
         size="small"
       >
@@ -155,7 +156,7 @@ export function getColumnDefinition(
     {
       id: "viewDetails",
       header: "",
-      cell: (item) => <ViewDetailsButton evaluationId={item.EvaluationId} />,
+      cell: (item) => <ViewDetailsButton evaluationId={item.EvaluationId} evalName={item.evaluation_name} />,
       disableSort: true,
       width: "80px",
     },

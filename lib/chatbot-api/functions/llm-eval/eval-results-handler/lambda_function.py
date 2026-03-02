@@ -177,7 +177,7 @@ def get_eval_status(evaluation_id):
             KeyConditionExpression=Key("PartitionKey").eq("Evaluation"),
             FilterExpression="EvaluationId = :eid",
             ExpressionAttributeValues={":eid": evaluation_id},
-            Limit=1,
+            ScanIndexForward=False,
         )
         items = resp.get("Items", [])
         if not items:

@@ -111,9 +111,11 @@ export default function NewEvalTab({ onComplete }: RunEvalTabProps) {
 
   const startPolling = (id: string) => {
     stopPolling();
+    let consecutiveErrors = 0;
     const poll = async () => {
       try {
         const status = await apiClient.evaluations.getEvalStatus(id);
+        consecutiveErrors = 0;
         setEvalStatus(status.status);
         setEvalSteps(status.steps || []);
         setElapsed(status.elapsedSeconds || 0);
@@ -127,8 +129,14 @@ export default function NewEvalTab({ onComplete }: RunEvalTabProps) {
             addNotification("error", `Evaluation ${status.status.toLowerCase()}`);
           }
         }
-      } catch {
-        /* keep polling */
+      } catch (err) {
+        consecutiveErrors++;
+        if (consecutiveErrors >= 6) {
+          stopPolling();
+          setEvalStatus("FAILED");
+          setGlobalError("Lost connection to evaluation status. Please check the History tab for results.");
+          sessionStorage.removeItem("runningEvalId");
+        }
       }
     };
     poll();
