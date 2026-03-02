@@ -267,7 +267,7 @@ export class StepFunctionsStack extends Construct {
 
         const processTestCasesMap = new stepfunctions.Map(this, 'Process Test Cases', {
             itemsPath: '$.chunk_keys',
-            maxConcurrency: 5,
+            maxConcurrency: 2,
             resultPath: '$.partial_result_keys',
             itemSelector: {
                 'chunk_key.$': '$$.Map.Item.Value.chunk_key',
@@ -316,7 +316,7 @@ export class StepFunctionsStack extends Construct {
                 'average_response_relevancy.$': '$.average_response_relevancy',
                 'average_faithfulness.$': '$.average_faithfulness'
             }),
-            outputPath: '$.Payload',
+            resultPath: '$.saveResult',
             retryOnServiceExceptions: true,
         });
 

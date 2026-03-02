@@ -52,7 +52,7 @@ def lambda_handler(event, context):
                 logging.info(f"Starting test case {idx+1}/{len(test_cases)}")
 
                 if idx > 0:
-                    time.sleep(0.5)
+                    time.sleep(3)
 
                 result = process_test_case(idx, test_case)
                 detailed_results.append(result)
@@ -155,7 +155,6 @@ def process_test_case(idx, test_case):
     logging.info(f"Evaluating response for test case {idx+1}")
 
     max_retries = 3
-    retry_delay = 2
     result = None
 
     for retry in range(max_retries):
@@ -163,8 +162,9 @@ def process_test_case(idx, test_case):
             result = evaluate_with_ragas(question, expected_response, actual_response, retrieved_context)
             break
         except Exception as e:
+            retry_delay = 5 * (2 ** retry)
             if retry < max_retries - 1:
-                logging.warning(f"Retry {retry+1}/{max_retries} for RAGAS evaluation: {str(e)}")
+                logging.warning(f"Retry {retry+1}/{max_retries} for RAGAS evaluation (waiting {retry_delay}s): {str(e)}")
                 time.sleep(retry_delay)
             else:
                 raise
@@ -225,18 +225,21 @@ def invoke_generate_response_lambda(lambda_client, question, get_context_only=Fa
 
 
 def evaluate_with_ragas(question, expected_response, actual_response, retrieved_context):
+    import pandas as pd
     from ragas import evaluate
     from ragas.metrics import (
         answer_correctness,
-        answer_similarity,
         answer_relevancy,
         context_precision,
         context_recall,
         faithfulness,
     )
+    from ragas.metrics._answer_similarity import SemanticSimilarity
     from ragas import SingleTurnSample, EvaluationDataset
+    from ragas.run_config import RunConfig
 
-    metrics = [answer_correctness, answer_similarity, answer_relevancy, context_precision, context_recall, faithfulness]
+    semantic_similarity = SemanticSimilarity()
+    metrics = [answer_correctness, semantic_similarity, answer_relevancy, context_precision, context_recall, faithfulness]
 
     if not actual_response:
         actual_response = "No response"
@@ -268,28 +271,43 @@ def evaluate_with_ragas(question, expected_response, actual_response, retrieved_
         model_id='amazon.titan-embed-text-v2:0',
     ))
 
-    logging.info("Starting RAGAS evaluation")
-    result = evaluate(dataset=dataset, metrics=metrics, llm=evaluator_llm, embeddings=evaluator_embeddings)
-    scores = result.to_pandas().iloc[0]
+    run_config = RunConfig(timeout=120, max_retries=2, max_wait=30)
 
-    import pandas as pd
-    if scores.isnull().values.any():
-        nan_metrics = [col for col in scores.index if pd.isna(scores[col])]
-        error_msg = f"RAGAS evaluation returned NaN scores for: {', '.join(nan_metrics)}"
-        logging.error(error_msg)
-        raise ValueError(error_msg)
+    logging.info("Starting RAGAS evaluation")
+    result = evaluate(
+        dataset=dataset,
+        metrics=metrics,
+        llm=evaluator_llm,
+        embeddings=evaluator_embeddings,
+        run_config=run_config,
+    )
+    scores_df = result.to_pandas()
+    logging.info(f"RAGAS result columns: {list(scores_df.columns)}")
+
+    metric_cols = [c for c in scores_df.columns if c not in ('user_input', 'response', 'reference', 'retrieved_contexts')]
+    row = scores_df.iloc[0]
+
+    nan_cols = [c for c in metric_cols if pd.isna(row.get(c))]
+    if nan_cols:
+        logging.warning(f"RAGAS returned NaN for: {nan_cols} — defaulting to 0")
+
+    def safe_score(col):
+        val = row.get(col)
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return 0.0
+        return float(val)
 
     logging.info("RAGAS evaluation completed successfully")
     return {
         "status": "success",
         "scores": {
-            "similarity": float(scores.get('semantic_similarity', 0)),
-            "relevance": float(scores.get('answer_relevancy', 0)),
-            "correctness": float(scores.get('answer_correctness', 0)),
-            "context_precision": float(scores.get('context_precision', 0)),
-            "context_recall": float(scores.get('context_recall', 0)),
-            "response_relevancy": float(scores.get('answer_relevancy', 0)),
-            "faithfulness": float(scores.get('faithfulness', 0)),
+            "similarity": safe_score('semantic_similarity'),
+            "relevance": safe_score('answer_relevancy'),
+            "correctness": safe_score('answer_correctness'),
+            "context_precision": safe_score('context_precision'),
+            "context_recall": safe_score('context_recall'),
+            "response_relevancy": safe_score('answer_relevancy'),
+            "faithfulness": safe_score('faithfulness'),
         }
     }
 
