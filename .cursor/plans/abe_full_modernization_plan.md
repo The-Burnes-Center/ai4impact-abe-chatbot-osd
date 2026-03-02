@@ -84,8 +84,8 @@ todos:
     content: "Phase 4: Add Pydantic (Python) + Zod (JS) validation for all 13 LLM-to-JSON parsing points"
     status: pending
   - id: phase4-analytics-agency-name
-    content: "Phase 4 [Analytics]: Enrich all analytics with user display name + agency parsed from UI username (e.g. 'Kumar, Dhruv (A&F)'); store per message; add agency filter/breakdown and admin-facing analytics UX"
-    status: pending
+    content: "Phase 4 [Analytics]: Enrich all analytics with user display name + agency parsed from UI username (e.g. 'Kumar, Dhruv (A&F)'); store per message; agency/user breakdown tabs; FAQ samples with user attribution; old data cleared. Deployed 2026-03-02."
+    status: completed
   - id: phase5-websocket
     content: "Phase 5: Abstract WebSocket with react-use-websocket, move JWT from URL"
     status: pending

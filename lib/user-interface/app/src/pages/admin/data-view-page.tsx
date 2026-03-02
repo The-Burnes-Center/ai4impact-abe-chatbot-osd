@@ -52,6 +52,21 @@ export default function DataPage() {
   );
   const [tradeStatus, setTradeStatus] = useState<IndexStatus | null>(null);
 
+  const fetchIndexStatuses = async () => {
+    try {
+      const s = await apiClient.contractIndex.getStatus();
+      setContractStatus(s);
+    } catch {
+      setContractStatus(null);
+    }
+    try {
+      const s = await apiClient.tradeIndex.getStatus();
+      setTradeStatus(s);
+    } catch {
+      setTradeStatus(null);
+    }
+  };
+
   const refreshSyncTime = async () => {
     try {
       const syncData =
@@ -72,6 +87,7 @@ export default function DataPage() {
 
   useEffect(() => {
     refreshSyncTime();
+    fetchIndexStatuses();
   }, []);
 
   const kbChipVariant = (): StatusVariant => {
