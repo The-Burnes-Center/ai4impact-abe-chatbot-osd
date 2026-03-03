@@ -145,6 +145,26 @@ export default function Chat(props: { sessionId?: string }) {
     await apiClient.userFeedback.sendUserFeedback(feedbackData);
   };
 
+  const handleAddToTestLibrary = async (idx: number, message: ChatBotHistoryItem) => {
+    if (!appContext || !props.sessionId) return;
+    try {
+      const user = await Auth.currentAuthenticatedUser();
+      const prompt = messageHistory[idx - 1]?.content ?? "";
+      const completion = message.content;
+      const apiClient = new ApiClient(appContext);
+      await apiClient.userFeedback.submitToTestLibrary({
+        prompt,
+        completion,
+        sources: JSON.stringify(message.metadata.Sources),
+        sessionId: props.sessionId,
+        userId: user.username ?? "",
+        displayName: user.attributes?.name ?? user.username ?? "",
+      });
+    } catch (e) {
+      addNotification("error", "Could not save example. Please try again.");
+    }
+  };
+
   const isEmpty = messageHistory.length === 0 && !session?.loading;
 
   const lastAiIdx = (() => {
@@ -207,6 +227,7 @@ export default function Chat(props: { sessionId?: string }) {
                     feedbackMessage
                   )
                 }
+                onAddToTestLibrary={() => handleAddToTestLibrary(idx, message)}
               />
             ))}
           </Stack>

@@ -29,6 +29,7 @@ import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import Collapse from "@mui/material/Collapse";
+import Snackbar from "@mui/material/Snackbar";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import styles from "../../styles/chat.module.scss";
@@ -49,6 +50,7 @@ export interface ChatMessageProps {
   streamingStatus?: StreamingStatus;
   onThumbsUp: () => void;
   onThumbsDown: (feedbackTopic: string, feedbackType: string, feedbackMessage: string) => void;
+  onAddToTestLibrary?: () => void;
 }
 
 export default function ChatMessage(props: ChatMessageProps) {
@@ -60,6 +62,7 @@ export default function ChatMessage(props: ChatMessageProps) {
   const [value, setValue] = useState("");
   const [copied, setCopied] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [showTestLibrarySnackbar, setShowTestLibrarySnackbar] = useState(false);
 
   const formattedTime = props.message.timestamp
     ? new Date(props.message.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
@@ -167,6 +170,38 @@ export default function ChatMessage(props: ChatMessageProps) {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Save-as-good-example prompt */}
+      <Snackbar
+        open={showTestLibrarySnackbar}
+        autoHideDuration={10000}
+        onClose={() => setShowTestLibrarySnackbar(false)}
+        message="Help us improve — save this as a good example?"
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        action={
+          <>
+            <Button
+              size="small"
+              onClick={() => setShowTestLibrarySnackbar(false)}
+              sx={{ color: "grey.400" }}
+            >
+              Dismiss
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              onClick={() => {
+                setShowTestLibrarySnackbar(false);
+                props.onAddToTestLibrary?.();
+                const id = addNotification("success", "Saved! Thanks for helping improve ABE.");
+                Utils.delay(3000).then(() => removeNotification(id));
+              }}
+            >
+              Save
+            </Button>
+          </>
+        }
+      />
 
       {/* AI Message */}
       {props.message?.type === ChatBotMessageType.AI && (
@@ -292,6 +327,9 @@ export default function ChatMessage(props: ChatMessageProps) {
                         const id = addNotification("success", "Thank you for your valuable feedback!");
                         Utils.delay(3000).then(() => removeNotification(id));
                         setSelectedIcon(1);
+                        if (props.onAddToTestLibrary) {
+                          setShowTestLibrarySnackbar(true);
+                        }
                       }}
                       aria-label="Mark response as helpful"
                       sx={{ borderRadius: 1.5, px: 1, gap: 0.5 }}

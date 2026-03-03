@@ -94,6 +94,29 @@ export class UserFeedbackClient {
     return result;
   }
 
+  async submitToTestLibrary(data: {
+    prompt: string;
+    completion: string;
+    sources: string;
+    sessionId: string;
+    userId: string;
+    displayName: string;
+  }) {
+    const auth = await Utils.authenticate();
+    const response = await fetch(this.API + '/test-library-from-feedback', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': auth,
+      },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to submit to test library');
+    }
+    return response.json();
+  }
+
   async deleteFeedback(topic: string, createdAt: string) {
     const auth = await Utils.authenticate();
     let params = new URLSearchParams({ topic, createdAt });

@@ -113,6 +113,9 @@ todos:
   - id: phase2-streaming-fix
     content: "Phase 2 [BUG]: Fix pre-tool text being streamed to user -- model would stream follow-up questions then auto-continue with tool call and answer in same response. Fixed with two-phase streaming: pre-tool text buffered (not sent to user), post-tool text streamed token-by-token. Also added prompt rule: follow-up questions and tool calls are mutually exclusive in a single turn."
     status: completed
+  - id: phase2-thumbsup-test-library
+    content: "Phase 2 [Issue #5 continued]: Thumbs-up to Test Library pipeline -- when user clicks thumbs up, Snackbar asks 'Help us improve — save this as a good example?'; on confirm, enqueues prompt+completion to SQS, consumer Lambda calls Bedrock (Haiku) to generate clean Q&A pair, upserts into Test Library with source='feedback' + submittedBy/submittedAt/feedbackSessionId metadata for admin audit"
+    status: completed
   - id: phase5-help-tips-merge
     content: "Phase 5 [UX]: Merge Help & Guide (navbar) and Tips & Questions (sidebar) into single tabbed Help page at /help, remove duplicate sidebar link"
     status: completed
@@ -359,6 +362,38 @@ The current RAG pipeline has fundamental quality and cost issues.
 **Files modified:** `eval/requirements.txt`, `eval/lambda_function.py`, `eval/Dockerfile`, `eval-results-handler/lambda_function.py`, `results-to-ddb/lambda_function.py`, `start-llm-eval/index.mjs`, `step-functions.ts`, `functions.ts`, `tables.ts`, `index.ts`, `app.tsx`, `evaluations-client.ts`, `columns.tsx`, `current-eval-tab.tsx`, `detailed-evaluation-page.tsx`, `llm-evaluation-page.tsx`, `new-eval-tab.tsx`, `past-evals-tab.tsx`
 
 **Verified:** CDK synth passed, TypeScript compile clean (CDK + frontend), Python syntax check passed, Vite build clean.
+
+### Thumbs-Up to Test Library Pipeline -- 2026-03-02
+
+**Status: COMPLETE** -- Turns positive user feedback into curated test data. Pending deployment.
+
+**What was implemented:**
+
+**Frontend -- Confirmation UI:**
+- After thumbs up, MUI Snackbar prompts: "Help us improve — save this as a good example?" with Save/Dismiss buttons (10s auto-dismiss)
+- On Save, shows confirmation toast: "Saved! Thanks for helping improve ABE."
+- New `onAddToTestLibrary` prop wired through `ChatMessage` -> `Chat`, sends `{prompt, completion, sources, sessionId, userId, displayName}` to REST API
+- New `submitToTestLibrary()` method in `UserFeedbackClient`
+
+**Backend -- Enqueue Lambda:**
+- New `feedback-to-test-library/enqueue.py`: validates required fields, timestamps submission, sends SQS message, returns 200 immediately (fire-and-forget)
+- New `POST /test-library-from-feedback` REST route with JWT auth
+
+**Backend -- Process Lambda (SQS consumer):**
+- New `feedback-to-test-library/process.py`: triggered by SQS, calls Bedrock (Claude Haiku) with system prompt to distill raw conversation into clean standalone Q&A pair
+- Upserts into Test Library table with provenance metadata: `source: "feedback"`, `submittedBy: {userId, displayName}`, `submittedAt`, `feedbackSessionId`
+- Reuses `upsert_item` logic with normalized question deduplication and version history
+
+**CDK Infrastructure:**
+- New `FeedbackToTestLibraryQueue` SQS queue (120s visibility, SSL enforced) + `FeedbackToTestLibraryDLQ` (14-day retention, 3 max receives)
+- Two new Lambdas with least-privilege IAM: enqueue (`sqs:SendMessage`), process (`bedrock:InvokeModel`, `dynamodb:GetItem/PutItem/UpdateItem/Query`)
+- SQS event source mapping with `batchSize: 1`
+
+**Files created:** `lib/chatbot-api/functions/llm-eval/feedback-to-test-library/enqueue.py`, `lib/chatbot-api/functions/llm-eval/feedback-to-test-library/process.py`
+
+**Files modified:** `lib/chatbot-api/tables/tables.ts`, `lib/chatbot-api/functions/functions.ts`, `lib/chatbot-api/index.ts`, `lib/user-interface/app/src/components/chatbot/chat-message.tsx`, `lib/user-interface/app/src/components/chatbot/chat.tsx`, `lib/user-interface/app/src/common/api-client/user-feedback-client.ts`
+
+**Verified:** CDK synth passed (zero cdk-nag errors), TypeScript compile clean (CDK + frontend), Python syntax check passed, Vite build clean.
 
 ### Contract Index Implementation & Post-Deploy Fixes (2026-02-25)
 
@@ -1352,7 +1387,7 @@ In [deploy.yml](.github/workflows/deploy.yml):
 | 2   | Non-clickable hyperlinks                        | Phase 2 | 2.3     | Needs data verification                                                |
 | 3   | Enhanced analytics (FAQ, logs, traffic, agency) | Phase 4 | 4.3     | **DEPLOYED 2026-02-21** -- FAQ tracking (Haiku classification), MUI dashboard with charts, enhanced traffic stats. Agency info pending OSD clarification. |
 | 4   | Plug-and-play chatbot                           | Phase 7 | 7.0     | Pending scoping call                                                   |
-| 5   | LLM evaluation fix                              | Phase 2 | 2.12    | **COMPLETE 2026-03-02** -- RAGAS 0.2.14 pinned, pipeline fixed, quality monitoring platform with Test Library, visual graphs, live progress |
+| 5   | LLM evaluation fix                              | Phase 2 | 2.12    | **COMPLETE 2026-03-02** -- RAGAS 0.2.14 pinned, pipeline fixed, quality monitoring platform with Test Library, visual graphs, live progress. Thumbs-up to Test Library pipeline added (SQS + Bedrock Q&A generation + admin audit metadata). |
 | 6   | Error page with acronyms                        | Phase 1 | 1.9     | **DEPLOYED 2026-02-10** -- sanitized error messages + replaced alert() |
 | 7   | Source file Access Denied                       | Phase 1 | 1.8     | **DEPLOYED 2026-02-10** -- fixed dedup + pre-signed URLs               |
 | 8   | Incorrect sync timestamp                        | Phase 4 | 4.4     | **COMPLETED** -- Backend returns ISO 8601 UTC timestamps with status; frontend converts to Eastern Time (America/New_York); removed fragile custom parsing in documents-tab |

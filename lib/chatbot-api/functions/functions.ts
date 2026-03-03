@@ -7,7 +7,8 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import { Table } from 'aws-cdk-lib/aws-dynamodb';
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as bedrock from "aws-cdk-lib/aws-bedrock";
-import { S3EventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
+import { S3EventSource, SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
 import { StepFunctionsStack } from './step-functions/step-functions';
 
 interface LambdaFunctionStackProps {
@@ -27,6 +28,7 @@ interface LambdaFunctionStackProps {
   readonly contractIndexTable: Table;
   readonly tradeIndexTable: Table;
   readonly testLibraryTable: Table;
+  readonly feedbackToTestLibraryQueue: sqs.Queue;
 }
 
 const LAMBDA_DEFAULTS: Partial<lambda.FunctionProps> = {
@@ -57,6 +59,8 @@ export class LambdaFunctionStack extends Construct {
   public readonly tradeIndexQueryFunction: lambda.Function;
   public readonly tradeIndexApiFunction: lambda.Function;
   public readonly testLibraryFunction: lambda.Function;
+  public readonly feedbackToTestLibraryEnqueueFunction: lambda.Function;
+  public readonly feedbackToTestLibraryProcessFunction: lambda.Function;
 
   constructor(scope: Construct, id: string, props: LambdaFunctionStackProps) {
     super(scope, id);
@@ -705,6 +709,58 @@ testLibraryFunction.addToRolePolicy(new iam.PolicyStatement({
   resources: [props.testLibraryTable.tableArn, props.testLibraryTable.tableArn + "/index/*"],
 }));
 this.testLibraryFunction = testLibraryFunction;
+
+const feedbackToTestLibraryEnqueueFunction = new lambda.Function(scope, 'FeedbackToTestLibraryEnqueueFunction', {
+  ...LAMBDA_DEFAULTS,
+  runtime: lambda.Runtime.PYTHON_3_12,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/feedback-to-test-library')),
+  handler: 'enqueue.lambda_handler',
+  environment: {
+    "QUEUE_URL": props.feedbackToTestLibraryQueue.queueUrl,
+  },
+  timeout: cdk.Duration.seconds(15),
+});
+feedbackToTestLibraryEnqueueFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['sqs:SendMessage'],
+  resources: [props.feedbackToTestLibraryQueue.queueArn],
+}));
+this.feedbackToTestLibraryEnqueueFunction = feedbackToTestLibraryEnqueueFunction;
+
+const feedbackToTestLibraryProcessFunction = new lambda.Function(scope, 'FeedbackToTestLibraryProcessFunction', {
+  ...LAMBDA_DEFAULTS,
+  runtime: lambda.Runtime.PYTHON_3_12,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/feedback-to-test-library')),
+  handler: 'process.lambda_handler',
+  environment: {
+    "TEST_LIBRARY_TABLE": props.testLibraryTable.tableName,
+    "MODEL_ID": process.env.FAST_MODEL_ID || "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+  },
+  timeout: cdk.Duration.seconds(90),
+  memorySize: 256,
+});
+feedbackToTestLibraryProcessFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: [
+    'dynamodb:GetItem',
+    'dynamodb:PutItem',
+    'dynamodb:UpdateItem',
+    'dynamodb:Query',
+  ],
+  resources: [props.testLibraryTable.tableArn, props.testLibraryTable.tableArn + "/index/*"],
+}));
+feedbackToTestLibraryProcessFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['bedrock:InvokeModel'],
+  resources: [
+    `arn:aws:bedrock:*::foundation-model/anthropic.*`,
+    `arn:aws:bedrock:*:${cdk.Stack.of(this).account}:inference-profile/*`,
+  ],
+}));
+feedbackToTestLibraryProcessFunction.addEventSource(new SqsEventSource(props.feedbackToTestLibraryQueue, {
+  batchSize: 1,
+}));
+this.feedbackToTestLibraryProcessFunction = feedbackToTestLibraryProcessFunction;
 
 this.stepFunctionsStack = new StepFunctionsStack(scope, 'StepFunctionsStack', {
   knowledgeBase: props.knowledgeBase,

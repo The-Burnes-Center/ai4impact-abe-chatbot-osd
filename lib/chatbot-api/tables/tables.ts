@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { AttributeType, BillingMode, Table, ProjectionType } from 'aws-cdk-lib/aws-dynamodb';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
 
 export class TableStack extends Construct {
   public readonly historyTable: Table;
@@ -11,6 +12,8 @@ export class TableStack extends Construct {
   public readonly contractIndexTable: Table;
   public readonly tradeIndexTable: Table;
   public readonly testLibraryTable: Table;
+  public readonly feedbackToTestLibraryQueue: sqs.Queue;
+  public readonly feedbackToTestLibraryDLQ: sqs.Queue;
 
   constructor(scope: Construct, id: string) {
     super(scope, id);
@@ -141,5 +144,24 @@ export class TableStack extends Construct {
     });
 
     this.testLibraryTable = testLibraryTable;
+
+    const feedbackToTestLibraryDLQ = new sqs.Queue(scope, 'FeedbackToTestLibraryDLQ', {
+      retentionPeriod: cdk.Duration.days(14),
+      enforceSSL: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+    this.feedbackToTestLibraryDLQ = feedbackToTestLibraryDLQ;
+
+    const feedbackToTestLibraryQueue = new sqs.Queue(scope, 'FeedbackToTestLibraryQueue', {
+      visibilityTimeout: cdk.Duration.seconds(120),
+      retentionPeriod: cdk.Duration.days(4),
+      enforceSSL: true,
+      deadLetterQueue: {
+        queue: feedbackToTestLibraryDLQ,
+        maxReceiveCount: 3,
+      },
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+    this.feedbackToTestLibraryQueue = feedbackToTestLibraryQueue;
   }
 }
