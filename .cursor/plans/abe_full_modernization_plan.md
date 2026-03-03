@@ -114,7 +114,7 @@ todos:
     content: "Phase 2 [BUG]: Fix pre-tool text being streamed to user -- model would stream follow-up questions then auto-continue with tool call and answer in same response. Fixed with two-phase streaming: pre-tool text buffered (not sent to user), post-tool text streamed token-by-token. Also added prompt rule: follow-up questions and tool calls are mutually exclusive in a single turn."
     status: completed
   - id: phase2-thumbsup-test-library
-    content: "Phase 2 [Issue #5 continued]: Thumbs-up to Test Library pipeline -- when user clicks thumbs up, Snackbar asks 'Help us improve — save this as a good example?'; on confirm, enqueues prompt+completion to SQS, consumer Lambda calls Bedrock (Haiku) to generate clean Q&A pair, upserts into Test Library with source='feedback' + submittedBy/submittedAt/feedbackSessionId metadata for admin audit"
+    content: "Phase 2 [Issue #5 continued]: Thumbs-up to Test Library pipeline -- when user clicks thumbs up, Snackbar asks 'Help us improve — save this as a good example?'; on confirm, enqueues prompt+completion to SQS, consumer Lambda calls Bedrock (Sonnet 4) to rewrite the user question as a clean standalone question, preserves the original chatbot answer verbatim as expectedResponse (since that is what the user approved), upserts into Test Library with source='feedback' + submittedBy/submittedAt/feedbackSessionId metadata. Model upgraded from Haiku to Sonnet for quality; prompt rewritten with OSD domain context and few-shot examples; Lambda logging fixed (basicConfig → getLogger root)."
     status: completed
   - id: phase5-help-tips-merge
     content: "Phase 5 [UX]: Merge Help & Guide (navbar) and Tips & Questions (sidebar) into single tabbed Help page at /help, remove duplicate sidebar link"
@@ -363,9 +363,9 @@ The current RAG pipeline has fundamental quality and cost issues.
 
 **Verified:** CDK synth passed, TypeScript compile clean (CDK + frontend), Python syntax check passed, Vite build clean.
 
-### Thumbs-Up to Test Library Pipeline -- 2026-03-02
+### Thumbs-Up to Test Library Pipeline -- 2026-03-02 (updated 2026-03-03)
 
-**Status: COMPLETE** -- Turns positive user feedback into curated test data. Pending deployment.
+**Status: COMPLETE** -- Turns positive user feedback into curated test data. Deployed.
 
 **What was implemented:**
 
@@ -380,20 +380,28 @@ The current RAG pipeline has fundamental quality and cost issues.
 - New `POST /test-library-from-feedback` REST route with JWT auth
 
 **Backend -- Process Lambda (SQS consumer):**
-- New `feedback-to-test-library/process.py`: triggered by SQS, calls Bedrock (Claude Haiku) with system prompt to distill raw conversation into clean standalone Q&A pair
+- `feedback-to-test-library/process.py`: triggered by SQS, calls Bedrock to rewrite the user's question into a clean standalone question, then stores the **original chatbot answer verbatim** as `expectedResponse` (the user approved this answer with their thumbs-up, so it is the ground truth)
+- The LLM only touches the question — it reads the answer to understand context, then rewrites vague/follow-up/casual questions into clear self-contained questions. The answer is never modified.
 - Upserts into Test Library table with provenance metadata: `source: "feedback"`, `submittedBy: {userId, displayName}`, `submittedAt`, `feedbackSessionId`
 - Reuses `upsert_item` logic with normalized question deduplication and version history
 
+**Q&A Generation Quality Improvements (2026-03-03):**
+- **Model upgrade:** Haiku → Sonnet 4 (`us.anthropic.claude-sonnet-4-20250514-v1:0`). Haiku produced low-quality Q&A rewrites; Sonnet is the same model the chatbot uses and produces significantly better question rewrites.
+- **Prompt rewrite:** Old prompt was 10 generic lines asking for both Q and A. New prompt: (a) gives full OSD/procurement domain context, (b) instructs the LLM to ONLY rewrite the question (answer kept verbatim), (c) handles edge cases (follow-ups, vague queries, fragments), (d) includes 2 few-shot examples showing casual input → clean standalone question.
+- **Logging fix:** `logging.basicConfig()` does not work in AWS Lambda (runtime pre-configures root logger). Changed to `logger = logging.getLogger(); logger.setLevel(logging.INFO)`. Added input/output logging so CloudWatch now shows the original question, rewritten question, and action taken.
+- **Architecture change:** Previously the LLM rewrote both Q and A, risking hallucination/summarization of the approved answer. Now the LLM only rewrites the question — the user-approved answer is stored as-is.
+
 **CDK Infrastructure:**
-- New `FeedbackToTestLibraryQueue` SQS queue (120s visibility, SSL enforced) + `FeedbackToTestLibraryDLQ` (14-day retention, 3 max receives)
-- Two new Lambdas with least-privilege IAM: enqueue (`sqs:SendMessage`), process (`bedrock:InvokeModel`, `dynamodb:GetItem/PutItem/UpdateItem/Query`)
+- `FeedbackToTestLibraryQueue` SQS queue (120s visibility, SSL enforced) + `FeedbackToTestLibraryDLQ` (14-day retention, 3 max receives)
+- Two Lambdas with least-privilege IAM: enqueue (`sqs:SendMessage`), process (`bedrock:InvokeModel`, `dynamodb:GetItem/PutItem/UpdateItem/Query`)
 - SQS event source mapping with `batchSize: 1`
+- Process Lambda `MODEL_ID` env var now uses `PRIMARY_MODEL_ID` (Sonnet) instead of `FAST_MODEL_ID` (Haiku)
 
 **Files created:** `lib/chatbot-api/functions/llm-eval/feedback-to-test-library/enqueue.py`, `lib/chatbot-api/functions/llm-eval/feedback-to-test-library/process.py`
 
 **Files modified:** `lib/chatbot-api/tables/tables.ts`, `lib/chatbot-api/functions/functions.ts`, `lib/chatbot-api/index.ts`, `lib/user-interface/app/src/components/chatbot/chat-message.tsx`, `lib/user-interface/app/src/components/chatbot/chat.tsx`, `lib/user-interface/app/src/common/api-client/user-feedback-client.ts`
 
-**Verified:** CDK synth passed (zero cdk-nag errors), TypeScript compile clean (CDK + frontend), Python syntax check passed, Vite build clean.
+**Verified:** CDK synth passed, Python syntax check passed.
 
 ### Contract Index Implementation & Post-Deploy Fixes (2026-02-25)
 

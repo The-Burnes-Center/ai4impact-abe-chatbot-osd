@@ -1,134 +1,237 @@
-# Welcome to ABE - Assistive Buyers Engine
+# ABE — Assistive Buyers Engine
 
 ## Overview
 
-The Assistive Buyers Engine (ABE) is a serverless application designed to assist users in navigating procurement processes effectively. Built using AWS CDK (Cloud Development Kit), it integrates AWS Cognito for user management and AWS Lambda for custom authorization logic. ABE provides clear, tailored guidance to users while maintaining a professional and approachable tone.
+ABE is a serverless AI chatbot that helps U.S. federal government buyers navigate procurement processes. Built for the Office of the Secretary of Defense (OSD), ABE answers questions about acquisition regulations, finds contracts (GSA Schedule, BPAs, GWACs), identifies vendors, and explains compliance requirements — all grounded in an authoritative knowledge base of procurement documents.
 
-## Implementation Playbook
-[Playbook (Contains all required information)](https://drive.google.com/file/d/1VGy9SLVDIfwF0VHEA8sdsHzm85cuEeG_/view?usp=sharing)
+**Live URL:** Deployed behind CloudFront with WAF protection. The URL is output by CloudFormation after each deploy.
+
+## Key Features
+
+- **RAG-powered chat** — Claude Sonnet 4 with Bedrock Knowledge Base retrieval (semantic chunking, Titan Embed v2), prompt caching, and Bedrock Guardrails
+- **Contract & Trade Index** — Structured Excel data (SWC Index, Trade Index) parsed into DynamoDB and queried via dedicated agent tools at runtime
+- **LLM Evaluation Pipeline** — RAGAS-based evaluation via Step Functions with 4 metrics (faithfulness, relevancy, precision, recall), Test Library, and live progress tracking
+- **Thumbs-up to Test Library** — Positive user feedback automatically generates curated Q&A test cases via LLM rewriting
+- **Analytics Dashboard** — FAQ classification, traffic stats, agency breakdown, and user-level attribution
+- **Admin Panel** — Document management, knowledge base sync, contract index upload, evaluation runs, feedback review, and test library CRUD
+- **Operational Monitoring** — CloudWatch dashboard, 8 alarms, SNS email alerts
+
+## Architecture
+
+![Architecture Flow](https://github.com/user-attachments/assets/e36f3313-b345-4e0d-8403-31e9b0473854)
+
+### Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| **IaC** | AWS CDK (TypeScript) |
+| **LLM** | Claude Sonnet 4 via Amazon Bedrock (cross-region inference) |
+| **Knowledge Base** | Bedrock Knowledge Base + OpenSearch Serverless (semantic chunking) |
+| **Backend** | Python 3.12 Lambdas + Node.js 20 ESM Lambdas (ARM64, X-Ray tracing) |
+| **Eval Pipeline** | Step Functions + RAGAS 0.2.14 (Docker Lambda) |
+| **Frontend** | React 18 + TypeScript + Vite + MUI + Amplify |
+| **Auth** | Amazon Cognito (OIDC/SSO integration) |
+| **APIs** | API Gateway (REST + WebSocket) |
+| **Storage** | DynamoDB (8 tables) + S3 (6 buckets) |
+| **CDN/Security** | CloudFront + WAF + OAC |
+| **CI/CD** | GitHub Actions → CDK deploy on push to `main` |
+
+### Project Structure
+
+```
+├── bin/gen-ai-mvp.ts                    # CDK app entry point
+├── lib/
+│   ├── constants.ts                     # Stack name, Cognito config
+│   ├── gen-ai-mvp-stack.ts              # Root CDK stack
+│   ├── chatbot-api/
+│   │   ├── index.ts                     # API Gateway routes + construct wiring
+│   │   ├── gateway/                     # REST + WebSocket API Gateway
+│   │   ├── tables/tables.ts             # DynamoDB tables (8)
+│   │   ├── buckets/buckets.ts           # S3 buckets (6)
+│   │   ├── opensearch/                  # OpenSearch Serverless collection
+│   │   ├── knowledge-base/              # Bedrock Knowledge Base + data source
+│   │   └── functions/
+│   │       ├── functions.ts             # All Lambda definitions (CDK)
+│   │       ├── websocket-chat/          # Chat handler (Node.js ESM)
+│   │       │   ├── index.mjs            # WebSocket handler + tool-use loop
+│   │       │   ├── prompt.mjs           # System prompt
+│   │       │   └── models/              # Bedrock model adapter
+│   │       ├── session-handler/         # Chat session CRUD (Python)
+│   │       ├── feedback-handler/        # User feedback CRUD (Python)
+│   │       ├── metadata-handler/        # Doc metadata on S3 upload (Python)
+│   │       ├── metrics-handler/         # Analytics aggregation (Python)
+│   │       ├── faq-classifier/          # FAQ topic classification (Python)
+│   │       ├── contract-index/          # SWC Contract Index (parser/query/api)
+│   │       ├── trade-index/             # Trade Index (parser/query/api)
+│   │       ├── knowledge-management/    # S3 CRUD + KB sync
+│   │       ├── llm-eval/               # Eval results, test cases, test library
+│   │       │   └── feedback-to-test-library/  # Thumbs-up → Q&A pipeline
+│   │       └── step-functions/          # Eval state machine + Lambdas
+│   └── user-interface/
+│       ├── generate-app.ts              # CloudFront + WAF CDK
+│       └── app/                         # React frontend (Vite)
+│           └── src/
+│               ├── components/chatbot/  # Chat UI
+│               ├── pages/admin/         # Admin dashboard pages
+│               ├── pages/help/          # Help & guide pages
+│               └── common/api-client/   # API clients
+├── .github/workflows/deploy.yml         # CI/CD pipeline
+└── cdk.json                             # CDK config
+```
 
 ## Getting Started
 
 ### Prerequisites
 
-Before you begin, ensure you have the following installed:
+- [Node.js](https://nodejs.org/) v20+
+- [AWS CLI](https://aws.amazon.com/cli/) v2 configured with credentials
+- [AWS CDK](https://docs.aws.amazon.com/cdk/latest/guide/getting-started.html) v2
+- [Python 3.12](https://www.python.org/) (for Lambda bundling)
+- [Docker](https://www.docker.com/) (for RAGAS eval Lambda bundling)
 
-- [Node.js](https://nodejs.org/) (version 14.x or later)
-- [AWS CDK](https://docs.aws.amazon.com/cdk/latest/guide/work-with-cdk-nodejs.html)
-- [Python](https://www.python.org/) (for Lambda functions)
-- [AWS CLI](https://aws.amazon.com/cli/) configured with your AWS credentials
+### Installation
 
+```bash
+# Clone the repo
+git clone <repo-url>
+cd ai4impact-abe-chatbot-osd
 
-## Development
+# Install CDK/backend dependencies
+npm install
 
-Clone the repository and check all pre-requisites.
+# Install frontend dependencies
+cd lib/user-interface/app && npm install && cd ../../..
+```
 
-### Useful commands
+### Configuration
 
-* `git clone <Github url>` clone the repo
-* `npm run build`   compile typescript to js
-* `npm run watch`   watch for changes and compile
-* `npm run test`    perform the jest unit tests
-* `npx cdk deploy`  deploy this stack to your default AWS account/region
-* `npx cdk diff`    compare deployed stack with current state
-* `npx cdk synth`   emits the synthesized CloudFormation template
-* `npm i`  Install dependencies
+1. Set the stack name and Cognito config in `lib/constants.ts`
+2. Model IDs are configured via environment variables in `lib/chatbot-api/functions/functions.ts`:
+   - `PRIMARY_MODEL_ID` — main chat + eval (default: Claude Sonnet 4)
+   - `FAST_MODEL_ID` — titles, metadata, FAQ classification (default: Claude 3.5 Haiku)
+3. Guardrail ID is set via `GUARDRAIL_ID` environment variable
 
-### Deployment Instructions
+### Deployment
 
-1. Set the stack name and other constants in `lib/constants.ts`
-2. Install frontend dependencies: `cd lib/user-interface/app && npm install && cd ../../..`
-3. Deploy: `npx cdk deploy <StackName>` (replace `<StackName>` with the value from `lib/constants.ts`)
-4. Configure Cognito using the CDK outputs
+**CI/CD (primary):** Push to `main` triggers automatic deployment via GitHub Actions.
 
-### Monitoring & Alerts
+**Manual deploy:**
 
-The stack deploys a CloudWatch monitoring construct that provides operational visibility into every layer of the application.
+```bash
+# Set the AWS profile
+export AWS_PROFILE=<your-aws-profile>
 
-#### CloudWatch Dashboard
+# Synth to check for errors
+npx cdk synth ABEStackNonProd
 
-A pre-built dashboard named **`<StackName>-Operations`** is created automatically on deploy. It consolidates key metrics across the entire stack:
+# Preview changes
+npx cdk diff ABEStackNonProd
+
+# Deploy
+npx cdk deploy ABEStackNonProd
+```
+
+### Useful Commands
+
+| Command | Description |
+|---------|-------------|
+| `npx cdk synth ABEStackNonProd` | Synthesize CloudFormation template |
+| `npx cdk diff ABEStackNonProd` | Preview infrastructure changes |
+| `npx cdk deploy ABEStackNonProd` | Deploy the stack |
+| `npm run build` | Compile TypeScript |
+| `npm run watch` | Watch mode for TypeScript |
+
+## Monitoring & Alerts
+
+### CloudWatch Dashboard
+
+A dashboard named **`ABEStackNonProd-Operations`** is created automatically on deploy:
 
 | Row | Widgets | What it shows |
 |-----|---------|---------------|
-| 1 | Lambda Invocations, Lambda Errors | Call volume and error counts for all key functions |
-| 2 | Chat Lambda Duration, Lambda Throttles | Avg and p99 latency for the chat function; throttle events |
+| 1 | Lambda Invocations, Lambda Errors | Call volume and error counts for all functions |
+| 2 | Chat Lambda Duration, Lambda Throttles | Avg and p99 latency; throttle events |
 | 3 | HTTP API Requests & Errors, HTTP API Latency | Request counts, 4xx/5xx rates, avg and p99 latency |
 | 4 | WebSocket Connections, DynamoDB Throttles | Connect/message counts; throttled requests per table |
-| 5 | Eval Pipeline Executions, Active Alarms | Step Functions started/succeeded/failed; current alarm states |
+| 5 | Eval Pipeline Executions, Active Alarms | Step Functions started/succeeded/failed; alarm states |
 
-**How to access the dashboard:**
-
-1. Sign in to the [AWS Console](https://console.aws.amazon.com/) with the account used for deployment.
-2. Navigate to **CloudWatch → Dashboards** (or search "CloudWatch" in the top search bar).
-3. Select **`<StackName>-Operations`** from the dashboard list.
-4. Alternatively, use the direct URL output by CDK after deploy — look for `DashboardURL` in the CloudFormation outputs, or run:
+Access via **CloudWatch → Dashboards** in the AWS Console, or:
 
 ```bash
-aws cloudformation describe-stacks --stack-name <StackName> \
+aws cloudformation describe-stacks --stack-name ABEStackNonProd \
   --query "Stacks[0].Outputs[?OutputKey=='MonitoringDashboardURL'].OutputValue" \
   --output text --profile <your-aws-profile>
 ```
 
-> **Tip:** You can adjust the time range in the top-right corner of the dashboard (e.g., 1h, 3h, 12h, 1d, 1w) and enable auto-refresh to use it as a live operations screen.
+### Alarms
 
-#### Alarms
+| Alarm | Trigger |
+|-------|---------|
+| Lambda errors | ≥1 error in 5 min on any function |
+| Lambda throttles | Any function throttled |
+| Chat Lambda high latency | Avg duration > 60s |
+| API Gateway 5xx | Server-side errors |
+| API Gateway 4xx | Elevated client errors |
+| WebSocket zero connections | No connections for 15 min |
+| DynamoDB throttles | Throttled requests on any table |
+| Eval pipeline failures | Step Functions execution failed |
 
-The following CloudWatch alarms are created automatically:
+### Email Alerts
 
-- **Lambda errors** — triggers when any Lambda function has errors (threshold: ≥1 error in 5 min)
-- **Lambda throttles** — triggers when any Lambda function is throttled
-- **Chat Lambda high latency** — triggers when average duration exceeds 60 seconds
-- **API Gateway 5xx errors** — triggers on server-side errors
-- **API Gateway 4xx errors** — triggers on elevated client errors
-- **WebSocket zero connections** — detects potential outages (no connections for 15 min)
-- **DynamoDB throttles** — triggers when any table experiences throttled requests
-- **Eval pipeline failures** — triggers when the Step Functions evaluation pipeline fails
-
-All alarms are visible on the dashboard's "Active Alarms" widget. You can also view them in **CloudWatch → Alarms → All alarms**.
-
-#### Email Alerts
-
-All alarms publish to an SNS topic. There are two ways to subscribe an email address for notifications:
-
-**Option A: Via CDK at deploy time (recommended)**
-
-Pass the `alarmEmail` context variable when deploying:
+All alarms publish to an SNS topic. Subscribe via CDK:
 
 ```bash
-npx cdk deploy <StackName> -c alarmEmail=you@example.com
+npx cdk deploy ABEStackNonProd -c alarmEmail=you@example.com
 ```
 
-In CI/CD, set the `ALARM_EMAIL` GitHub Actions secret — the workflow passes it automatically. To change the alert recipient, update the secret and re-deploy; no code change required.
+Or manually: **SNS → Topics → `ABEStackNonProd Monitoring Alerts` → Create subscription** (Email protocol). Confirm via the email link.
 
-**Option B: Manually via the AWS Console**
+In CI/CD, set the `ALARM_EMAIL` GitHub Actions secret.
 
-If you want to add additional recipients or set up alerts without redeploying:
+## API Routes
 
-1. Sign in to the [AWS Console](https://console.aws.amazon.com/).
-2. Navigate to **SNS → Topics**.
-3. Find the topic named **`<StackName> Monitoring Alerts`** (or search for "Monitoring Alerts").
-4. Click the topic, then click **Create subscription**.
-5. Set **Protocol** to `Email` and **Endpoint** to the email address you want to receive alerts.
-6. Click **Create subscription**.
-7. Check the recipient's inbox for a **confirmation email** from AWS and click the confirmation link — subscriptions do not activate until confirmed.
+### REST API
 
-> **Note:** You can add multiple email subscriptions (or use other protocols like SMS, HTTPS, or Slack via Lambda) by repeating the steps above. To unsubscribe, click the unsubscribe link at the bottom of any alert email, or delete the subscription from the SNS console.
+| Path | Methods | Purpose |
+|------|---------|---------|
+| `/user-session` | GET, POST, DELETE | Chat session management |
+| `/user-feedback` | GET, POST, DELETE | User feedback CRUD |
+| `/user-feedback/download-feedback` | POST | Feedback CSV export |
+| `/s3-bucket-data` | POST | Knowledge base file listing |
+| `/delete-s3-file` | POST | Knowledge base file deletion |
+| `/signed-url` | POST | Pre-signed upload URLs |
+| `/kb-sync/*` | GET | Knowledge base sync status/trigger |
+| `/admin/contract-index/*` | GET, POST | Contract index status/preview/upload |
+| `/admin/trade-index/*` | GET, POST | Trade index status/preview/upload |
+| `/eval-results-handler` | POST | Evaluation results |
+| `/eval-run-handler` | POST | Start evaluation run |
+| `/metrics` | GET | Analytics data |
+| `/test-library` | POST | Test library CRUD |
+| `/test-library-from-feedback` | POST | Thumbs-up → test library |
+| `/s3-test-cases-bucket-data` | POST | Test case file listing |
+| `/signed-url-test-cases` | POST | Test case upload URLs |
 
-## Architecture
-![Architecture Flow](https://github.com/user-attachments/assets/e36f3313-b345-4e0d-8403-31e9b0473854)
+### WebSocket API
 
+| Route | Purpose |
+|-------|---------|
+| `$connect` / `$disconnect` | Connection lifecycle (JWT authorized) |
+| `getChatbotResponse` | Streaming chat messages |
+
+## Implementation Playbook
+
+[Playbook (contains all required information)](https://drive.google.com/file/d/1VGy9SLVDIfwF0VHEA8sdsHzm85cuEeG_/view?usp=sharing)
 
 ## Contributing
 
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository.
-2. Create a new branch (`git checkout -b feature/YourFeature`).
-3. Make your changes and commit them (`git commit -m 'Add some feature'`).
-4. Push to the branch (`git push origin feature/YourFeature`).
-5. Open a pull request.
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Make changes and commit (`git commit -m 'Add feature'`)
+4. Push to the branch (`git push origin feature/your-feature`)
+5. Open a pull request
 
 ## Developers
-  - [Prasoon Raj](https://www.linkedin.com/in/prasoon-raj-902/)
-  - Rui Ge
+
+- [Dhruv Kumar](https://www.linkedin.com/in/dhruvkumar01/)
+- [Prasoon Raj](https://www.linkedin.com/in/prasoon-raj-902/)
+- Rui Ge

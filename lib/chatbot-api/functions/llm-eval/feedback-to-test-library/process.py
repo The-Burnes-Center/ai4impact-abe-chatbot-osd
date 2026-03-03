@@ -7,11 +7,11 @@ import boto3
 from datetime import datetime
 from boto3.dynamodb.conditions import Key
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 TABLE_NAME = os.environ["TEST_LIBRARY_TABLE"]
-MODEL_ID = os.environ.get("MODEL_ID", "us.anthropic.claude-3-5-haiku-20241022-v1:0")
+MODEL_ID = os.environ.get("MODEL_ID", "us.anthropic.claude-sonnet-4-20250514-v1:0")
 
 dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
 table = dynamodb.Table(TABLE_NAME)
@@ -19,16 +19,46 @@ bedrock = boto3.client("bedrock-runtime", region_name="us-east-1")
 
 PARTITION_KEY = "MASTER"
 
-SYSTEM_PROMPT = """You are helping build a Q&A test library for a government procurement chatbot called ABE.
-Given a user question and chatbot response from a conversation that was marked as helpful, generate a clean question-answer pair.
+SYSTEM_PROMPT = """You are building a Q&A test library for ABE, a U.S. federal government \
+procurement chatbot operated by the Office of the Secretary of Defense (OSD). ABE helps \
+government buyers navigate acquisition regulations, find contracts (GSA Schedule, BPAs, GWACs), \
+identify vendors, and understand compliance requirements.
+
+You will be given a user's question and the chatbot's answer from a conversation that the \
+user marked as helpful. Your ONLY job is to rewrite the user's question into a clean, \
+standalone question. Do NOT touch the answer — it will be kept exactly as-is.
+
+The user's original question may be:
+- Poorly worded, vague, or overly casual ("i want carpet")
+- A follow-up that makes no sense without prior context ("what about pricing for that?")
+- A single word or fragment ("vendors?")
+
+Rewrite it into a clear, self-contained question that would naturally lead to the given \
+answer. Use the answer's content to understand what the user was really asking about. \
+The rewritten question should make sense to someone with no prior conversation context.
 
 Rules:
-- The question should be standalone, clear, and rewritten for clarity if needed.
-- The expected response should capture the key factual content from the chatbot response.
-- Strip any conversational filler, greetings, or meta-commentary.
-- Keep the expected response concise but complete.
-- Output ONLY valid JSON with exactly two keys: "question" and "expectedResponse".
-- Do not wrap the JSON in markdown code fences."""
+- Output ONLY valid JSON with exactly one key: "question".
+- Do not wrap the JSON in markdown code fences or add any text outside the JSON object.
+- Do not include or modify the answer in your output.
+
+Example input:
+User Question: i want carpet
+Chatbot Response: Based on the available contracts, you can purchase carpet through \
+MRO001 (Maintenance, Repair, and Operations). There are 10 vendors available.
+
+Example output:
+{"question": "How can I purchase carpet through government contracts?"}
+
+Example input:
+User Question: what about the health stuff
+Chatbot Response: When purchasing carpet for a fire department, look for products that \
+meet these health and safety standards: UL GREENGUARD Gold certification, free of PFAS \
+and vinyl, no added antimicrobials, Cradle to Cradle Certified.
+
+Example output:
+{"question": "What environmental and health standards should I look for when purchasing \
+carpet for a fire department?"}"""
 
 
 def normalize_question(q: str) -> str:
@@ -105,16 +135,19 @@ def upsert_item(question: str, expected_response: str, metadata: dict):
         return "added", qid
 
 
-def generate_qa_pair(prompt: str, completion: str) -> dict:
+def rewrite_question(prompt: str, completion: str) -> str:
+    """Use the LLM to rewrite the user's question as a clear standalone question.
+    The completion (chatbot answer) is passed as context so the LLM understands
+    what the user was really asking about, but is NOT included in the output."""
     user_message = (
         f"User Question:\n{prompt}\n\n"
         f"Chatbot Response:\n{completion}\n\n"
-        "Generate the clean Q&A pair as JSON."
+        "Rewrite the user's question as clean standalone JSON."
     )
 
     request_body = json.dumps({
         "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 2048,
+        "max_tokens": 512,
         "system": SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": user_message}],
         "temperature": 0.2,
@@ -134,11 +167,11 @@ def generate_qa_pair(prompt: str, completion: str) -> dict:
     if not json_match:
         raise ValueError(f"No JSON found in LLM response: {text[:200]}")
 
-    qa = json.loads(json_match.group())
-    if "question" not in qa or "expectedResponse" not in qa:
-        raise ValueError(f"Missing keys in LLM response: {qa}")
+    parsed = json.loads(json_match.group())
+    if "question" not in parsed:
+        raise ValueError(f"Missing 'question' key in LLM response: {parsed}")
 
-    return qa
+    return parsed["question"]
 
 
 def lambda_handler(event, context):
@@ -153,7 +186,13 @@ def lambda_handler(event, context):
                 logger.warning("Skipping record with missing prompt/completion")
                 continue
 
-            qa = generate_qa_pair(prompt, completion)
+            logger.info("Input prompt: %s", prompt[:500])
+            logger.info("Input completion length: %d chars", len(completion))
+
+            rewritten_q = rewrite_question(prompt, completion)
+
+            logger.info("Original Q: %s", prompt[:300])
+            logger.info("Rewritten Q: %s", rewritten_q[:300])
 
             metadata = {
                 "submittedBy": {
@@ -164,7 +203,7 @@ def lambda_handler(event, context):
                 "feedbackSessionId": body.get("sessionId", ""),
             }
 
-            action, qid = upsert_item(qa["question"], qa["expectedResponse"], metadata)
+            action, qid = upsert_item(rewritten_q, completion, metadata)
             logger.info("Processed feedback -> %s: %s", action, qid)
 
         except Exception as e:

@@ -734,7 +734,7 @@ const feedbackToTestLibraryProcessFunction = new lambda.Function(scope, 'Feedbac
   handler: 'process.lambda_handler',
   environment: {
     "TEST_LIBRARY_TABLE": props.testLibraryTable.tableName,
-    "MODEL_ID": process.env.FAST_MODEL_ID || "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+    "MODEL_ID": process.env.PRIMARY_MODEL_ID || "us.anthropic.claude-sonnet-4-20250514-v1:0",
   },
   timeout: cdk.Duration.seconds(90),
   memorySize: 256,
