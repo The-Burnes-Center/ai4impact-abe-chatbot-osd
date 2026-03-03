@@ -105,7 +105,8 @@ with Diagram(
     chat_fn >> kb >> opensearch
     chat_fn >> idx_query >> idx_ddb
 
-    # Contract index
+    # Contract index (admin uploads .xlsx via REST presigned URL → S3 → parser)
+    rest >> Edge(label="upload") >> idx_s3
     idx_s3 >> idx_parser >> idx_ddb
 
     # Session & Knowledge
