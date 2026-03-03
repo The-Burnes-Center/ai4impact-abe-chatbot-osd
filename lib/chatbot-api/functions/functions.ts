@@ -715,13 +715,6 @@ this.stepFunctionsStack = new StepFunctionsStack(scope, 'StepFunctionsStack', {
   wsEndpoint: props.wsApiEndpoint
 });
 
-evalResultsAPIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
-  effect: iam.Effect.ALLOW,
-  actions: [
-    'states:DescribeExecution',
-    'states:GetExecutionHistory',
-  ],
-  resources: [this.stepFunctionsStack.llmEvalStateMachine.stateMachineArn + '/*'],
-}));
+// Step Functions execution permissions granted in index.ts where the state machine is accessible
 }
 }

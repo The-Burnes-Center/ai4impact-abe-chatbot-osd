@@ -32,7 +32,7 @@ def get_evaluation_summaries(continuation_token=None, limit=10):
             # First try with PartitionKey
             query_params = {
                 "KeyConditionExpression": Key("PartitionKey").eq("Evaluation"),
-                "ProjectionExpression": "#eid, #ts, #as, #ar, #ac, #tq, #en, #tk, #acp, #acr, #arr, #af, #ea",
+                "ProjectionExpression": "#eid, #ts, #as, #ar, #ac, #tq, #en, #tk, #acp, #acr, #arr, #af, #ea, #st",
                 "ExpressionAttributeNames": {
                     "#eid": "EvaluationId",
                     "#ts": "Timestamp",
@@ -47,6 +47,7 @@ def get_evaluation_summaries(continuation_token=None, limit=10):
                     "#arr": "average_response_relevancy",
                     "#af": "average_faithfulness",
                     "#ea": "executionArn",
+                    "#st": "status",
                 },
                 "Limit": limit,
                 "ScanIndexForward": False  # Get the most recent evaluations first
@@ -202,7 +203,7 @@ def get_eval_status(evaluation_id):
             from datetime import timezone
             elapsed_seconds = int((datetime.now(timezone.utc) - start_date).total_seconds())
 
-        history = sfn_client.get_execution_history(executionArn=execution_arn, reverseOrder=True, maxResults=200)
+        history = sfn_client.get_execution_history(executionArn=execution_arn, reverseOrder=False, maxResults=1000)
         events = history.get("events", [])
 
         steps = [
@@ -218,6 +219,7 @@ def get_eval_status(evaluation_id):
             "Split Test Cases": 0,
             "Aggregate Results": 2,
             "Save Results": 3,
+            "Save Evaluation Results": 3,
             "CleanupChunks": 4,
             "Cleanup Chunks": 4,
         }

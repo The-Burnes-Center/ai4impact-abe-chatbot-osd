@@ -140,7 +140,7 @@ export default function NewEvalTab({ onComplete }: RunEvalTabProps) {
       }
     };
     poll();
-    pollRef.current = setInterval(poll, 5000);
+    pollRef.current = setInterval(poll, 3000);
   };
 
   const stopPolling = () => {

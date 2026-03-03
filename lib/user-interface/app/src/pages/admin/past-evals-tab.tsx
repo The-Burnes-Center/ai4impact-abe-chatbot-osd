@@ -226,7 +226,8 @@ export default function PastEvalsTab() {
             </TableHead>
             <TableBody>
               {sortedItems.map((item: any, index: number) => {
-                const isRunning = item.status === "RUNNING" && !(item.average_correctness > 0 || item.average_similarity > 0);
+                const hasScores = item.average_correctness > 0 || item.average_similarity > 0;
+                const isRunning = !hasScores && (item.status === "RUNNING" || (item.executionArn && item.status !== "COMPLETED"));
                 return (
                   <TableRow key={item.EvaluationId || index} hover sx={isRunning ? { opacity: 0.7 } : {}}>
                     {columnDefinitions.map((col) => (

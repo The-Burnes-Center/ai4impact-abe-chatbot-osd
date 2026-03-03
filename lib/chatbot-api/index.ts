@@ -330,9 +330,7 @@ export class ChatBotApi extends Construct {
     lambdaFunctions.handleEvalResultsFunction.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['states:DescribeExecution', 'states:GetExecutionHistory'],
-      resources: [
-        `arn:aws:states:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:execution:${lambdaFunctions.stepFunctionsStack.llmEvalStateMachine.stateMachineName}:*`,
-      ],
+      resources: ['*'],
     }));
 
     // const api = new appsync.GraphqlApi(this, "ChatbotApi", {
