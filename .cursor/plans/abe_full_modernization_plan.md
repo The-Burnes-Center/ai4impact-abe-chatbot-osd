@@ -104,6 +104,15 @@ todos:
   - id: phase5-streaming-ux
     content: "Phase 5 [UX]: Fix streaming UX during tool-use pauses -- add backend status markers, blinking cursor during streaming, 'Searching knowledge base...' indicator during tool execution"
     status: pending
+  - id: phase2-guardrails-streaming
+    content: "Phase 2: Add guardrail support to streaming path (InvokeModelWithResponseStreamCommand) in chat-model.mjs -- guardrailIdentifier/guardrailVersion now passed as top-level params on both streaming and non-streaming calls"
+    status: completed
+  - id: phase2-anti-sycophancy
+    content: "Phase 2: Anti-sycophancy + verbosity reduction -- added prompt rules: never agree with false premises, always trust tool-returned counts, be concise, no boilerplate endings, no repetition; strengthened anti-sycophancy in Key Guidelines; increased chat history window from slice(-2) to slice(-4) to prevent context loss"
+    status: completed
+  - id: phase2-streaming-fix
+    content: "Phase 2 [BUG]: Fix pre-tool text being streamed to user -- model would stream follow-up questions then auto-continue with tool call and answer in same response. Fixed with two-phase streaming: pre-tool text buffered (not sent to user), post-tool text streamed token-by-token. Also added prompt rule: follow-up questions and tool calls are mutually exclusive in a single turn."
+    status: completed
   - id: phase5-help-tips-merge
     content: "Phase 5 [UX]: Merge Help & Guide (navbar) and Tips & Questions (sidebar) into single tabbed Help page at /help, remove duplicate sidebar link"
     status: completed
@@ -132,7 +141,7 @@ This plan addresses **87 identified issues + 9 production launch requirements fr
 **What was done:**
 
 - 1.1 Secrets: Guardrail ID + model ID externalized to env vars. Cognito secrets deferred to Phase 2 (TODO comment added in step-functions.ts).
-- 1.2 Guardrails: Fixed -- moved from request body to top-level InvokeModelCommand params. Added try/catch around Bedrock response parsing.
+- 1.2 Guardrails: Fixed -- moved from request body to top-level InvokeModelCommand params. Added try/catch around Bedrock response parsing. (March 2026: also added guardrail params to InvokeModelWithResponseStreamCommand for the streaming chat path.)
 - 1.3 IAM: All 12+ wildcard policies replaced with least-privilege actions across functions.ts, knowledge-base.ts, opensearch.ts, step-functions.ts.
 - 1.4 S3 Validation: Added path traversal prevention + input validation to delete-s3 Lambda. Upload-s3 sanitization deferred to Phase 4.
 - 1.5 Admin Auth: Fixed bare `except:` to `except Exception as e:` with explicit `admin = False` on failure in feedback-handler.
@@ -580,7 +589,7 @@ model_id = os.environ.get('FAST_MODEL_ID', 'us.anthropic.claude-haiku-4-5-202510
 - **Metadata filtering**: Configure KB to filter by document category (handbook, memo, guide) at query time
 - **Reranking with Cohere Rerank 3.5**: Your account has `cohere.rerank-v3-5:0` available. Add a reranking step after KB retrieval to re-score results by relevance before passing to Claude. This typically improves answer quality by 10-20% for RAG systems. Implementation: call Rerank API between KB retrieve and Claude invoke in [index.mjs](lib/chatbot-api/functions/websocket-chat/index.mjs).
 - **Multi-modal support**: Claude Sonnet 4.5 and Haiku 4.5 both support image input. Enable document image/chart understanding for procurement PDFs with diagrams.
-- **Bedrock Agents**: Consider migrating from raw tool-use to Bedrock Agents for managed orchestration, guardrails, and action groups
+- **Bedrock Agents**: Investigated in March 2026 — `InvokeAgent` does NOT support true token-by-token streaming (response is buffered), which would break the real-time WebSocket streaming UX. Also loses intermediate status messages. Current architecture (InvokeModelWithResponseStream + custom tool loop) is preferred. Guardrails now work on the streaming path directly.
 - **Knowledge Base response generation**: Use KB's built-in `RetrieveAndGenerate` API instead of manual retrieve-then-prompt
 - **Embedding model evaluation**: A/B test `cohere.embed-v4:0` vs `amazon.titan-embed-text-v2:0` for retrieval quality. Cohere v4 is newer and may improve relevance. Requires full KB re-index to switch.
 
