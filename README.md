@@ -18,7 +18,7 @@ ABE is a serverless AI chatbot that helps U.S. federal government buyers navigat
 
 ## Architecture
 
-![Architecture Flow](https://github.com/user-attachments/assets/e36f3313-b345-4e0d-8403-31e9b0473854)
+![Architecture Flow](docs/architecture.png)
 
 ### Tech Stack
 
@@ -232,6 +232,6 @@ In CI/CD, set the `ALARM_EMAIL` GitHub Actions secret.
 
 ## Developers
 
-- [Dhruv Kumar](https://www.linkedin.com/in/dhruvkumar01/)
+- [Dhruv Kumar](https://www.linkedin.com/in/dhruvkamaleshkumar/)
 - [Prasoon Raj](https://www.linkedin.com/in/prasoon-raj-902/)
 - Rui Ge
