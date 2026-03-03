@@ -341,7 +341,12 @@ function DetailedEvaluationPage() {
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle>Retrieved Context</DialogTitle>
+        <DialogTitle>
+          <Typography variant="h6">Retrieved Context</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontWeight: 400 }}>
+            Chunks returned by the knowledge base for this question, with source and relevance score.
+          </Typography>
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2}>
             <Box>

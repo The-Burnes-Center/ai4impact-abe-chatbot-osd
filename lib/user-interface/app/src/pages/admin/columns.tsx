@@ -1,3 +1,4 @@
+import { ReactNode } from "react";
 import { AdminDataType } from "../../common/types";
 import { DateTime } from "luxon";
 import { Utils } from "../../common/utils";
@@ -8,7 +9,7 @@ import { TruncatedTextCell } from "../../components/truncated-text-call";
 
 export interface ColumnDefinition {
   id: string;
-  header: string;
+  header: ReactNode;
   cell: (item: any) => any;
   sortingField?: string;
   sortingComparator?: (a: any, b: any) => number;
@@ -281,9 +282,13 @@ export function getColumnDefinition(
     },
     {
       id: "retrievedContext",
-      header: "Context",
+      header: "Retrieved context",
       cell: (item) => (
-        <TruncatedTextCell text={item.retrieved_context || "N/A"} maxLength={40} />
+        <Tooltip title="Preview of retrieved KB chunks (source and relevance in full view).">
+          <span>
+            <TruncatedTextCell text={item.retrieved_context || "N/A"} maxLength={40} />
+          </span>
+        </Tooltip>
       ),
     },
   ];
