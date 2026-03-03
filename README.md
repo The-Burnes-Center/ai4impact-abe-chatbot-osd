@@ -2,9 +2,9 @@
 
 ## Overview
 
-ABE is a serverless AI chatbot that helps U.S. federal government buyers navigate procurement processes. Built for the Office of the Secretary of Defense (OSD), ABE answers questions about acquisition regulations, finds contracts (GSA Schedule, BPAs, GWACs), identifies vendors, and explains compliance requirements — all grounded in an authoritative knowledge base of procurement documents.
+ABE is a serverless AI chatbot that helps users navigate procurement processes. Built for the Operational Services Division (OSD), ABE answers questions about acquisition regulations, finds contracts (GSA Schedule, BPAs, GWACs), identifies vendors, and explains compliance requirements — all grounded in a knowledge base of procurement documents.
 
-**Live URL:** Deployed behind CloudFront with WAF protection. The URL is output by CloudFormation after each deploy.
+**Live URL:** Deployed behind CloudFront with WAF protection. The URL is output by CloudFormation after deployment.
 
 ## Key Features
 
@@ -229,9 +229,3 @@ In CI/CD, set the `ALARM_EMAIL` GitHub Actions secret.
 3. Make changes and commit (`git commit -m 'Add feature'`)
 4. Push to the branch (`git push origin feature/your-feature`)
 5. Open a pull request
-
-## Developers
-
-- [Dhruv Kumar](https://www.linkedin.com/in/dhruvkamaleshkumar/)
-- [Prasoon Raj](https://www.linkedin.com/in/prasoon-raj-902/)
-- Rui Ge
