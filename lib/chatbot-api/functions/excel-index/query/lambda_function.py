@@ -42,6 +42,7 @@ def lambda_handler(event, context):
                 free_text=req.free_text,
                 filters=req.filters,
                 count_only=req.count_only,
+                count_unique=req.count_unique,
                 limit=req.limit,
             )
         return _response(200, out)
@@ -152,13 +153,14 @@ def _do_query(
     free_text: str | None = None,
     filters: dict[str, Any] | None = None,
     count_only: bool = False,
+    count_unique: str | None = None,
     limit: int = 500,
 ) -> dict:
     """Scan partition and filter in code. Scans all pages for accurate totals."""
     table = DDB.Table(TABLE_NAME)
     collected: list[dict] = []
     total = 0
-    vendor_names: set[str] = set()
+    unique_vals: set[str] = set() if count_unique else None
     scan_kw: dict[str, Any] = {"FilterExpression": Attr("pk").eq(pk) & Attr("sk").ne(SK_META)}
     while True:
         resp = table.scan(**scan_kw)
@@ -166,9 +168,10 @@ def _do_query(
             row = _item_to_row(item)
             if _row_matches(row, free_text=free_text, filters=filters):
                 total += 1
-                vname = row.get("Vendor_Name") or row.get("vendor_name") or ""
-                if vname:
-                    vendor_names.add(vname.strip())
+                if unique_vals is not None:
+                    val = str(row.get(count_unique) or "").strip()
+                    if val:
+                        unique_vals.add(val)
                 if not count_only and len(collected) < limit:
                     collected.append(row)
         last_key = resp.get("LastEvaluatedKey")
@@ -180,6 +183,7 @@ def _do_query(
         "total_matches": total,
         "returned": 0 if count_only else len(collected),
     }
-    if vendor_names:
-        result["unique_vendors"] = len(vendor_names)
+    if unique_vals is not None:
+        result["unique_count"] = len(unique_vals)
+        result["unique_column"] = count_unique
     return result
