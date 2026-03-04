@@ -158,6 +158,7 @@ def _do_query(
     table = DDB.Table(TABLE_NAME)
     collected: list[dict] = []
     total = 0
+    vendor_names: set[str] = set()
     scan_kw: dict[str, Any] = {"FilterExpression": Attr("pk").eq(pk) & Attr("sk").ne(SK_META)}
     while True:
         resp = table.scan(**scan_kw)
@@ -165,12 +166,20 @@ def _do_query(
             row = _item_to_row(item)
             if _row_matches(row, free_text=free_text, filters=filters):
                 total += 1
+                vname = row.get("Vendor_Name") or row.get("vendor_name") or ""
+                if vname:
+                    vendor_names.add(vname.strip())
                 if not count_only and len(collected) < limit:
                     collected.append(row)
         last_key = resp.get("LastEvaluatedKey")
         if not last_key:
             break
         scan_kw["ExclusiveStartKey"] = last_key
-    if count_only:
-        return {"rows": [], "total_matches": total, "returned": 0}
-    return {"rows": collected, "total_matches": total, "returned": len(collected)}
+    result: dict[str, Any] = {
+        "rows": [] if count_only else collected,
+        "total_matches": total,
+        "returned": 0 if count_only else len(collected),
+    }
+    if vendor_names:
+        result["unique_vendors"] = len(vendor_names)
+    return result
