@@ -19,6 +19,7 @@ export interface IndexPreview {
 export interface IndexInfo {
   index_name: string;
   display_name: string;
+  description: string;
   columns: string[];
   row_count: number;
   last_updated: string | null;
@@ -50,8 +51,9 @@ export class ExcelIndexClient {
 
   async createIndex(
     indexName: string,
-    displayName: string
-  ): Promise<{ index_name: string; display_name: string; status: string }> {
+    displayName: string,
+    description?: string
+  ): Promise<{ index_name: string; display_name: string; description: string; status: string }> {
     const auth = await Utils.authenticate();
     const response = await fetch(this.API + "/admin/indexes", {
       method: "POST",
@@ -59,7 +61,7 @@ export class ExcelIndexClient {
         "Content-Type": "application/json",
         Authorization: auth,
       },
-      body: JSON.stringify({ index_name: indexName, display_name: displayName }),
+      body: JSON.stringify({ index_name: indexName, display_name: displayName, description: description || "" }),
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {

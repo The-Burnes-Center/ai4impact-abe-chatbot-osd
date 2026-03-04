@@ -17,7 +17,6 @@ import { Utils } from "../../common/utils";
 import { FileUploader } from "../../common/file-uploader";
 
 const fileExtensions = new Set([
-  ".csv",
   ".doc",
   ".docx",
   ".epub",
@@ -26,7 +25,6 @@ const fileExtensions = new Set([
   ".ppt",
   ".pptx",
   ".tsv",
-  ".xlsx",
   ".eml",
   ".html",
   ".json",
@@ -43,14 +41,10 @@ const mimeTypes: Record<string, string> = {
   ".doc": "application/msword",
   ".docx":
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ".xls": "application/vnd.ms-excel",
-  ".xlsx":
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   ".ppt": "application/vnd.ms-powerpoint",
   ".pptx":
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   ".txt": "text/plain",
-  ".csv": "text/csv",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",

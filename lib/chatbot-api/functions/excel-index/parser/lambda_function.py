@@ -144,7 +144,7 @@ def lambda_handler(event, context):
                             item[k] = _serialize_value(v)
                         writer.put_item(Item=item)
 
-            write_to_registry(index_id, display_name, col_names, len(rows_out))
+            write_to_registry(index_id, display_name, col_names, len(rows_out), sample_rows=rows_out[:5])
             print(f"Parsed index '{index_id}': {len(rows_out)} rows, {len(col_names)} columns.")
             return {"statusCode": 200, "body": json.dumps({"status": "ok", "index_id": index_id, "row_count": len(rows_out)})}
 
