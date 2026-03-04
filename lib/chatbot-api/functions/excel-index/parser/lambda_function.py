@@ -1,34 +1,50 @@
 """
-Trade Index Parser Lambda: triggered on S3 upload of .xlsx to trade-index/ prefix.
-Schema-flexible — accepts any headers. Writes rows + META to DynamoDB.
+Generic Excel Index Parser Lambda.
+Triggered on S3 events under the indexes/ prefix. Derives index_id from
+the S3 key path (indexes/{index_id}/latest.xlsx), writes rows to a shared
+DynamoDB table with pk=index_id, and writes metadata to the registry.
 """
 import io
 import json
 import os
+import re
 from datetime import datetime, timezone
 
 import boto3
 from openpyxl import load_workbook
 
 from models import excel_column_to_field, row_dict_from_excel_row
+from tool_registry import write_to_registry, delete_from_registry
 
 S3 = boto3.client("s3")
 DDB = boto3.resource("dynamodb")
 BUCKET = os.environ["BUCKET"]
 TABLE_NAME = os.environ["TABLE_NAME"]
-PK = "INDEX"
 SK_META = "META"
 BATCH_SIZE = 25
 
+_INDEX_ID_RE = re.compile(r"^indexes/([^/]+)/")
 
-def _clear_table(table) -> None:
-    """Delete all row items with pk=INDEX; keep META so status shows PROCESSING."""
+
+def _extract_index_id(key: str) -> str | None:
+    """Extract index_id from S3 key like indexes/{index_id}/latest.xlsx."""
+    m = _INDEX_ID_RE.match(key)
+    return m.group(1) if m else None
+
+
+def _index_id_to_display_name(index_id: str) -> str:
+    """Convert snake_case index_id to Title Case display name."""
+    return index_id.replace("_", " ").title()
+
+
+def _clear_index(table, index_id: str) -> None:
+    """Delete all row items for the given index_id; keep META for status."""
     keys_to_delete = []
     paginator = boto3.client("dynamodb").get_paginator("query")
     for page in paginator.paginate(
         TableName=TABLE_NAME,
         KeyConditionExpression="pk = :pk",
-        ExpressionAttributeValues={":pk": {"S": PK}},
+        ExpressionAttributeValues={":pk": {"S": index_id}},
         ProjectionExpression="pk, sk",
     ):
         for item in page.get("Items", []):
@@ -41,8 +57,9 @@ def _clear_table(table) -> None:
         boto3.client("dynamodb").batch_write_item(RequestItems=request_items)
 
 
-def _put_meta(table, row_count: int, last_updated: str, error: str | None = None, status: str | None = None) -> None:
-    item: dict = {"pk": PK, "sk": SK_META, "row_count": row_count, "last_updated": last_updated}
+def _put_meta(table, index_id: str, row_count: int, last_updated: str,
+              error: str | None = None, status: str | None = None) -> None:
+    item: dict = {"pk": index_id, "sk": SK_META, "row_count": row_count, "last_updated": last_updated}
     if status is not None:
         item["status"] = status
     if error is not None:
@@ -57,13 +74,27 @@ def _serialize_value(v) -> str:
 
 
 def lambda_handler(event, context):
-    """Process S3 PutObject for .xlsx in trade-index/ prefix; write to DynamoDB."""
     table = DDB.Table(TABLE_NAME)
     for record in event.get("Records", []):
+        event_name = record.get("eventName", "")
         bucket = record["s3"]["bucket"]["name"]
         key = record["s3"]["object"]["key"]
         if not key.lower().endswith(".xlsx"):
             continue
+
+        index_id = _extract_index_id(key)
+        if not index_id:
+            print(f"Could not extract index_id from key: {key}")
+            continue
+
+        display_name = _index_id_to_display_name(index_id)
+
+        if "ObjectRemoved" in event_name:
+            print(f"Delete event for {key}; clearing index '{index_id}' and registry.")
+            _clear_index(table, index_id)
+            _put_meta(table, index_id, 0, datetime.now(timezone.utc).isoformat(), status="NO_DATA")
+            delete_from_registry(index_id)
+            return {"statusCode": 200, "body": json.dumps({"status": "deleted", "index_id": index_id})}
 
         try:
             obj = S3.get_object(Bucket=bucket, Key=key)
@@ -75,13 +106,13 @@ def lambda_handler(event, context):
 
             non_empty = [h for h in headers if h]
             if len(non_empty) < 2:
-                err = f"Trade Index file has only {len(non_empty)} header column(s); expected at least 2."
-                _put_meta(table, 0, datetime.now(timezone.utc).isoformat(), error=err, status="ERROR")
+                err = f"Index '{index_id}' file has only {len(non_empty)} header column(s); expected at least 2."
+                _put_meta(table, index_id, 0, datetime.now(timezone.utc).isoformat(), error=err, status="ERROR")
                 wb.close()
                 return {"statusCode": 200, "body": json.dumps({"status": "error", "message": err})}
 
             now_start = datetime.now(timezone.utc).isoformat()
-            _put_meta(table, 0, now_start, error=None, status="PROCESSING")
+            _put_meta(table, index_id, 0, now_start, error=None, status="PROCESSING")
 
             col_names = [excel_column_to_field(h) for h in non_empty]
             rows_out = []
@@ -92,14 +123,13 @@ def lambda_handler(event, context):
                 rows_out.append(row_dict)
 
             wb.close()
-            _clear_table(table)
+            _clear_index(table, index_id)
 
             now = datetime.now(timezone.utc).isoformat()
-            _put_meta(table, len(rows_out), now, error=None, status="COMPLETE")
+            _put_meta(table, index_id, len(rows_out), now, error=None, status="COMPLETE")
 
-            # Store column names in META for preview
             table.update_item(
-                Key={"pk": PK, "sk": SK_META},
+                Key={"pk": index_id, "sk": SK_META},
                 UpdateExpression="SET columns = :c",
                 ExpressionAttributeValues={":c": col_names},
             )
@@ -108,17 +138,19 @@ def lambda_handler(event, context):
                 chunk = rows_out[offset : offset + BATCH_SIZE]
                 with table.batch_writer() as writer:
                     for j, row in enumerate(chunk):
-                        item = {"pk": PK, "sk": str(offset + j)}
+                        item = {"pk": index_id, "sk": str(offset + j)}
                         for k, v in row.items():
                             item[k] = _serialize_value(v)
                         writer.put_item(Item=item)
 
-            return {"statusCode": 200, "body": json.dumps({"status": "ok", "row_count": len(rows_out)})}
+            write_to_registry(index_id, display_name, col_names, len(rows_out))
+            print(f"Parsed index '{index_id}': {len(rows_out)} rows, {len(col_names)} columns.")
+            return {"statusCode": 200, "body": json.dumps({"status": "ok", "index_id": index_id, "row_count": len(rows_out)})}
 
         except Exception as e:
-            print(f"Trade Index parser error: {e}")
+            print(f"Parser error for index '{index_id}': {e}")
             try:
-                _put_meta(table, 0, datetime.now(timezone.utc).isoformat(), error=str(e), status="ERROR")
+                _put_meta(table, index_id, 0, datetime.now(timezone.utc).isoformat(), error=str(e), status="ERROR")
             except Exception as meta_err:
                 print(f"Failed to write meta error: {meta_err}")
             return {"statusCode": 200, "body": json.dumps({"status": "error", "message": str(e)})}

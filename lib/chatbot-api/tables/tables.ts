@@ -9,8 +9,8 @@ export class TableStack extends Construct {
   public readonly evalResultsTable: Table;
   public readonly evalSummaryTable: Table;
   public readonly analyticsTable: Table;
-  public readonly contractIndexTable: Table;
-  public readonly tradeIndexTable: Table;
+  public readonly excelIndexDataTable: Table;
+  public readonly indexRegistryTable: Table;
   public readonly testLibraryTable: Table;
   public readonly feedbackToTestLibraryQueue: sqs.Queue;
   public readonly feedbackToTestLibraryDLQ: sqs.Queue;
@@ -110,23 +110,23 @@ export class TableStack extends Construct {
 
     this.analyticsTable = analyticsTable;
 
-    const contractIndexTable = new Table(scope, 'ContractIndexTable', {
+    const excelIndexDataTable = new Table(scope, 'ExcelIndexDataTable', {
       partitionKey: { name: 'pk', type: AttributeType.STRING },
       sortKey: { name: 'sk', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
-    this.contractIndexTable = contractIndexTable;
+    this.excelIndexDataTable = excelIndexDataTable;
 
-    const tradeIndexTable = new Table(scope, 'TradeIndexTable', {
+    const indexRegistryTable = new Table(scope, 'IndexRegistryTable', {
       partitionKey: { name: 'pk', type: AttributeType.STRING },
       sortKey: { name: 'sk', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
-    this.tradeIndexTable = tradeIndexTable;
+    this.indexRegistryTable = indexRegistryTable;
 
     const testLibraryTable = new Table(scope, 'TestLibraryTable', {
       partitionKey: { name: 'PartitionKey', type: AttributeType.STRING },

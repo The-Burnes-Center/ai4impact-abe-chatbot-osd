@@ -14,6 +14,7 @@ import {
   Typography,
 } from "@mui/material";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -45,6 +46,7 @@ interface IndexCardProps {
   description: string;
   api: IndexApiAdapter;
   onStatusChange?: (status: IndexStatus | null) => void;
+  onDelete?: () => void;
 }
 
 const XLSX_MIME =
@@ -77,6 +79,7 @@ export default function IndexCard({
   description,
   api,
   onStatusChange,
+  onDelete,
 }: IndexCardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<IndexStatus | null>(null);
@@ -232,6 +235,17 @@ export default function IndexCard({
         >
           {showPreview ? "Hide Preview" : "Preview Data"}
         </Button>
+        {onDelete && (
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteOutlineIcon />}
+            onClick={onDelete}
+          >
+            Delete
+          </Button>
+        )}
       </Stack>
 
       {/* Upload section */}

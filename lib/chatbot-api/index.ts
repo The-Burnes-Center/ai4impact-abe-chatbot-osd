@@ -95,8 +95,8 @@ export class ChatBotApi extends Construct {
         evalResultsBucket : buckets.evalResultsBucket,
         analyticsTable : tables.analyticsTable,
         contractIndexBucket: buckets.contractIndexBucket,
-        contractIndexTable: tables.contractIndexTable,
-        tradeIndexTable: tables.tradeIndexTable,
+        excelIndexDataTable: tables.excelIndexDataTable,
+        indexRegistryTable: tables.indexRegistryTable,
         testLibraryTable: tables.testLibraryTable,
         feedbackToTestLibraryQueue: tables.feedbackToTestLibraryQueue,
       })
@@ -231,73 +231,62 @@ export class ChatBotApi extends Construct {
       authorizer: httpAuthorizer,
     })
 
-    const contractIndexApiIntegration = new HttpLambdaIntegration('ContractIndexAPIIntegration', lambdaFunctions.contractIndexApiFunction);
-    restBackend.restAPI.addRoutes({
-      path: "/admin/contract-index/status",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-    restBackend.restAPI.addRoutes({
-      path: "/admin/contract-index/status",
-      methods: [apigwv2.HttpMethod.GET],
-      integration: contractIndexApiIntegration,
-      authorizer: httpAuthorizer,
-    });
-    restBackend.restAPI.addRoutes({
-      path: "/admin/contract-index/preview",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-    restBackend.restAPI.addRoutes({
-      path: "/admin/contract-index/preview",
-      methods: [apigwv2.HttpMethod.GET],
-      integration: contractIndexApiIntegration,
-      authorizer: httpAuthorizer,
-    });
-    restBackend.restAPI.addRoutes({
-      path: "/admin/contract-index/upload-url",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-    restBackend.restAPI.addRoutes({
-      path: "/admin/contract-index/upload-url",
-      methods: [apigwv2.HttpMethod.POST],
-      integration: contractIndexApiIntegration,
-      authorizer: httpAuthorizer,
-    });
+    const excelIndexApiIntegration = new HttpLambdaIntegration('ExcelIndexAPIIntegration', lambdaFunctions.excelIndexApiFunction);
 
-    const tradeIndexApiIntegration = new HttpLambdaIntegration('TradeIndexAPIIntegration', lambdaFunctions.tradeIndexApiFunction);
+    // Generic index routes
     restBackend.restAPI.addRoutes({
-      path: "/admin/trade-index/status",
+      path: "/admin/indexes",
       methods: [apigwv2.HttpMethod.OPTIONS],
       integration: corsHandlerIntegration,
     });
     restBackend.restAPI.addRoutes({
-      path: "/admin/trade-index/status",
-      methods: [apigwv2.HttpMethod.GET],
-      integration: tradeIndexApiIntegration,
+      path: "/admin/indexes",
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST],
+      integration: excelIndexApiIntegration,
       authorizer: httpAuthorizer,
     });
     restBackend.restAPI.addRoutes({
-      path: "/admin/trade-index/preview",
+      path: "/admin/indexes/{indexId}/status",
       methods: [apigwv2.HttpMethod.OPTIONS],
       integration: corsHandlerIntegration,
     });
     restBackend.restAPI.addRoutes({
-      path: "/admin/trade-index/preview",
+      path: "/admin/indexes/{indexId}/status",
       methods: [apigwv2.HttpMethod.GET],
-      integration: tradeIndexApiIntegration,
+      integration: excelIndexApiIntegration,
       authorizer: httpAuthorizer,
     });
     restBackend.restAPI.addRoutes({
-      path: "/admin/trade-index/upload-url",
+      path: "/admin/indexes/{indexId}/preview",
       methods: [apigwv2.HttpMethod.OPTIONS],
       integration: corsHandlerIntegration,
     });
     restBackend.restAPI.addRoutes({
-      path: "/admin/trade-index/upload-url",
+      path: "/admin/indexes/{indexId}/preview",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: excelIndexApiIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/indexes/{indexId}/upload-url",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/indexes/{indexId}/upload-url",
       methods: [apigwv2.HttpMethod.POST],
-      integration: tradeIndexApiIntegration,
+      integration: excelIndexApiIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/indexes/{indexId}",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/indexes/{indexId}",
+      methods: [apigwv2.HttpMethod.DELETE],
+      integration: excelIndexApiIntegration,
       authorizer: httpAuthorizer,
     });
 

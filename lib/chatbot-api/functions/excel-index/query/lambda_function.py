@@ -1,6 +1,7 @@
 """
-Trade Index Query Lambda: read trade contract index from DynamoDB.
-Schema-flexible — searches all string fields for free_text matches.
+Generic Excel Index Query Lambda.
+Reads from a shared DynamoDB table using index_name as the partition key.
+Supports status, preview, and query actions with generic column filters.
 """
 import json
 import os
@@ -11,11 +12,10 @@ import boto3
 from boto3.dynamodb.conditions import Attr, Key
 from pydantic import ValidationError
 
-from models import QueryTradeIndexRequest, StatusResponse, PreviewResponse
+from models import QueryIndexRequest, StatusResponse, PreviewResponse
 
 DDB = boto3.resource("dynamodb")
 TABLE_NAME = os.environ["TABLE_NAME"]
-PK = "INDEX"
 SK_META = "META"
 
 SKIP_FIELDS = {"pk", "sk"}
@@ -23,32 +23,24 @@ _PUNCT_RE = re.compile(r'[^\w\s]')
 _MULTI_WS = re.compile(r'\s+')
 
 
-def _norm(s: str) -> str:
-    """Strip punctuation and collapse whitespace for fuzzy substring matching."""
-    return _MULTI_WS.sub(' ', _PUNCT_RE.sub('', s)).strip().lower()
-
-
-def _contains(haystack: str, needle: str) -> bool:
-    return _norm(needle) in _norm(haystack)
-
-
 def lambda_handler(event, context):
     body = _get_payload(event)
     try:
-        req = QueryTradeIndexRequest.model_validate(body)
+        req = QueryIndexRequest.model_validate(body)
     except ValidationError as e:
         return _response(400, {"error": "Invalid request", "details": e.errors()})
 
+    pk = req.index_name
     try:
         if req.action == "status":
-            out = _do_status()
+            out = _do_status(pk)
         elif req.action == "preview":
-            out = _do_preview(req.preview_rows)
+            out = _do_preview(pk, req.preview_rows)
         else:
             out = _do_query(
+                pk=pk,
                 free_text=req.free_text,
-                vendor_name=req.vendor_name,
-                contract_id=req.contract_id,
+                filters=req.filters,
                 count_only=req.count_only,
                 limit=req.limit,
             )
@@ -77,15 +69,18 @@ def _item_to_row(item: dict) -> dict[str, Any]:
     return {k: v for k, v in item.items() if k not in SKIP_FIELDS}
 
 
-def _do_status() -> dict:
+def _do_status(pk: str) -> dict:
     table = DDB.Table(TABLE_NAME)
     try:
-        resp = table.get_item(Key={"pk": PK, "sk": SK_META})
+        resp = table.get_item(Key={"pk": pk, "sk": SK_META})
     except Exception as e:
         raise RuntimeError(f"DynamoDB get failed: {e}") from e
     item = resp.get("Item")
     if not item:
-        return StatusResponse(status="NO_DATA", has_data=False, row_count=0).model_dump()
+        return StatusResponse(
+            status="NO_DATA", has_data=False, row_count=0,
+            last_updated=None, error_message=None,
+        ).model_dump()
     row_count = int(item.get("row_count", 0))
     stored_status = item.get("status")
     if stored_status in ("PROCESSING", "COMPLETE", "ERROR"):
@@ -105,13 +100,17 @@ def _do_status() -> dict:
     ).model_dump()
 
 
-def _do_preview(n: int) -> dict:
+def _do_preview(pk: str, n: int) -> dict:
     table = DDB.Table(TABLE_NAME)
-    meta = table.get_item(Key={"pk": PK, "sk": SK_META}).get("Item", {})
+    meta = table.get_item(Key={"pk": pk, "sk": SK_META}).get("Item", {})
     stored_columns = meta.get("columns", [])
 
-    resp = table.query(KeyConditionExpression=Key("pk").eq(PK), Limit=max(n + 10, 50))
-    items = [it for it in resp.get("Items", []) if it.get("sk") != SK_META]
+    resp = table.query(
+        KeyConditionExpression=Key("pk").eq(pk),
+        Limit=max(n + 10, 50),
+    )
+    items = resp.get("Items", [])
+    items = [it for it in items if it.get("sk") != SK_META]
     rows = [_item_to_row(it) for it in items][:n]
     if not rows:
         return PreviewResponse(columns=[], rows=[]).model_dump()
@@ -119,54 +118,55 @@ def _do_preview(n: int) -> dict:
     return PreviewResponse(columns=columns, rows=rows).model_dump()
 
 
-def _row_matches(row: dict, free_text: str | None, vendor_name: str | None, contract_id: str | None) -> bool:
+def _norm(s: str) -> str:
+    """Strip punctuation and collapse whitespace for fuzzy substring matching."""
+    return _MULTI_WS.sub(' ', _PUNCT_RE.sub('', s)).strip().lower()
+
+
+def _contains(haystack: str, needle: str) -> bool:
+    return _norm(needle) in _norm(haystack)
+
+
+def _row_matches(
+    row: dict[str, Any],
+    free_text: str | None,
+    filters: dict[str, Any] | None,
+) -> bool:
     if free_text:
-        if not any(_contains(str(v), free_text) for v in row.values()):
+        if not any(
+            _contains(str(v), free_text)
+            for k, v in row.items()
+            if k not in SKIP_FIELDS
+        ):
             return False
-    if vendor_name:
-        found = False
-        for k, v in row.items():
-            if "vendor" in k.lower() and "name" in k.lower():
-                if _contains(str(v), vendor_name):
-                    found = True
-                    break
-        if not found:
-            return False
-    if contract_id:
-        found = False
-        for k, v in row.items():
-            if "contract" in k.lower() and ("id" in k.lower() or "number" in k.lower()):
-                if contract_id.lower() in str(v).lower():
-                    found = True
-                    break
-        if not found:
-            return False
+    if filters:
+        for col, value in filters.items():
+            cell = str(row.get(col) or "")
+            if not _contains(cell, str(value)):
+                return False
     return True
 
 
 def _do_query(
+    pk: str,
     free_text: str | None = None,
-    vendor_name: str | None = None,
-    contract_id: str | None = None,
+    filters: dict[str, Any] | None = None,
     count_only: bool = False,
-    limit: int = 20,
+    limit: int = 500,
 ) -> dict:
+    """Scan partition and filter in code. Scans all pages for accurate totals."""
     table = DDB.Table(TABLE_NAME)
     collected: list[dict] = []
     total = 0
-    scan_kw: dict[str, Any] = {"FilterExpression": Attr("pk").eq(PK) & Attr("sk").ne(SK_META)}
+    scan_kw: dict[str, Any] = {"FilterExpression": Attr("pk").eq(pk) & Attr("sk").ne(SK_META)}
     while True:
         resp = table.scan(**scan_kw)
         for item in resp.get("Items", []):
             row = _item_to_row(item)
-            if _row_matches(row, free_text, vendor_name, contract_id):
+            if _row_matches(row, free_text=free_text, filters=filters):
                 total += 1
                 if not count_only and len(collected) < limit:
                     collected.append(row)
-                if count_only:
-                    continue
-                if len(collected) >= limit:
-                    return {"rows": collected, "total_matches": total, "returned": len(collected)}
         last_key = resp.get("LastEvaluatedKey")
         if not last_key:
             break

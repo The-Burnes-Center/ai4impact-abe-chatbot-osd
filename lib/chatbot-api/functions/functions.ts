@@ -25,8 +25,8 @@ interface LambdaFunctionStackProps {
   readonly evalResultsBucket: s3.Bucket;
   readonly analyticsTable: Table;
   readonly contractIndexBucket: s3.Bucket;
-  readonly contractIndexTable: Table;
-  readonly tradeIndexTable: Table;
+  readonly excelIndexDataTable: Table;
+  readonly indexRegistryTable: Table;
   readonly testLibraryTable: Table;
   readonly feedbackToTestLibraryQueue: sqs.Queue;
 }
@@ -52,12 +52,9 @@ export class LambdaFunctionStack extends Construct {
   public readonly handleEvalResultsFunction: lambda.Function;
   public readonly metricsHandlerFunction: lambda.Function;
   public readonly faqClassifierFunction: lambda.Function;
-  public readonly contractIndexParserFunction: lambda.Function;
-  public readonly contractIndexQueryFunction: lambda.Function;
-  public readonly contractIndexApiFunction: lambda.Function;
-  public readonly tradeIndexParserFunction: lambda.Function;
-  public readonly tradeIndexQueryFunction: lambda.Function;
-  public readonly tradeIndexApiFunction: lambda.Function;
+  public readonly excelIndexParserFunction: lambda.Function;
+  public readonly excelIndexQueryFunction: lambda.Function;
+  public readonly excelIndexApiFunction: lambda.Function;
   public readonly testLibraryFunction: lambda.Function;
   public readonly feedbackToTestLibraryEnqueueFunction: lambda.Function;
   public readonly feedbackToTestLibraryProcessFunction: lambda.Function;
@@ -497,11 +494,11 @@ faqClassifierFunction.addToRolePolicy(new iam.PolicyStatement({
 
 this.faqClassifierFunction = faqClassifierFunction;
 
-// Contract Index: parser (S3 trigger → DynamoDB), query (agent + REST reads from DynamoDB)
-const contractIndexParserFunction = new lambda.Function(scope, 'ContractIndexParserFunction', {
+// Generic Excel Index: one parser, one query, one API Lambda for all indexes
+const excelIndexParserFunction = new lambda.Function(scope, 'ExcelIndexParserFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,
-  code: lambda.Code.fromAsset(path.join(__dirname, 'contract-index/parser'), {
+  code: lambda.Code.fromAsset(path.join(__dirname, 'excel-index/parser'), {
     bundling: {
       image: lambda.Runtime.PYTHON_3_12.bundlingImage,
       platform: 'linux/amd64',
@@ -514,126 +511,37 @@ const contractIndexParserFunction = new lambda.Function(scope, 'ContractIndexPar
   handler: 'lambda_function.lambda_handler',
   environment: {
     BUCKET: props.contractIndexBucket.bucketName,
-    TABLE_NAME: props.contractIndexTable.tableName,
+    TABLE_NAME: props.excelIndexDataTable.tableName,
+    INDEX_REGISTRY_TABLE: props.indexRegistryTable.tableName,
   },
   timeout: cdk.Duration.minutes(2),
   memorySize: 512,
 });
-contractIndexParserFunction.addToRolePolicy(new iam.PolicyStatement({
+excelIndexParserFunction.addToRolePolicy(new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
-  actions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
-  resources: [props.contractIndexBucket.bucketArn, props.contractIndexBucket.bucketArn + '/*'],
+  actions: ['s3:GetObject'],
+  resources: [props.contractIndexBucket.bucketArn + '/*'],
 }));
-contractIndexParserFunction.addToRolePolicy(new iam.PolicyStatement({
-  effect: iam.Effect.ALLOW,
-  actions: ['dynamodb:Query', 'dynamodb:BatchWriteItem', 'dynamodb:PutItem', 'dynamodb:DeleteItem'],
-  resources: [props.contractIndexTable.tableArn, props.contractIndexTable.tableArn + '/index/*'],
-}));
-contractIndexParserFunction.addEventSource(new S3EventSource(props.contractIndexBucket, {
-  events: [s3.EventType.OBJECT_CREATED],
-  filters: [{ prefix: 'swc-index/', suffix: '.xlsx' }],
-}));
-this.contractIndexParserFunction = contractIndexParserFunction;
-
-const contractIndexQueryFunction = new lambda.Function(scope, 'ContractIndexQueryFunction', {
-  ...LAMBDA_DEFAULTS,
-  runtime: lambda.Runtime.PYTHON_3_12,
-  code: lambda.Code.fromAsset(path.join(__dirname, 'contract-index/query'), {
-    bundling: {
-      image: lambda.Runtime.PYTHON_3_12.bundlingImage,
-      platform: 'linux/amd64',
-      command: [
-        'bash', '-c',
-        'pip install --platform manylinux2014_aarch64 --implementation cp --python-version 3.12 --only-binary=:all: -r requirements.txt -t /asset-output && cp -au . /asset-output',
-      ],
-    },
-  }),
-  handler: 'lambda_function.lambda_handler',
-  environment: {
-    TABLE_NAME: props.contractIndexTable.tableName,
-  },
-  timeout: cdk.Duration.seconds(30),
-  memorySize: 256,
-});
-contractIndexQueryFunction.addToRolePolicy(new iam.PolicyStatement({
-  effect: iam.Effect.ALLOW,
-  actions: ['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:Scan'],
-  resources: [props.contractIndexTable.tableArn, props.contractIndexTable.tableArn + '/index/*'],
-}));
-this.contractIndexQueryFunction = contractIndexQueryFunction;
-
-const contractIndexApiFunction = new lambda.Function(scope, 'ContractIndexApiFunction', {
-  ...LAMBDA_DEFAULTS,
-  runtime: lambda.Runtime.NODEJS_20_X,
-  code: lambda.Code.fromAsset(path.join(__dirname, 'contract-index/api')),
-  handler: 'index.handler',
-  environment: {
-    CONTRACT_INDEX_QUERY_FUNCTION: contractIndexQueryFunction.functionName,
-    BUCKET: props.contractIndexBucket.bucketName,
-  },
-  timeout: cdk.Duration.seconds(30),
-});
-contractIndexApiFunction.addToRolePolicy(new iam.PolicyStatement({
-  effect: iam.Effect.ALLOW,
-  actions: ['lambda:InvokeFunction'],
-  resources: [contractIndexQueryFunction.functionArn],
-}));
-contractIndexApiFunction.addToRolePolicy(new iam.PolicyStatement({
-  effect: iam.Effect.ALLOW,
-  actions: ['s3:PutObject'],
-  resources: [props.contractIndexBucket.bucketArn, props.contractIndexBucket.bucketArn + '/*'],
-}));
-this.contractIndexApiFunction = contractIndexApiFunction;
-
-websocketAPIFunction.addEnvironment('CONTRACT_INDEX_QUERY_FUNCTION', contractIndexQueryFunction.functionName);
-websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
-  effect: iam.Effect.ALLOW,
-  actions: ['lambda:InvokeFunction'],
-  resources: [contractIndexQueryFunction.functionArn],
-}));
-
-// Trade Index: parser (S3 trigger → DynamoDB), query (agent + REST reads from DynamoDB)
-const tradeIndexParserFunction = new lambda.Function(scope, 'TradeIndexParserFunction', {
-  ...LAMBDA_DEFAULTS,
-  runtime: lambda.Runtime.PYTHON_3_12,
-  code: lambda.Code.fromAsset(path.join(__dirname, 'trade-index/parser'), {
-    bundling: {
-      image: lambda.Runtime.PYTHON_3_12.bundlingImage,
-      platform: 'linux/amd64',
-      command: [
-        'bash', '-c',
-        'pip install --platform manylinux2014_aarch64 --implementation cp --python-version 3.12 --only-binary=:all: -r requirements.txt -t /asset-output && cp -au . /asset-output',
-      ],
-    },
-  }),
-  handler: 'lambda_function.lambda_handler',
-  environment: {
-    BUCKET: props.contractIndexBucket.bucketName,
-    TABLE_NAME: props.tradeIndexTable.tableName,
-  },
-  timeout: cdk.Duration.minutes(2),
-  memorySize: 512,
-});
-tradeIndexParserFunction.addToRolePolicy(new iam.PolicyStatement({
-  effect: iam.Effect.ALLOW,
-  actions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
-  resources: [props.contractIndexBucket.bucketArn, props.contractIndexBucket.bucketArn + '/*'],
-}));
-tradeIndexParserFunction.addToRolePolicy(new iam.PolicyStatement({
+excelIndexParserFunction.addToRolePolicy(new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
   actions: ['dynamodb:Query', 'dynamodb:BatchWriteItem', 'dynamodb:PutItem', 'dynamodb:DeleteItem', 'dynamodb:UpdateItem', 'dynamodb:GetItem'],
-  resources: [props.tradeIndexTable.tableArn, props.tradeIndexTable.tableArn + '/index/*'],
+  resources: [props.excelIndexDataTable.tableArn],
 }));
-tradeIndexParserFunction.addEventSource(new S3EventSource(props.contractIndexBucket, {
-  events: [s3.EventType.OBJECT_CREATED],
-  filters: [{ prefix: 'trade-index/', suffix: '.xlsx' }],
+excelIndexParserFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['dynamodb:PutItem', 'dynamodb:DeleteItem'],
+  resources: [props.indexRegistryTable.tableArn],
 }));
-this.tradeIndexParserFunction = tradeIndexParserFunction;
+excelIndexParserFunction.addEventSource(new S3EventSource(props.contractIndexBucket, {
+  events: [s3.EventType.OBJECT_CREATED, s3.EventType.OBJECT_REMOVED],
+  filters: [{ prefix: 'indexes/', suffix: '.xlsx' }],
+}));
+this.excelIndexParserFunction = excelIndexParserFunction;
 
-const tradeIndexQueryFunction = new lambda.Function(scope, 'TradeIndexQueryFunction', {
+const excelIndexQueryFunction = new lambda.Function(scope, 'ExcelIndexQueryFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,
-  code: lambda.Code.fromAsset(path.join(__dirname, 'trade-index/query'), {
+  code: lambda.Code.fromAsset(path.join(__dirname, 'excel-index/query'), {
     bundling: {
       image: lambda.Runtime.PYTHON_3_12.bundlingImage,
       platform: 'linux/amd64',
@@ -645,46 +553,64 @@ const tradeIndexQueryFunction = new lambda.Function(scope, 'TradeIndexQueryFunct
   }),
   handler: 'lambda_function.lambda_handler',
   environment: {
-    TABLE_NAME: props.tradeIndexTable.tableName,
+    TABLE_NAME: props.excelIndexDataTable.tableName,
   },
   timeout: cdk.Duration.seconds(30),
   memorySize: 256,
 });
-tradeIndexQueryFunction.addToRolePolicy(new iam.PolicyStatement({
+excelIndexQueryFunction.addToRolePolicy(new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
   actions: ['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:Scan'],
-  resources: [props.tradeIndexTable.tableArn, props.tradeIndexTable.tableArn + '/index/*'],
+  resources: [props.excelIndexDataTable.tableArn],
 }));
-this.tradeIndexQueryFunction = tradeIndexQueryFunction;
+this.excelIndexQueryFunction = excelIndexQueryFunction;
 
-const tradeIndexApiFunction = new lambda.Function(scope, 'TradeIndexApiFunction', {
+const excelIndexApiFunction = new lambda.Function(scope, 'ExcelIndexApiFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.NODEJS_20_X,
-  code: lambda.Code.fromAsset(path.join(__dirname, 'trade-index/api')),
+  code: lambda.Code.fromAsset(path.join(__dirname, 'excel-index/api')),
   handler: 'index.handler',
   environment: {
-    TRADE_INDEX_QUERY_FUNCTION: tradeIndexQueryFunction.functionName,
+    QUERY_FUNCTION: excelIndexQueryFunction.functionName,
     BUCKET: props.contractIndexBucket.bucketName,
+    INDEX_REGISTRY_TABLE: props.indexRegistryTable.tableName,
+    TABLE_NAME: props.excelIndexDataTable.tableName,
   },
   timeout: cdk.Duration.seconds(30),
 });
-tradeIndexApiFunction.addToRolePolicy(new iam.PolicyStatement({
+excelIndexApiFunction.addToRolePolicy(new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
   actions: ['lambda:InvokeFunction'],
-  resources: [tradeIndexQueryFunction.functionArn],
+  resources: [excelIndexQueryFunction.functionArn],
 }));
-tradeIndexApiFunction.addToRolePolicy(new iam.PolicyStatement({
+excelIndexApiFunction.addToRolePolicy(new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
-  actions: ['s3:PutObject'],
-  resources: [props.contractIndexBucket.bucketArn, props.contractIndexBucket.bucketArn + '/*'],
+  actions: ['s3:PutObject', 's3:DeleteObject'],
+  resources: [props.contractIndexBucket.bucketArn + '/*'],
 }));
-this.tradeIndexApiFunction = tradeIndexApiFunction;
+excelIndexApiFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['dynamodb:Query', 'dynamodb:PutItem', 'dynamodb:DeleteItem'],
+  resources: [props.indexRegistryTable.tableArn],
+}));
+excelIndexApiFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['dynamodb:Scan', 'dynamodb:BatchWriteItem'],
+  resources: [props.excelIndexDataTable.tableArn],
+}));
+this.excelIndexApiFunction = excelIndexApiFunction;
 
-websocketAPIFunction.addEnvironment('TRADE_INDEX_QUERY_FUNCTION', tradeIndexQueryFunction.functionName);
+websocketAPIFunction.addEnvironment('EXCEL_INDEX_QUERY_FUNCTION', excelIndexQueryFunction.functionName);
+websocketAPIFunction.addEnvironment('INDEX_REGISTRY_TABLE', props.indexRegistryTable.tableName);
 websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
   actions: ['lambda:InvokeFunction'],
-  resources: [tradeIndexQueryFunction.functionArn],
+  resources: [excelIndexQueryFunction.functionArn],
+}));
+websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['dynamodb:Query'],
+  resources: [props.indexRegistryTable.tableArn],
 }));
 
 const testLibraryFunction = new lambda.Function(scope, 'TestLibraryHandlerFunction', {

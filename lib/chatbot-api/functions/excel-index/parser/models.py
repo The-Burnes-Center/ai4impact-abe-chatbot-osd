@@ -1,12 +1,10 @@
 """
-Pydantic models for Trade Contract Index rows.
+Models for Excel Index rows.
 Schema-flexible: stores all columns from the uploaded spreadsheet.
-Column names are normalized (spaces/slashes/dashes → underscores).
+Column names are normalized (spaces/slashes/dashes -> underscores).
 """
 from datetime import date, datetime
 from typing import Any
-
-from pydantic import BaseModel, ConfigDict
 
 
 def _to_str(v: Any) -> str:

@@ -8,7 +8,7 @@ import {
   Stack,
   CircularProgress,
 } from "@mui/material";
-import { useState, useEffect, useContext, useCallback } from "react";
+import { useState, useEffect, useContext } from "react";
 import DocumentsTab from "./documents-tab";
 import DataIndexesTab from "./data-indexes-tab";
 import { ApiClient } from "../../common/api-client/api-client";
@@ -16,24 +16,6 @@ import { AppContext } from "../../common/app-context";
 import { Utils } from "../../common/utils";
 import AdminPageLayout from "../../components/admin-page-layout";
 import StatusChip, { type StatusVariant } from "./status-chip";
-import type { IndexStatus } from "./index-card";
-
-function indexToChipVariant(s: IndexStatus | null): StatusVariant {
-  if (!s) return "empty";
-  if (s.status === "PROCESSING") return "processing";
-  if (s.status === "ERROR" || s.error_message) return "error";
-  if (s.status === "COMPLETE" || s.has_data) return "ready";
-  return "empty";
-}
-
-function indexChipLabel(s: IndexStatus | null): string {
-  if (!s) return "Loading";
-  if (s.status === "PROCESSING") return "Processing";
-  if (s.status === "ERROR") return "Error";
-  if (s.status === "COMPLETE" || s.has_data)
-    return `${s.row_count.toLocaleString()} rows`;
-  return "No data";
-}
 
 export default function DataPage() {
   const [activeTab, setActiveTab] = useState(0);
@@ -46,26 +28,6 @@ export default function DataPage() {
     completedAt: string | null;
   } | null>(null);
   const [showUnsyncedAlert, setShowUnsyncedAlert] = useState(false);
-
-  const [contractStatus, setContractStatus] = useState<IndexStatus | null>(
-    null
-  );
-  const [tradeStatus, setTradeStatus] = useState<IndexStatus | null>(null);
-
-  const fetchIndexStatuses = async () => {
-    try {
-      const s = await apiClient.contractIndex.getStatus();
-      setContractStatus(s);
-    } catch {
-      setContractStatus(null);
-    }
-    try {
-      const s = await apiClient.tradeIndex.getStatus();
-      setTradeStatus(s);
-    } catch {
-      setTradeStatus(null);
-    }
-  };
 
   const refreshSyncTime = async () => {
     try {
@@ -87,7 +49,6 @@ export default function DataPage() {
 
   useEffect(() => {
     refreshSyncTime();
-    fetchIndexStatuses();
   }, []);
 
   const kbChipVariant = (): StatusVariant => {
@@ -111,15 +72,6 @@ export default function DataPage() {
     return lastSyncTime || "";
   };
 
-  const onContractStatusChange = useCallback(
-    (s: IndexStatus | null) => setContractStatus(s),
-    []
-  );
-  const onTradeStatusChange = useCallback(
-    (s: IndexStatus | null) => setTradeStatus(s),
-    []
-  );
-
   return (
     <AdminPageLayout
       title="Data Dashboard"
@@ -136,34 +88,6 @@ export default function DataPage() {
           detail={kbDetail()}
           chipVariant={kbChipVariant()}
           chipLabel={kbChipLabel()}
-        />
-        <StatusCard
-          title="Contract Index"
-          detail={indexChipLabel(contractStatus)}
-          chipVariant={indexToChipVariant(contractStatus)}
-          chipLabel={
-            indexToChipVariant(contractStatus) === "ready"
-              ? "Ready"
-              : indexToChipVariant(contractStatus) === "processing"
-                ? "Processing"
-                : indexToChipVariant(contractStatus) === "error"
-                  ? "Error"
-                  : "No data"
-          }
-        />
-        <StatusCard
-          title="Trade Index"
-          detail={indexChipLabel(tradeStatus)}
-          chipVariant={indexToChipVariant(tradeStatus)}
-          chipLabel={
-            indexToChipVariant(tradeStatus) === "ready"
-              ? "Ready"
-              : indexToChipVariant(tradeStatus) === "processing"
-                ? "Processing"
-                : indexToChipVariant(tradeStatus) === "error"
-                  ? "Error"
-                  : "No data"
-          }
         />
       </Stack>
 
@@ -196,12 +120,7 @@ export default function DataPage() {
               setShowUnsyncedAlert={setShowUnsyncedAlert}
             />
           )}
-          {activeTab === 1 && (
-            <DataIndexesTab
-              onContractStatusChange={onContractStatusChange}
-              onTradeStatusChange={onTradeStatusChange}
-            />
-          )}
+          {activeTab === 1 && <DataIndexesTab />}
         </Box>
       </Box>
     </AdminPageLayout>

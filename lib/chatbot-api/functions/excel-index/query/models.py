@@ -1,17 +1,17 @@
 """
-Pydantic models for trade-index query Lambda: request and response validation.
+Pydantic models for generic Excel index query Lambda.
 """
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
 
-class QueryTradeIndexRequest(BaseModel):
-    """Request payload for Trade Index query Lambda."""
+class QueryIndexRequest(BaseModel):
+    """Request payload for query Lambda (agent or REST)."""
     action: Literal["query", "status", "preview"] = "query"
+    index_name: str
     free_text: Optional[str] = None
-    vendor_name: Optional[str] = None
-    contract_id: Optional[str] = None
+    filters: Optional[dict[str, Any]] = None
     count_only: bool = False
     limit: int = Field(default=500, ge=1, le=500)
     preview_rows: int = Field(default=10, ge=1, le=50)

@@ -4,8 +4,7 @@ import { KnowledgeManagementClient } from "./knowledge-management-client";
 import { UserFeedbackClient } from "./user-feedback-client";
 import { MetricClient } from "./metrics-client";
 import { EvaluationsClient } from "./evaluations-client";
-import { ContractIndexClient } from "./contract-index-client";
-import { TradeIndexClient } from "./trade-index-client";
+import { ExcelIndexClient } from "./excel-index-client";
 
 export class ApiClient {
 
@@ -15,8 +14,7 @@ export class ApiClient {
   private _userFeedbackClient: UserFeedbackClient | undefined;
   private _metricClient: MetricClient | undefined;
   private _evaluationsClient: EvaluationsClient | undefined;
-  private _contractIndexClient: ContractIndexClient | undefined;
-  private _tradeIndexClient: TradeIndexClient | undefined;
+  private _excelIndexClient: ExcelIndexClient | undefined;
 
  
 
@@ -63,18 +61,11 @@ export class ApiClient {
     return this._metricClient; //
   }
 
-  public get contractIndex() {
-    if (!this._contractIndexClient) {
-      this._contractIndexClient = new ContractIndexClient(this._appConfig);
+  public get excelIndex() {
+    if (!this._excelIndexClient) {
+      this._excelIndexClient = new ExcelIndexClient(this._appConfig);
     }
-    return this._contractIndexClient;
-  }
-
-  public get tradeIndex() {
-    if (!this._tradeIndexClient) {
-      this._tradeIndexClient = new TradeIndexClient(this._appConfig);
-    }
-    return this._tradeIndexClient;
+    return this._excelIndexClient;
   }
 
   constructor(protected _appConfig: AppConfig) {}
