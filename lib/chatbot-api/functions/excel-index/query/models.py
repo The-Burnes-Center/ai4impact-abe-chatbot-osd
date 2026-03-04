@@ -14,6 +14,7 @@ class QueryIndexRequest(BaseModel):
     filters: Optional[dict[str, Any]] = None
     count_only: bool = False
     count_unique: Optional[str] = None
+    group_by: Optional[str] = None
     limit: int = Field(default=500, ge=1, le=500)
     preview_rows: int = Field(default=10, ge=1, le=50)
 

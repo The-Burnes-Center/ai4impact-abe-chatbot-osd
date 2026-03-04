@@ -43,6 +43,7 @@ def lambda_handler(event, context):
                 filters=req.filters,
                 count_only=req.count_only,
                 count_unique=req.count_unique,
+                group_by=req.group_by,
                 limit=req.limit,
             )
         return _response(200, out)
@@ -154,6 +155,7 @@ def _do_query(
     filters: dict[str, Any] | None = None,
     count_only: bool = False,
     count_unique: str | None = None,
+    group_by: str | None = None,
     limit: int = 500,
 ) -> dict:
     """Scan partition and filter in code. Scans all pages for accurate totals."""
@@ -161,6 +163,7 @@ def _do_query(
     collected: list[dict] = []
     total = 0
     unique_vals: set[str] = set() if count_unique else None
+    group_counts: dict[str, int] = {} if group_by else None
     scan_kw: dict[str, Any] = {"FilterExpression": Attr("pk").eq(pk) & Attr("sk").ne(SK_META)}
     while True:
         resp = table.scan(**scan_kw)
@@ -172,6 +175,9 @@ def _do_query(
                     val = str(row.get(count_unique) or "").strip()
                     if val:
                         unique_vals.add(val)
+                if group_counts is not None:
+                    gval = str(row.get(group_by) or "").strip() or "(empty)"
+                    group_counts[gval] = group_counts.get(gval, 0) + 1
                 if not count_only and len(collected) < limit:
                     collected.append(row)
         last_key = resp.get("LastEvaluatedKey")
@@ -186,4 +192,7 @@ def _do_query(
     if unique_vals is not None:
         result["unique_count"] = len(unique_vals)
         result["unique_column"] = count_unique
+    if group_counts is not None:
+        result["group_by"] = group_by
+        result["groups"] = dict(sorted(group_counts.items()))
     return result
