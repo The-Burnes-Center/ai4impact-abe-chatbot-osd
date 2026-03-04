@@ -130,7 +130,8 @@ def lambda_handler(event, context):
 
             table.update_item(
                 Key={"pk": index_id, "sk": SK_META},
-                UpdateExpression="SET columns = :c",
+                UpdateExpression="SET #col = :c",
+                ExpressionAttributeNames={"#col": "columns"},
                 ExpressionAttributeValues={":c": col_names},
             )
 
