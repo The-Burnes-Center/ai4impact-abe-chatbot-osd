@@ -2,6 +2,7 @@ import {
   Alert,
   Button,
   Collapse,
+  IconButton,
   LinearProgress,
   Paper,
   Stack,
@@ -11,10 +12,15 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import EditIcon from "@mui/icons-material/Edit";
+import CheckIcon from "@mui/icons-material/Check";
+import CloseIcon from "@mui/icons-material/Close";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -39,6 +45,7 @@ export interface IndexApiAdapter {
   getStatus: () => Promise<IndexStatus>;
   getUploadUrl: () => Promise<string>;
   getPreview: () => Promise<IndexPreview>;
+  updateIndex: (fields: { display_name?: string; description?: string }) => Promise<unknown>;
 }
 
 interface IndexCardProps {
@@ -47,6 +54,7 @@ interface IndexCardProps {
   api: IndexApiAdapter;
   onStatusChange?: (status: IndexStatus | null) => void;
   onDelete?: () => void;
+  onUpdated?: () => void;
   /** When true, poll even while status is NO_DATA (for newly created indexes). */
   pollUntilReady?: boolean;
 }
@@ -82,6 +90,7 @@ export default function IndexCard({
   api,
   onStatusChange,
   onDelete,
+  onUpdated,
   pollUntilReady,
 }: IndexCardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -101,6 +110,12 @@ export default function IndexCard({
   const [preview, setPreview] = useState<IndexPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(title);
+  const [editDesc, setEditDesc] = useState(description);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const loadStatus = useCallback(async () => {
     setStatusError(null);
@@ -210,24 +225,110 @@ export default function IndexCard({
     if (next && !preview && !previewLoading) loadPreview();
   };
 
+  const startEditing = () => {
+    setEditTitle(title);
+    setEditDesc(description);
+    setSaveError(null);
+    setEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setEditing(false);
+    setSaveError(null);
+  };
+
+  const saveEdits = async () => {
+    if (!editTitle.trim()) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await api.updateIndex({
+        display_name: editTitle.trim(),
+        description: editDesc.trim(),
+      });
+      setEditing(false);
+      onUpdated?.();
+    } catch (e) {
+      setSaveError(Utils.getErrorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <Paper sx={{ p: 0, overflow: "hidden" }}>
       {/* Header */}
       <Stack
         direction="row"
-        alignItems="center"
+        alignItems="flex-start"
         justifyContent="space-between"
         sx={{ px: 2.5, py: 2 }}
       >
-        <Stack spacing={0.25}>
-          <Typography variant="subtitle1">{title}</Typography>
-          <Typography variant="body2" color="text.secondary">
-            {statusError
-              ? statusError
-              : statusLabel(status)}
-          </Typography>
-        </Stack>
-        <Stack direction="row" spacing={1} alignItems="center">
+        {editing ? (
+          <Stack spacing={1.5} sx={{ flex: 1, mr: 2 }}>
+            <TextField
+              label="Title"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              size="small"
+              fullWidth
+              disabled={saving}
+              autoFocus
+            />
+            <TextField
+              label="Description"
+              value={editDesc}
+              onChange={(e) => setEditDesc(e.target.value)}
+              size="small"
+              fullWidth
+              disabled={saving}
+              multiline
+              minRows={2}
+              maxRows={4}
+            />
+            {saveError && <Alert severity="error" sx={{ py: 0 }}>{saveError}</Alert>}
+            <Stack direction="row" spacing={1}>
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={<CheckIcon />}
+                onClick={saveEdits}
+                disabled={saving || !editTitle.trim()}
+              >
+                {saving ? "Saving..." : "Save"}
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<CloseIcon />}
+                onClick={cancelEditing}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+            </Stack>
+          </Stack>
+        ) : (
+          <Stack spacing={0.25} sx={{ flex: 1, mr: 1 }}>
+            <Stack direction="row" alignItems="center" spacing={0.5}>
+              <Typography variant="subtitle1">{title}</Typography>
+              <Tooltip title="Edit title & description">
+                <IconButton size="small" onClick={startEditing}>
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+            {description && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                {description}
+              </Typography>
+            )}
+            <Typography variant="body2" color="text.secondary">
+              {statusError ? statusError : statusLabel(status)}
+            </Typography>
+          </Stack>
+        )}
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ pt: 0.5 }}>
           <StatusChip
             status={toChipVariant(status)}
             label={toChipVariant(status) === "ready" ? "Ready" : toChipVariant(status) === "processing" ? "Processing" : toChipVariant(status) === "error" ? "Error" : "No data"}
@@ -274,9 +375,6 @@ export default function IndexCard({
       {/* Upload section */}
       <Collapse in={showUpload}>
         <Stack spacing={1.5} sx={{ px: 2.5, pb: 2.5, pt: 0.5 }}>
-          <Typography variant="body2" color="text.secondary">
-            {description}
-          </Typography>
           <input
             type="file"
             ref={fileInputRef}
@@ -340,30 +438,37 @@ export default function IndexCard({
             <Alert severity="error">{previewError}</Alert>
           )}
           {preview && preview.rows.length > 0 && (
-            <TableContainer sx={{ maxHeight: 360 }}>
-              <Table size="small" stickyHeader>
-                <TableHead>
-                  <TableRow>
-                    {preview.columns.slice(0, 8).map((col) => (
-                      <TableCell key={col} sx={{ fontWeight: 600 }}>
-                        {col.replace(/_/g, " ")}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {preview.rows.map((row, i) => (
-                    <TableRow key={i}>
-                      {preview.columns.slice(0, 8).map((col) => (
-                        <TableCell key={col}>
-                          {String(row[col] ?? "").slice(0, 40)}
+            <>
+              <Typography variant="body2" color="text.secondary">
+                {preview.columns.length} column{preview.columns.length !== 1 ? "s" : ""}
+                {" \u00b7 "}
+                showing {preview.rows.length} sample row{preview.rows.length !== 1 ? "s" : ""}
+              </Typography>
+              <TableContainer sx={{ maxHeight: 400 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      {preview.columns.map((col) => (
+                        <TableCell key={col} sx={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+                          {col.replace(/_/g, " ")}
                         </TableCell>
                       ))}
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                  </TableHead>
+                  <TableBody>
+                    {preview.rows.map((row, i) => (
+                      <TableRow key={i}>
+                        {preview.columns.map((col) => (
+                          <TableCell key={col} sx={{ whiteSpace: "nowrap", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {String(row[col] ?? "")}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </>
           )}
           {preview && preview.rows.length === 0 && (
             <Typography variant="body2" color="text.secondary">

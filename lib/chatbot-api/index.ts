@@ -42,7 +42,7 @@ export class ChatBotApi extends Construct {
           statusCode: 200,
           headers: {
             "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-            "Access-Control-Allow-Methods": "OPTIONS,POST,GET",
+            "Access-Control-Allow-Methods": "OPTIONS,POST,GET,PUT,DELETE",
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Max-Age": "86400"
           },
@@ -285,7 +285,7 @@ export class ChatBotApi extends Construct {
     });
     restBackend.restAPI.addRoutes({
       path: "/admin/indexes/{indexId}",
-      methods: [apigwv2.HttpMethod.DELETE],
+      methods: [apigwv2.HttpMethod.DELETE, apigwv2.HttpMethod.PUT],
       integration: excelIndexApiIntegration,
       authorizer: httpAuthorizer,
     });

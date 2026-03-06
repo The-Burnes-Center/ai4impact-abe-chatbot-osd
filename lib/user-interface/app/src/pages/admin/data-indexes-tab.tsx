@@ -130,6 +130,7 @@ export default function DataIndexesTab() {
       getStatus: () => apiClient.excelIndex.getStatus(indexId),
       getUploadUrl: () => apiClient.excelIndex.getUploadUrl(indexId),
       getPreview: () => apiClient.excelIndex.getPreview(indexId),
+      updateIndex: (fields) => apiClient.excelIndex.updateIndex(indexId, fields),
     }),
     [apiClient]
   );
@@ -153,6 +154,7 @@ export default function DataIndexesTab() {
           description={idx.description || `Upload a .xlsx file to replace the current data for this index. Columns will be auto-detected.`}
           api={buildAdapter(idx.index_name)}
           onDelete={() => handleDelete(idx.index_name)}
+          onUpdated={() => loadIndexes()}
           pollUntilReady={idx.index_name === justCreatedId}
           onStatusChange={(status) => {
             if (

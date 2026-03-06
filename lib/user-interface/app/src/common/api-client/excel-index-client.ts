@@ -146,6 +146,32 @@ export class ExcelIndexClient {
     };
   }
 
+  async updateIndex(
+    indexId: string,
+    fields: { display_name?: string; description?: string }
+  ): Promise<{ index_name: string; display_name: string; description: string }> {
+    const auth = await Utils.authenticate();
+    const response = await fetch(
+      this.API + `/admin/indexes/${encodeURIComponent(indexId)}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: auth,
+        },
+        body: JSON.stringify(fields),
+      }
+    );
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const msg =
+        (body as { error?: string })?.error ??
+        `Failed to update index (${response.status})`;
+      throw new Error(msg);
+    }
+    return body;
+  }
+
   async deleteIndex(indexId: string): Promise<void> {
     const auth = await Utils.authenticate();
     const response = await fetch(
