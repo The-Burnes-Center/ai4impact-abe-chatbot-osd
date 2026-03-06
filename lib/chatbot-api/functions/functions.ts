@@ -536,7 +536,10 @@ excelIndexParserFunction.addToRolePolicy(new iam.PolicyStatement({
 excelIndexParserFunction.addToRolePolicy(new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
   actions: ['bedrock:InvokeModel'],
-  resources: [`arn:aws:bedrock:us-east-1:${cdk.Aws.ACCOUNT_ID}:inference-profile/us.anthropic.claude-sonnet-4-20250514-v1:0`],
+  resources: [
+    `arn:aws:bedrock:us-east-1:${cdk.Aws.ACCOUNT_ID}:inference-profile/us.anthropic.claude-sonnet-4-20250514-v1:0`,
+    'arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0',
+  ],
 }));
 excelIndexParserFunction.addEventSource(new S3EventSource(props.contractIndexBucket, {
   events: [s3.EventType.OBJECT_CREATED, s3.EventType.OBJECT_REMOVED],

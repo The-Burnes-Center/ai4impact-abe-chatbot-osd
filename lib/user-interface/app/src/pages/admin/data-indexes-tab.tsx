@@ -151,18 +151,17 @@ export default function DataIndexesTab() {
         <IndexCard
           key={idx.index_name}
           title={idx.display_name || idx.index_name}
-          description={idx.description || `Upload a .xlsx file to replace the current data for this index. Columns will be auto-detected.`}
+          description={idx.description || ""}
           api={buildAdapter(idx.index_name)}
           onDelete={() => handleDelete(idx.index_name)}
           onUpdated={() => loadIndexes()}
           pollUntilReady={idx.index_name === justCreatedId}
           onStatusChange={(status) => {
-            if (
-              idx.index_name === justCreatedId &&
-              status &&
-              (status.status === "COMPLETE" || status.status === "ERROR")
-            ) {
-              setJustCreatedId(null);
+            if (status && (status.status === "COMPLETE" || status.status === "ERROR")) {
+              if (idx.index_name === justCreatedId) {
+                setJustCreatedId(null);
+              }
+              loadIndexes();
             }
           }}
         />
