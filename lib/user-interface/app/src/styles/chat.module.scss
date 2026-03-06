@@ -245,6 +245,84 @@
   overflow: hidden;
 }
 
+/* Inline citation badge */
+.citationBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  margin: 0 1px;
+  border-radius: 9px;
+  background-color: var(--abe-primaryLight, #e8f2fc);
+  color: var(--abe-primary, #14558f);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  vertical-align: super;
+  transition: all var(--abe-transition-fast, 150ms);
+  user-select: none;
+
+  &:hover {
+    background-color: var(--abe-primary, #14558f);
+    color: #fff;
+    transform: scale(1.1);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--abe-primary, #14558f);
+    outline-offset: 1px;
+  }
+}
+
+/* Citation hover card */
+.citationCard {
+  padding: 12px 14px;
+  max-width: 340px;
+  min-width: 220px;
+  border-radius: var(--abe-radius-sm, 8px) !important;
+  pointer-events: none;
+}
+
+.citationCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.citationCardTitle {
+  font-weight: 600 !important;
+  font-size: 0.8125rem !important;
+  flex: 1;
+  min-width: 0;
+}
+
+.citationCardMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.citationScorePill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.citationExcerpt {
+  font-size: 0.75rem !important;
+  color: var(--abe-textSecondary, #555d6b) !important;
+  line-height: 1.5 !important;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+}
+
 /* Collapsible sources */
 .sourcesToggle {
   display: inline-flex;
@@ -271,26 +349,100 @@
 .sourcesList {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin-top: 6px;
+  gap: 8px;
+  margin-top: 8px;
   padding: 4px 0;
 }
 
-.sourceLink {
+/* Source group: one per document */
+.sourceGroup {
+  border: 1px solid var(--abe-borderSubtle, #eef0f3);
+  border-radius: var(--abe-radius-sm, 8px);
+  overflow: hidden;
+}
+
+.sourceGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background-color: var(--abe-tableHeaderBg, #f2f4f7);
+  border-bottom: 1px solid var(--abe-borderSubtle, #eef0f3);
+}
+
+.sourceGroupTitle {
+  font-weight: 600 !important;
+  font-size: 0.75rem !important;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Individual source card within a group */
+.sourceCard {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--abe-borderSubtle, #eef0f3);
+  transition: background-color var(--abe-transition-fast, 150ms);
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background-color: var(--abe-hoverBg, rgba(0, 0, 0, 0.02));
+  }
+}
+
+.sourceCardTop {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
+}
+
+.sourceCardBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background-color: var(--abe-primaryLight, #e8f2fc);
+  color: var(--abe-primary, #14558f);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.sourceCardInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sourceCardScore {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sourceCardLink {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   border-radius: var(--abe-radius-xs, 4px);
   color: var(--abe-primary, #14558f);
   text-decoration: none;
-  font-size: 0.8125rem;
-  line-height: 1.4;
+  flex-shrink: 0;
   transition: background-color var(--abe-transition-fast, 150ms);
 
   &:hover {
     background-color: var(--abe-hoverBg, rgba(0, 0, 0, 0.04));
-    text-decoration: underline;
   }
 
   &:focus-visible {
@@ -299,12 +451,15 @@
   }
 }
 
-.sourceLinkText {
+.sourceCardExcerpt {
+  font-size: 0.6875rem !important;
+  color: var(--abe-textSecondary, #555d6b) !important;
+  line-height: 1.4 !important;
+  margin-top: 4px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 /* Typing indicator */

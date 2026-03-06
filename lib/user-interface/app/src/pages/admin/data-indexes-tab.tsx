@@ -269,7 +269,7 @@ export default function DataIndexesTab() {
               required
             />
             <TextField
-              label="Description (optional \u2014 AI will generate if left blank)"
+              label="Description (optional - AI will generate if left blank)"
               placeholder="e.g. Contains vendor contract data for statewide procurement"
               value={newDescription}
               onChange={(e) => setNewDescription(e.target.value)}

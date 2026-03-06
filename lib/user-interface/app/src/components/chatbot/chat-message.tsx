@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
@@ -19,6 +19,9 @@ import InputLabel from "@mui/material/InputLabel";
 import MuiMenuItem from "@mui/material/MenuItem";
 import Avatar from "@mui/material/Avatar";
 import CircularProgress from "@mui/material/CircularProgress";
+import Popper from "@mui/material/Popper";
+import Fade from "@mui/material/Fade";
+import LinearProgress from "@mui/material/LinearProgress";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import CheckIcon from "@mui/icons-material/Check";
 import ThumbUpIcon from "@mui/icons-material/ThumbUp";
@@ -27,6 +30,7 @@ import ThumbDownIcon from "@mui/icons-material/ThumbDown";
 import ThumbDownOutlinedIcon from "@mui/icons-material/ThumbDownOutlined";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
+import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import Collapse from "@mui/material/Collapse";
 import Snackbar from "@mui/material/Snackbar";
@@ -43,6 +47,214 @@ import "../../styles/app.scss";
 import { useNotifications } from "../notif-manager";
 import { Utils } from "../../common/utils";
 import { feedbackCategories, feedbackTypes } from "../../common/constants";
+
+interface SourceItem {
+  chunkIndex: number | null;
+  title: string;
+  uri: string | null;
+  excerpt: string | null;
+  score: number | null;
+  page: number | null;
+  s3Key: string | null;
+  sourceType: "knowledgeBase" | "excelIndex";
+}
+
+function CitationBadge({ source }: { source: SourceItem }) {
+  const [anchorEl, setAnchorEl] = React.useState<HTMLElement | null>(null);
+  const open = Boolean(anchorEl);
+
+  const handleClick = (e: React.MouseEvent<HTMLElement>) => {
+    if (source.uri) {
+      window.open(source.uri, "_blank", "noopener,noreferrer");
+    } else {
+      setAnchorEl(anchorEl ? null : e.currentTarget);
+    }
+  };
+
+  return (
+    <>
+      <span
+        className={styles.citationBadge}
+        onMouseEnter={(e) => setAnchorEl(e.currentTarget)}
+        onMouseLeave={() => setAnchorEl(null)}
+        onClick={handleClick}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleClick(e as any); }}
+        role="button"
+        tabIndex={0}
+        aria-label={`Source ${source.chunkIndex}: ${source.title}`}
+      >
+        {source.chunkIndex}
+      </span>
+      <Popper open={open} anchorEl={anchorEl} placement="top" transition style={{ zIndex: 1300 }}>
+        {({ TransitionProps }) => (
+          <Fade {...TransitionProps} timeout={150}>
+            <Paper className={styles.citationCard} elevation={8}>
+              <div className={styles.citationCardHeader}>
+                {source.sourceType === "excelIndex" ? (
+                  <TableChartOutlinedIcon sx={{ fontSize: 14, color: "text.secondary", flexShrink: 0 }} />
+                ) : (
+                  <DescriptionOutlinedIcon sx={{ fontSize: 14, color: "text.secondary", flexShrink: 0 }} />
+                )}
+                <Typography variant="subtitle2" className={styles.citationCardTitle} noWrap>
+                  {source.title}
+                </Typography>
+              </div>
+              <div className={styles.citationCardMeta}>
+                {source.score != null && (
+                  <div className={styles.citationScorePill}>
+                    <LinearProgress
+                      variant="determinate"
+                      value={source.score * 100}
+                      sx={{ width: 40, height: 4, borderRadius: 2, flexShrink: 0 }}
+                    />
+                    <Typography variant="caption" sx={{ fontSize: "0.6875rem", color: "text.secondary" }}>
+                      {Math.round(source.score * 100)}%
+                    </Typography>
+                  </div>
+                )}
+                {source.page != null && (
+                  <Typography variant="caption" sx={{ fontSize: "0.6875rem", color: "text.secondary" }}>
+                    p.{source.page}
+                  </Typography>
+                )}
+                <Chip
+                  label={source.sourceType === "excelIndex" ? "Excel" : "KB"}
+                  size="small"
+                  sx={{ height: 18, fontSize: "0.625rem" }}
+                />
+              </div>
+              {source.excerpt && (
+                <Typography variant="body2" className={styles.citationExcerpt}>
+                  {source.excerpt.length > 200 ? source.excerpt.slice(0, 200) + "..." : source.excerpt}
+                </Typography>
+              )}
+              {source.uri && (
+                <Typography
+                  variant="caption"
+                  sx={{ color: "primary.main", cursor: "pointer", mt: 0.5, display: "block", fontSize: "0.6875rem" }}
+                >
+                  Click badge to open document
+                </Typography>
+              )}
+            </Paper>
+          </Fade>
+        )}
+      </Popper>
+    </>
+  );
+}
+
+function renderWithCitations(
+  children: React.ReactNode,
+  sources: SourceItem[],
+  keyPrefix = "cit"
+): React.ReactNode {
+  if (typeof children === "string") {
+    const parts = children.split(/(\[\d+\])/g);
+    if (parts.length === 1) return children;
+    return parts.map((part, i) => {
+      const match = part.match(/^\[(\d+)\]$/);
+      if (match) {
+        const idx = parseInt(match[1], 10);
+        const source = sources.find((s) => s.chunkIndex === idx);
+        if (source) {
+          return <CitationBadge key={`${keyPrefix}-${i}`} source={source} />;
+        }
+      }
+      return part;
+    });
+  }
+  if (Array.isArray(children)) {
+    return children.map((child, i) =>
+      renderWithCitations(child, sources, `${keyPrefix}-${i}`)
+    );
+  }
+  if (React.isValidElement(children) && children.props?.children) {
+    return React.cloneElement(
+      children,
+      { ...children.props, key: children.key ?? `${keyPrefix}-el` },
+      renderWithCitations(children.props.children, sources, `${keyPrefix}-ch`)
+    );
+  }
+  return children;
+}
+
+function buildMarkdownComponents(sources: SourceItem[]) {
+  const wrapChildren = (Tag: string) =>
+    function WrappedComponent(props: any) {
+      const { children, node, ...rest } = props;
+      return React.createElement(Tag, rest, renderWithCitations(children, sources));
+    };
+
+  return {
+    p: wrapChildren("p"),
+    li: wrapChildren("li"),
+    td(props: any) {
+      const { children, node, ...rest } = props;
+      return (
+        <td {...rest} className={styles.markdownTableCell}>
+          {renderWithCitations(children, sources)}
+        </td>
+      );
+    },
+    th(props: any) {
+      const { children, node, ...rest } = props;
+      return (
+        <th {...rest} className={styles.markdownTableCell}>
+          {renderWithCitations(children, sources)}
+        </th>
+      );
+    },
+    pre(props: any) {
+      const { children, ...rest } = props;
+      return (
+        <pre {...rest} className={styles.codeMarkdown}>
+          {children}
+        </pre>
+      );
+    },
+    table(props: any) {
+      const { children, ...rest } = props;
+      return (
+        <table {...rest} className={styles.markdownTable}>
+          {children}
+        </table>
+      );
+    },
+    a(props: any) {
+      const { children, href, ...rest } = props;
+      return (
+        <a {...rest} href={href} target="_blank" rel="noopener noreferrer">
+          {children}
+        </a>
+      );
+    },
+  };
+}
+
+interface SourceGroup {
+  documentTitle: string;
+  s3Key: string | null;
+  sourceType: "knowledgeBase" | "excelIndex";
+  items: SourceItem[];
+}
+
+function groupSources(sources: SourceItem[]): SourceGroup[] {
+  const groups: Map<string, SourceGroup> = new Map();
+  for (const src of sources) {
+    const key = src.s3Key || `__excel__${src.title}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        documentTitle: src.title,
+        s3Key: src.s3Key,
+        sourceType: src.sourceType,
+        items: [],
+      });
+    }
+    groups.get(key)!.items.push(src);
+  }
+  return Array.from(groups.values());
+}
 
 export interface ChatMessageProps {
   message: ChatBotHistoryItem;
@@ -73,9 +285,14 @@ export default function ChatMessage(props: ChatMessageProps) {
       ? props.message.content
       : "";
 
-  const showSources =
-    props.message.metadata?.Sources &&
-    (props.message.metadata.Sources as any[]).length > 0;
+  const sourcesArray: SourceItem[] = useMemo(() => {
+    if (!props.message.metadata?.Sources) return [];
+    return (props.message.metadata.Sources as any[]);
+  }, [props.message.metadata?.Sources]);
+
+  const showSources = sourcesArray.length > 0;
+  const sourceGroups = useMemo(() => groupSources(sourcesArray), [sourcesArray]);
+  const mdComponents = useMemo(() => buildMarkdownComponents(sourcesArray), [sourcesArray]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(props.message.content);
@@ -268,48 +485,7 @@ export default function ChatMessage(props: ChatMessageProps) {
                 <ReactMarkdown
                   children={content}
                   remarkPlugins={[remarkGfm]}
-                  components={{
-                    pre(props) {
-                      const { children, ...rest } = props;
-                      return (
-                        <pre {...rest} className={styles.codeMarkdown}>
-                          {children}
-                        </pre>
-                      );
-                    },
-                    table(props) {
-                      const { children, ...rest } = props;
-                      return (
-                        <table {...rest} className={styles.markdownTable}>
-                          {children}
-                        </table>
-                      );
-                    },
-                    th(props) {
-                      const { children, ...rest } = props;
-                      return (
-                        <th {...rest} className={styles.markdownTableCell}>
-                          {children}
-                        </th>
-                      );
-                    },
-                    td(props) {
-                      const { children, ...rest } = props;
-                      return (
-                        <td {...rest} className={styles.markdownTableCell}>
-                          {children}
-                        </td>
-                      );
-                    },
-                    a(props) {
-                      const { children, href, ...rest } = props;
-                      return (
-                        <a {...rest} href={href} target="_blank" rel="noopener noreferrer">
-                          {children}
-                        </a>
-                      );
-                    },
-                  }}
+                  components={mdComponents as any}
                 />
                 {props.isLastAiMessage && content.length > 0 && !props.streamingStatus?.active && !showSources ? (
                   <span className={styles.streamingCursor} aria-hidden="true" />
@@ -376,8 +552,8 @@ export default function ChatMessage(props: ChatMessageProps) {
                 >
                   <DescriptionOutlinedIcon sx={{ fontSize: 16, color: "text.secondary" }} />
                   <Typography variant="body2" sx={{ color: "text.secondary", fontSize: "0.8125rem" }}>
-                    {(props.message.metadata.Sources as any[]).length} source
-                    {(props.message.metadata.Sources as any[]).length !== 1 ? "s" : ""} found
+                    {sourcesArray.length} source{sourcesArray.length !== 1 ? "s" : ""} from{" "}
+                    {sourceGroups.length} document{sourceGroups.length !== 1 ? "s" : ""}
                   </Typography>
                   <ExpandMoreIcon
                     sx={{
@@ -390,17 +566,68 @@ export default function ChatMessage(props: ChatMessageProps) {
                 </button>
                 <Collapse in={sourcesOpen} timeout={200}>
                   <div id="sources-list" className={styles.sourcesList}>
-                    {(props.message.metadata.Sources as any[]).map((item, idx) => (
-                      <a
-                        key={`source-${idx}`}
-                        href={item.uri}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={styles.sourceLink}
-                      >
-                        <OpenInNewIcon sx={{ fontSize: 13, flexShrink: 0 }} />
-                        <span className={styles.sourceLinkText}>{item.title}</span>
-                      </a>
+                    {sourceGroups.map((group, gi) => (
+                      <div key={`group-${gi}`} className={styles.sourceGroup}>
+                        <div className={styles.sourceGroupHeader}>
+                          {group.sourceType === "excelIndex" ? (
+                            <TableChartOutlinedIcon sx={{ fontSize: 14, color: "text.secondary", flexShrink: 0 }} />
+                          ) : (
+                            <DescriptionOutlinedIcon sx={{ fontSize: 14, color: "text.secondary", flexShrink: 0 }} />
+                          )}
+                          <Typography variant="caption" className={styles.sourceGroupTitle} noWrap>
+                            {group.documentTitle}
+                          </Typography>
+                          <Chip
+                            label={group.sourceType === "excelIndex" ? "Excel" : "Knowledge Base"}
+                            size="small"
+                            sx={{ height: 18, fontSize: "0.625rem", ml: "auto", flexShrink: 0 }}
+                          />
+                        </div>
+                        {group.items.map((item, ii) => (
+                          <div key={`src-${gi}-${ii}`} className={styles.sourceCard}>
+                            <div className={styles.sourceCardTop}>
+                              {item.chunkIndex != null && (
+                                <span className={styles.sourceCardBadge}>{item.chunkIndex}</span>
+                              )}
+                              <div className={styles.sourceCardInfo}>
+                                {item.score != null && (
+                                  <div className={styles.sourceCardScore}>
+                                    <LinearProgress
+                                      variant="determinate"
+                                      value={item.score * 100}
+                                      sx={{ width: 36, height: 3, borderRadius: 2 }}
+                                    />
+                                    <Typography variant="caption" sx={{ fontSize: "0.625rem", color: "text.secondary" }}>
+                                      {Math.round(item.score * 100)}%
+                                    </Typography>
+                                  </div>
+                                )}
+                                {item.page != null && (
+                                  <Typography variant="caption" sx={{ fontSize: "0.625rem", color: "text.secondary" }}>
+                                    p.{item.page}
+                                  </Typography>
+                                )}
+                              </div>
+                              {item.uri && (
+                                <a
+                                  href={item.uri}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={styles.sourceCardLink}
+                                  aria-label={`Open ${item.title}`}
+                                >
+                                  <OpenInNewIcon sx={{ fontSize: 12 }} />
+                                </a>
+                              )}
+                            </div>
+                            {item.excerpt && (
+                              <Typography variant="body2" className={styles.sourceCardExcerpt}>
+                                {item.excerpt.length > 180 ? item.excerpt.slice(0, 180) + "..." : item.excerpt}
+                              </Typography>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     ))}
                   </div>
                 </Collapse>

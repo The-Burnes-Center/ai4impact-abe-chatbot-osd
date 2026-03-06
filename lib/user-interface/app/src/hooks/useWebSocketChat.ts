@@ -134,11 +134,25 @@ export function useWebSocketChat() {
           try {
             let sourceData = JSON.parse(raw);
             sourceData = sourceData.map((item: any) => {
-              if (item.title === "") {
+              // Backward-compat: old format has {title, uri} only
+              const isLegacy = !("chunkIndex" in item);
+              if (isLegacy) {
+                const fallbackTitle = item.title || (item.uri
+                  ? item.uri.slice((item.uri as string).lastIndexOf("/") + 1)
+                  : "Unknown source");
                 return {
-                  title: item.uri.slice((item.uri as string).lastIndexOf("/") + 1),
-                  uri: item.uri,
+                  chunkIndex: null,
+                  title: fallbackTitle,
+                  uri: item.uri ?? null,
+                  excerpt: null,
+                  score: null,
+                  page: null,
+                  s3Key: null,
+                  sourceType: "knowledgeBase",
                 };
+              }
+              if (item.title === "" && item.uri) {
+                item.title = item.uri.slice((item.uri as string).lastIndexOf("/") + 1);
               }
               return item;
             });
