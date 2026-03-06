@@ -1,314 +1,232 @@
+import json
 import os
+from datetime import datetime, timezone
+
 import boto3
 from botocore.exceptions import ClientError
-import json
-from datetime import datetime
 
-# Retrieve DynamoDB table and secondary index names from environment variables
+from abe_utils import get_logger, json_response, parse_json_body, truncate_text
+
+
 DDB_TABLE_NAME = os.environ["DDB_TABLE_NAME"]
-# DDB_SECONDARY_INDEX_NAME = os.environ["DDB_SECONDARY_INDEX_NAME"]
 
-# Initialize a DynamoDB resource using boto3 with a specific AWS region
-dynamodb = boto3.resource("dynamodb", region_name=os.environ.get('AWS_REGION', 'us-east-1'))
-# Connect to the specified DynamoDB table
+dynamodb = boto3.resource("dynamodb", region_name=os.environ.get("AWS_REGION", "us-east-1"))
 table = dynamodb.Table(DDB_TABLE_NAME)
-
-# Define a function to add a session or update an existing one in the DynamoDB table
-def add_session(session_id, user_id, chat_history, title, new_chat_entry):
-    try:
-        # Attempt to add an item to the DynamoDB table with provided details
-        response = table.put_item(
-            Item={
-                'user_id': user_id,  # Identifier for the user
-                'session_id': session_id,  # Unique identifier for the session
-                'chat_history': [new_chat_entry],  # List of chat history, initiating with the new entry
-                "title": title.strip(),  # Title of the session
-                "time_stamp": str(datetime.now())  # Current timestamp as a string
-            }
-        )
-        # Return any attributes returned by the DynamoDB operation, default to an empty dictionary if none
-        return response.get("Attributes", {})
-    except ClientError as error:
-        # Check for specific DynamoDB client errors
-        print("Caught error: DynamoDB error - could not add new session")
-        if error.response["Error"]["Code"] == "ResourceNotFoundException":
-            # Return an error message if the DynamoDB resource (e.g., table, item) is not found
-            return {'statusCode': 404,
-                'headers': {'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps(f"No record found with session id: {session_id}")}
-        else:
-            # Return a general error message for other client errors encountered
-            return {'statusCode': 500,
-                'headers': {'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps(str(error))}
+logger = get_logger(__name__)
 
 
-# A function to retrieve a session from DynamoDB based on session_id and user_id
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def get_session(session_id, user_id):
-    # Initialize a variable to hold the response from DynamoDB
-    response = {}
     try:
-        # Attempt to retrieve an item using the session_id and user_id as keys
-        response = table.get_item(Key={"session_id": session_id, "user_id": user_id})
+        response = table.get_item(Key={"user_id": user_id, "session_id": session_id})
+        return json_response(200, response.get("Item", {}))
     except ClientError as error:
-        print("Caught error: DynamoDB error - could not get session")
-        # Handle specific error when the specified resource is not found in DynamoDB
+        logger.exception("DynamoDB error while reading session")
         if error.response["Error"]["Code"] == "ResourceNotFoundException":
-            # Return a 404 Not Found status code and message when the item is not found
-            return {
-                'statusCode': 404,
-                'headers': {'Access-Control-Allow-Origin': '*'},  # Allow all domains for CORS
-                'body':  json.dumps(f"No record found with session id: {session_id}")
-            }
-        else:
-            # Return a 500 Internal Server Error status for all other DynamoDB errors
-            return {
-                'statusCode': 500,
-                'headers': {'Access-Control-Allow-Origin': '*'},  # Allow all domains for CORS
-                'body': json.dumps('An unexpected error occurred')
-            }
+            return json_response(404, f"No record found with session id: {session_id}")
+        return json_response(500, "An unexpected error occurred")
 
-    # Prepare the response to the client with a 200 OK status if the item is successfully retrieved
-    response_to_client = {
-        'statusCode': 200,
-        'headers': {
-            'Access-Control-Allow-Origin': '*'  # Allow all domains for CORS
-        },
-        'body': json.dumps(response.get("Item", {}))  # Convert the retrieved item to JSON format
-    }
-    # Return the prepared response to the client
-    return response_to_client
 
-            
+def add_session(session_id, user_id, title, new_chat_entry):
+    title_text = truncate_text(title or f"Chat on {utc_now_iso()}", 80).strip() or f"Chat on {utc_now_iso()}"
+    try:
+        table.put_item(
+            Item={
+                "user_id": user_id,
+                "session_id": session_id,
+                "chat_history": [new_chat_entry],
+                "title": title_text,
+                "time_stamp": utc_now_iso(),
+            },
+            ConditionExpression="attribute_not_exists(user_id) AND attribute_not_exists(session_id)",
+        )
+        return json_response(200, {"created": True, "title": title_text})
+    except ClientError as error:
+        logger.exception("DynamoDB error while creating session")
+        if error.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            return json_response(409, f"Session already exists: {session_id}")
+        if error.response["Error"]["Code"] == "ResourceNotFoundException":
+            return json_response(404, f"No record found with session id: {session_id}")
+        return json_response(500, "Failed to create the session due to a database error.")
+
+
 def update_session(session_id, user_id, new_chat_entry):
     try:
         response = table.update_item(
-            Key={"session_id": session_id, "user_id": user_id},
+            Key={"user_id": user_id, "session_id": session_id},
             UpdateExpression="SET chat_history = list_append(if_not_exists(chat_history, :empty), :new_entry), time_stamp = :ts",
             ExpressionAttributeValues={
-                ':new_entry': [new_chat_entry],
-                ':empty': [],
-                ':ts': str(datetime.now())
+                ":new_entry": [new_chat_entry],
+                ":empty": [],
+                ":ts": utc_now_iso(),
             },
-            ReturnValues="UPDATED_NEW"
+            ConditionExpression="attribute_exists(user_id) AND attribute_exists(session_id)",
+            ReturnValues="UPDATED_NEW",
         )
-        return {
-            'statusCode': 200,
-            'headers': {'Access-Control-Allow-Origin': '*'},
-            'body': response.get("Attributes", {})
-        }
+        return json_response(200, response.get("Attributes", {}))
     except ClientError as error:
-        print("Caught error: DynamoDB error - could not update session")
-        error_code = error.response['Error']['Code']
-        if error_code == "ResourceNotFoundException":
-            return {
-                'statusCode': 404,
-                'headers': {'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps(f"No record found with session id: {session_id}")
-            }
-        else:
-            return {
-                'statusCode': 500,
-                'headers': {'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps('Failed to update the session due to a database error.')
-            }
-    except Exception as general_error:
-        print(f"Caught error: could not update session - {general_error}")
-        return {
-            'statusCode': 500,
-            'headers': {'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps('An unexpected error occurred while updating the session.')
-        }
+        logger.exception("DynamoDB error while updating session")
+        error_code = error.response["Error"]["Code"]
+        if error_code in ("ResourceNotFoundException", "ConditionalCheckFailedException"):
+            return json_response(404, f"No record found with session id: {session_id}")
+        return json_response(500, "Failed to update the session due to a database error.")
+
+
+def append_chat_entry(session_id, user_id, new_chat_entry, title):
+    title_text = truncate_text(title or f"Chat on {utc_now_iso()}", 80).strip() or f"Chat on {utc_now_iso()}"
+    try:
+        response = table.update_item(
+            Key={"user_id": user_id, "session_id": session_id},
+            UpdateExpression=(
+                "SET chat_history = list_append(if_not_exists(chat_history, :empty), :new_entry), "
+                "time_stamp = :ts, #title = if_not_exists(#title, :title)"
+            ),
+            ExpressionAttributeNames={"#title": "title"},
+            ExpressionAttributeValues={
+                ":empty": [],
+                ":new_entry": [new_chat_entry],
+                ":title": title_text,
+                ":ts": utc_now_iso(),
+            },
+            ReturnValues="ALL_OLD",
+        )
+        return json_response(
+            200,
+            {
+                "created": not bool(response.get("Attributes")),
+                "title": title_text,
+            },
+        )
+    except ClientError:
+        logger.exception("DynamoDB error while appending session entry")
+        return json_response(500, "Failed to save the session due to a database error.")
 
 
 def delete_session(session_id, user_id):
     try:
-        # Attempt to delete an item from the DynamoDB table based on the provided session_id and user_id.
-        table.delete_item(Key={"session_id": session_id, "user_id": user_id})
+        table.delete_item(Key={"user_id": user_id, "session_id": session_id})
+        return json_response(200, {"id": session_id, "deleted": True})
     except ClientError as error:
-        print("Caught error: DynamoDB error - could not delete session")
-        # Handle specific DynamoDB client errors. If the item cannot be found or another error occurs, return the appropriate message.
-        error_code = error.response['Error']['Code']
+        logger.exception("DynamoDB error while deleting session")
+        if error.response["Error"]["Code"] == "ResourceNotFoundException":
+            return json_response(404, {"id": session_id, "deleted": False})
+        return json_response(500, {"id": session_id, "deleted": False})
+
+
+def list_sessions_by_user_id(user_id, limit=50):
+    items = []
+
+    try:
+        last_evaluated_key = None
+        while len(items) < limit:
+            query_kwargs = {
+                "IndexName": "TimeIndex",
+                "ProjectionExpression": "session_id, title, time_stamp",
+                "KeyConditionExpression": "user_id = :user_id",
+                "ExpressionAttributeValues": {":user_id": user_id},
+                "ScanIndexForward": False,
+                "Limit": limit - len(items),
+            }
+            if last_evaluated_key:
+                query_kwargs["ExclusiveStartKey"] = last_evaluated_key
+
+            response = table.query(**query_kwargs)
+            items.extend(response.get("Items", []))
+            last_evaluated_key = response.get("LastEvaluatedKey")
+            if not last_evaluated_key:
+                break
+    except ClientError as error:
+        logger.exception("DynamoDB error while listing sessions")
+        error_code = error.response["Error"]["Code"]
         if error_code == "ResourceNotFoundException":
-            return { 'statusCode': 404, "id": session_id, "deleted": False,'headers': {'Access-Control-Allow-Origin': '*'}, "body": json.dumps(f"No record found with session id: {session_id}")}
-        else:
-            return { 'statusCode': 500, "id": session_id, "deleted": False,'headers': {'Access-Control-Allow-Origin': '*'}, "body": json.dumps(f"Error occurred: {error}")}
+            return json_response(404, f"No record found for user id: {user_id}")
+        if error_code == "ProvisionedThroughputExceededException":
+            return json_response(429, "Request limit exceeded")
+        if error_code == "ValidationException":
+            return json_response(400, "Invalid input parameters")
+        return json_response(500, "Internal server error")
+    except Exception as error:
+        logger.exception("Unexpected error while listing sessions")
+        return json_response(500, f"An unexpected error occurred: {str(error)}")
 
-    # If no exceptions are raised, return a response indicating that the deletion was successful.
-    return {'statusCode': 200, "id": session_id,'headers': {'Access-Control-Allow-Origin': '*'}, "deleted": True}
-
+    sorted_items = sorted(items, key=lambda item: item["time_stamp"], reverse=True)
+    sessions = [
+        {
+            "time_stamp": item["time_stamp"],
+            "session_id": item["session_id"],
+            "title": (item.get("title") or "").strip(),
+        }
+        for item in sorted_items
+    ]
+    return json_response(200, sessions)
 
 
 def delete_user_sessions(user_id):
-    try:
-        # Fetch all sessions associated with the given user_id. This function should return a list of session dictionaries.
-        sessions = list_sessions_by_user_id(user_id)
-        ret_value = []  # Initialize a list to hold the results of the deletion attempts.
+    sessions_response = list_sessions_by_user_id(user_id, limit=1000)
+    if sessions_response["statusCode"] != 200:
+        return sessions_response
 
-        # Iterate through each session fetched from the database.
-        for session in sessions:
-            # Attempt to delete each session and capture the result.
-            result = delete_session(session["SessionId"], user_id)
-            # Append the result of the deletion attempt to the ret_value list. 
-            # This includes the session ID and whether the deletion was successful.
-            ret_value.append({"id": session["SessionId"], "deleted": result["deleted"]})
-
-        # Return a list of dictionaries, each containing the session ID and deletion result.
-        return ret_value
-
-    except Exception as error:
-        # Handle any unexpected errors that might occur during the process.
-        # Return a list containing a single dictionary with an error message.
-        return [{"error": str(error)}]
-        
-        
-def list_sessions_by_user_id(user_id, limit = 50):
-    items = []  # Initialize an empty list to store the fetched session items
-
-    try:
-        last_evaluated_key = None  # Initialize the key to control the pagination loop
-
-        # Keep fetching until we have 15 items or there are no more items to fetch
-        while len(items) < limit:
-            response = table.query(
-                IndexName='TimeIndex',  # Specify the secondary index to perform the query
-                ProjectionExpression='session_id, title, time_stamp',  # Limit the fields returned in the results
-                KeyConditionExpression="user_id = :user_id",  # Define the key condition for the query
-                ExpressionAttributeValues={":user_id": user_id},  # Bind the user_id value to the placeholder in KeyConditionExpression
-                ScanIndexForward=False,  # Sort the results in descending order by the sort key
-                Limit=limit - len(items),  # Dynamically adjust the query limit based on how many items we've already retrieved
-            )
-            items.extend(response.get("Items", []))  # Extend the items list with the newly fetched items
-
-            last_evaluated_key = response.get("LastEvaluatedKey")  # Update the pagination key
-            if not last_evaluated_key:  # Break the loop if there are no more items to fetch
-                break
-
-    except ClientError as error:
-        print("Caught error: DynamoDB error - could not list user sessions")
-        # More detailed client error handling based on DynamoDB error codes
-        error_code = error.response['Error']['Code']
-        if error_code == "ResourceNotFoundException":
-            return {'statusCode': 404,
-            'headers': { 'Access-Control-Allow-Origin': '*'}, 
-            'body': f"No record found for user id: {user_id}"}
-        elif error_code == "ProvisionedThroughputExceededException":
-            return {'statusCode': 429,
-            'headers': {
-            'Access-Control-Allow-Origin': '*'  # CORS header allowing access from any domain
-        }, 'body': "Request limit exceeded"}
-        elif error_code == "ValidationException":
-            return {'statusCode': 400,
-            'headers': {
-            'Access-Control-Allow-Origin': '*'  # CORS header allowing access from any domain
-        }, 'body': "Invalid input parameters"}
-        else:
-            return {'statusCode': 500,
-            'headers': {
-            'Access-Control-Allow-Origin': '*'  # CORS header allowing access from any domain
-        }, 'body': "Internal server error"}
-    except KeyError as key_error:
-        print("Caught error: DynamoDB error - could not list user sessions")
-        # Handle errors that might occur if expected keys are missing in the response
-        return {'statusCode': 500,
-        'headers': {
-            'Access-Control-Allow-Origin': '*'  # CORS header allowing access from any domain
-        }, 'body': f"Key error: {str(key_error)}"}
-    except Exception as general_error:
-        print("Caught error: DynamoDB error - could not list user sessions")
-        # Generic error handling for any other unforeseen errors
-        return {'statusCode': 500,
-        'headers': {
-            'Access-Control-Allow-Origin': '*'  # CORS header allowing access from any domain
-        }, 'body': json.dumps(f"An unexpected error occurred: {str(general_error)}")}
-
-    # Sort the items by 'time_stamp' in descending order to ensure the latest sessions appear first
-    sorted_items = sorted(items, key=lambda x: x['time_stamp'], reverse=True)
-    sorted_items = list(map(lambda x: {"time_stamp" : x["time_stamp"], "session_id" : x["session_id"], "title" : x["title"].strip()},sorted_items))
-
-    # Prepare the HTTP response object with a status code, headers, and body
-    response = {
-        'statusCode': 200,  # HTTP status code indicating a successful operation
-        'headers': {
-            'Access-Control-Allow-Origin': '*'  # CORS header allowing access from any domain
-        },
-        'body': json.dumps(sorted_items)  # Convert the sorted list of items to JSON format for the response body
-    }
-    return response  # Return the response object
+    sessions = json.loads(sessions_response["body"])
+    deleted = []
+    for session in sessions:
+        result = delete_session(session["session_id"], user_id)
+        deleted.append({"id": session["session_id"], "deleted": result["statusCode"] == 200})
+    return json_response(200, deleted)
 
 
 def fetch_metadata(filter_key=None):
-    """
-    Fetch metadata from the metadata.txt file in S3 and optionally filter it by a provided key.
-    """
     try:
-        s3 = boto3.client('s3')
-        bucket_name = os.environ.get("METADATA_BUCKET")  # Add METADATA_BUCKET in your environment variables
-        metadata_file_key = "metadata.txt"
+        s3 = boto3.client("s3")
+        bucket_name = os.environ.get("METADATA_BUCKET")
+        response = s3.get_object(Bucket=bucket_name, Key="metadata.txt")
+        metadata = json.loads(response["Body"].read().decode("utf-8"))
 
-        # Retrieve the metadata file from S3
-        response = s3.get_object(Bucket=bucket_name, Key=metadata_file_key)
-        metadata_content = response['Body'].read().decode('utf-8')
-        metadata = json.loads(metadata_content)
-
-        # If a filter_key is provided, filter the metadata
         if filter_key:
             filtered_metadata = {
-                k: v for k, v in metadata.items()
-                if filter_key in k or filter_key in json.dumps(v)
+                key: value
+                for key, value in metadata.items()
+                if filter_key in key or filter_key in json.dumps(value)
             }
-            return {"statusCode": 200, "metadata": filtered_metadata}
+            return json_response(200, {"metadata": filtered_metadata})
 
-        # Return the complete metadata if no filter_key is provided
-        return {"statusCode": 200, "metadata": metadata}
-
-    except Exception as e:
-        print(f"Error fetching metadata: {e}")
-        return {
-            "statusCode": 500,
-            "error": f"Failed to fetch metadata: {str(e)}"
-        }
+        return json_response(200, {"metadata": metadata})
+    except Exception as error:
+        logger.exception("Error fetching metadata")
+        return json_response(500, {"error": f"Failed to fetch metadata: {str(error)}"})
 
 
 def lambda_handler(event, context):
-    data = json.loads(event['body'])
-    operation = data.get('operation')
-    user_id = data.get('user_id')
-    session_id = data.get('session_id')
-    chat_history = data.get('chat_history', None)
-    new_chat_entry = data.get('new_chat_entry')
-    title = data.get('title', f"Chat on {str(datetime.now())}")
-    filter_key = data.get('filter_key')  # Add filter_key from the request payload
+    try:
+        data = parse_json_body(event)
+    except json.JSONDecodeError:
+        return json_response(400, "Invalid JSON request body")
 
-    if operation != 'list_sessions_by_user_id':
-        print(operation)
-    print(data)
-    print(new_chat_entry)
+    operation = data.get("operation")
+    user_id = data.get("user_id")
+    session_id = data.get("session_id")
+    new_chat_entry = data.get("new_chat_entry")
+    title = data.get("title")
+    filter_key = data.get("filter_key")
 
-    # Handle fetch_metadata operation
-    if operation == 'fetch_metadata':
+    if operation == "fetch_metadata":
         return fetch_metadata(filter_key)
-
-    if operation == 'add_session':
-        return add_session(session_id, user_id, chat_history, title, new_chat_entry)
-    elif operation == 'get_session':
+    if operation == "add_session":
+        return add_session(session_id, user_id, title, new_chat_entry)
+    if operation == "get_session":
         return get_session(session_id, user_id)
-    elif operation == 'update_session':
+    if operation == "update_session":
         return update_session(session_id, user_id, new_chat_entry)
-    elif operation == 'list_sessions_by_user_id':
+    if operation == "append_chat_entry":
+        return append_chat_entry(session_id, user_id, new_chat_entry, title)
+    if operation == "list_sessions_by_user_id":
         return list_sessions_by_user_id(user_id)
-    elif operation == 'list_all_sessions_by_user_id':
-        return list_sessions_by_user_id(user_id,limit=100)
-    elif operation == 'delete_session':
+    if operation == "list_all_sessions_by_user_id":
+        return list_sessions_by_user_id(user_id, limit=100)
+    if operation == "delete_session":
         return delete_session(session_id, user_id)
-    elif operation == 'delete_user_sessions':
+    if operation == "delete_user_sessions":
         return delete_user_sessions(user_id)
-    else:
-        response = {
-            'statusCode': 400,
-            'headers': {
-                'Access-Control-Allow-Origin': '*'
-            },
-            'body': json.dumps(f'Operation not found/allowed! Operation Sent: {operation}')
-        }
-        return response
+    return json_response(400, f"Operation not found/allowed! Operation Sent: {operation}")

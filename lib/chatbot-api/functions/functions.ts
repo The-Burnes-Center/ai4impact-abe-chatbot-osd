@@ -65,11 +65,18 @@ export class LambdaFunctionStack extends Construct {
     // Resources use `scope` (not `this`) to preserve existing CloudFormation
     // logical IDs. Switching to `this` would change IDs and recreate functions.
 
+    const pythonCommonLayer = new lambda.LayerVersion(scope, 'PythonCommonLayer', {
+      code: lambda.Code.fromAsset(path.join(__dirname, 'layers/python-common')),
+      compatibleRuntimes: [lambda.Runtime.PYTHON_3_12],
+      description: 'Shared Python utilities for ABE Lambda handlers',
+    });
+
     const sessionAPIHandlerFunction = new lambda.Function(scope, 'SessionHandlerFunction', {
       ...LAMBDA_DEFAULTS,
       runtime: lambda.Runtime.PYTHON_3_12,
       code: lambda.Code.fromAsset(path.join(__dirname, 'session-handler')),
       handler: 'lambda_function.lambda_handler',
+      layers: [pythonCommonLayer],
       environment: {
         "DDB_TABLE_NAME": props.sessionTable.tableName,
         "METADATA_BUCKET": props.knowledgeBucket.bucketName,
@@ -152,6 +159,7 @@ export class LambdaFunctionStack extends Construct {
       runtime: lambda.Runtime.PYTHON_3_12,
       code: lambda.Code.fromAsset(path.join(__dirname, 'feedback-handler')),
       handler: 'lambda_function.lambda_handler',
+      layers: [pythonCommonLayer],
       environment: {
         "FEEDBACK_TABLE": props.feedbackTable.tableName,
         "FEEDBACK_S3_DOWNLOAD": props.feedbackBucket.bucketName,
@@ -189,6 +197,7 @@ export class LambdaFunctionStack extends Construct {
       runtime: lambda.Runtime.PYTHON_3_12,
       code: lambda.Code.fromAsset(path.join(__dirname, 'knowledge-management/delete-s3')),
       handler: 'lambda_function.lambda_handler',
+      layers: [pythonCommonLayer],
       environment: {
         "BUCKET": props.knowledgeBucket.bucketName,
       },
@@ -233,6 +242,7 @@ export class LambdaFunctionStack extends Construct {
       runtime: lambda.Runtime.PYTHON_3_12,
       code: lambda.Code.fromAsset(path.join(__dirname, 'knowledge-management/kb-sync')),
       handler: 'lambda_function.lambda_handler',
+      layers: [pythonCommonLayer],
       environment: {
         "KB_ID": props.knowledgeBase.attrKnowledgeBaseId,
         "SOURCE": props.knowledgeBaseSource.attrDataSourceId,
@@ -282,6 +292,7 @@ export class LambdaFunctionStack extends Construct {
       runtime: lambda.Runtime.PYTHON_3_12,
       code: lambda.Code.fromAsset(path.join(__dirname, 'metadata-handler')),
       handler: 'lambda_function.lambda_handler',
+      layers: [pythonCommonLayer],
       timeout: cdk.Duration.seconds(30),
       environment: {
         "BUCKET": props.knowledgeBucket.bucketName,
@@ -342,6 +353,7 @@ const metadataRetrievalFunction = new lambda.Function(scope, 'MetadataRetrievalF
   runtime: lambda.Runtime.PYTHON_3_12,
   code: lambda.Code.fromAsset(path.join(__dirname, 'metadata-retrieval')),
   handler: 'lambda_function.lambda_handler',
+  layers: [pythonCommonLayer],
   timeout: cdk.Duration.seconds(30),
   environment: {
     "BUCKET": props.knowledgeBucket.bucketName,
@@ -414,6 +426,7 @@ const evalResultsAPIHandlerFunction = new lambda.Function(scope, 'EvalResultsHan
   runtime: lambda.Runtime.PYTHON_3_12,
   code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/eval-results-handler')),
   handler: 'lambda_function.lambda_handler',
+  layers: [pythonCommonLayer],
   environment: {
     "EVALUATION_RESULTS_TABLE": props.evalResutlsTable.tableName,
     "EVALUATION_SUMMARIES_TABLE": props.evalSummariesTable.tableName,
@@ -442,6 +455,7 @@ const metricsHandlerFunction = new lambda.Function(scope, 'MetricsHandlerFunctio
   runtime: lambda.Runtime.PYTHON_3_12,
   code: lambda.Code.fromAsset(path.join(__dirname, 'metrics-handler')),
   handler: 'lambda_function.lambda_handler',
+  layers: [pythonCommonLayer],
   environment: {
     "DDB_TABLE_NAME": props.sessionTable.tableName,
     "ANALYTICS_TABLE_NAME": props.analyticsTable.tableName,
@@ -470,6 +484,7 @@ const faqClassifierFunction = new lambda.Function(scope, 'FAQClassifierFunction'
   runtime: lambda.Runtime.PYTHON_3_12,
   code: lambda.Code.fromAsset(path.join(__dirname, 'faq-classifier')),
   handler: 'lambda_function.lambda_handler',
+  layers: [pythonCommonLayer],
   environment: {
     "ANALYTICS_TABLE_NAME": props.analyticsTable.tableName,
     "FAST_MODEL_ID": process.env.FAST_MODEL_ID || "us.anthropic.claude-3-5-haiku-20241022-v1:0",
@@ -509,6 +524,7 @@ const excelIndexParserFunction = new lambda.Function(scope, 'ExcelIndexParserFun
     },
   }),
   handler: 'lambda_function.lambda_handler',
+  layers: [pythonCommonLayer],
   environment: {
     BUCKET: props.contractIndexBucket.bucketName,
     TABLE_NAME: props.excelIndexDataTable.tableName,
@@ -561,6 +577,7 @@ const excelIndexQueryFunction = new lambda.Function(scope, 'ExcelIndexQueryFunct
     },
   }),
   handler: 'lambda_function.lambda_handler',
+  layers: [pythonCommonLayer],
   environment: {
     TABLE_NAME: props.excelIndexDataTable.tableName,
   },
@@ -627,6 +644,7 @@ const testLibraryFunction = new lambda.Function(scope, 'TestLibraryHandlerFuncti
   runtime: lambda.Runtime.PYTHON_3_12,
   code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/test-library-handler')),
   handler: 'lambda_function.lambda_handler',
+  layers: [pythonCommonLayer],
   environment: {
     "TEST_LIBRARY_TABLE": props.testLibraryTable.tableName,
   },
@@ -650,6 +668,7 @@ const feedbackToTestLibraryEnqueueFunction = new lambda.Function(scope, 'Feedbac
   runtime: lambda.Runtime.PYTHON_3_12,
   code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/feedback-to-test-library')),
   handler: 'enqueue.lambda_handler',
+  layers: [pythonCommonLayer],
   environment: {
     "QUEUE_URL": props.feedbackToTestLibraryQueue.queueUrl,
   },
@@ -667,6 +686,7 @@ const feedbackToTestLibraryProcessFunction = new lambda.Function(scope, 'Feedbac
   runtime: lambda.Runtime.PYTHON_3_12,
   code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/feedback-to-test-library')),
   handler: 'process.lambda_handler',
+  layers: [pythonCommonLayer],
   environment: {
     "TEST_LIBRARY_TABLE": props.testLibraryTable.tableName,
     "MODEL_ID": process.env.PRIMARY_MODEL_ID || "us.anthropic.claude-sonnet-4-20250514-v1:0",

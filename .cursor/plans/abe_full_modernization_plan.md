@@ -1,6 +1,6 @@
 ---
 name: ABE Full Modernization Plan
-overview: A comprehensive modernization plan for the ABE (Assistive Buyers Engine) chatbot covering security fixes, GenAI pipeline upgrades, CDK infrastructure hardening, backend Lambda improvements, frontend/UX overhaul, operational excellence, and production launch requirements from OSD stakeholders. Includes a Phase 4 feature to enrich analytics with user display name and agency (parsed from UI username e.g. "Kumar, Dhruv (A&F)"). Organized into 7 phases by priority.
+overview: A comprehensive modernization plan for the ABE (Assistive Buyers Engine) chatbot covering security fixes, GenAI pipeline upgrades, CDK infrastructure hardening, backend Lambda improvements, frontend/UX overhaul, operational excellence, and production launch requirements from OSD stakeholders. Includes a Phase 4 feature to enrich analytics with user display name and agency (parsed from UI username e.g. "Kumar, Dhruv (A&F)"). Phase 2 now includes a fully generic, scalable Excel index system (Contract + Trade Index consolidated), inline citations with source relevance, and streaming UX with dynamic agent thinking indicators. Organized into 7 phases by priority.
 todos:
   - id: phase1-secrets
     content: "Phase 1: Move Cognito credentials to Secrets Manager, externalize all hardcoded IDs -- guardrail ID externalized; Cognito secrets deferred to Phase 2 (TODO comment added)"
@@ -30,8 +30,8 @@ todos:
     content: "Phase 2: Upgrade KB to semantic chunking (FIXED_SIZE 300 tokens → SEMANTIC 512 tokens with NLP-based splitting). Uses addPropertyOverride for CDK 2.140.0 compat. Requires KB re-sync after deploy."
     status: completed
   - id: phase2-excel
-    content: "Phase 2 [Issue #1]: Statewide Contract Index updated to 32-column v2 schema; Trade Index scaffolded (DynamoDB, parser, query, API, admin UI) but awaiting actual Excel from client — schema may need adjustments once received"
-    status: in_progress
+    content: "Phase 2 [Issue #1]: Fully generic Excel index system deployed — consolidated per-index Lambdas into scalable architecture supporting unlimited indexes (Contract Index + Trade Index both live). Features: auto-polling, editable title/description, AI-generated descriptions, group_by queries, count_unique, all preview columns shown. Trade Index received and implemented."
+    status: completed
   - id: phase2-query-improvements
     content: "Phase 2: Punctuation-normalized matching (_norm/_contains) in SWC and Trade query Lambdas; server-side certification filter; vendor deduplication + unique_vendors count in response; default limit raised to 500 for full coverage; all 32 SWC columns enumerated in tool description; generic multi-source search prompt; completeness rules; markdown formatting guidance (tables/lists); no leaked reasoning; no unnecessary apologies; session title generation fix (maxTokens:15, user-message-only); frontend WebSocket timeout changed from fixed 60s to activity-based 90s with status message keepalive"
     status: completed
@@ -72,11 +72,11 @@ todos:
     content: "Phase 3: Create monitoring construct with alarms, dashboard, SNS alerts"
     status: completed
   - id: phase4-layer
-    content: "Phase 4: Create shared Lambda Layer (logger, response builder, CORS, auth, validator)"
-    status: pending
+    content: "Phase 4: Create shared Lambda Layer (logger, response builder, CORS, auth, validator) -- deployed 2026-03-06 via Python common layer attached to Python Lambdas"
+    status: completed
   - id: phase4-fixes
-    content: "Phase 4: Fix session race condition, metrics table scans, code duplication, hardcoded values"
-    status: pending
+    content: "Phase 4: Fix session race condition, metrics table scans, code duplication, hardcoded values -- deployed 2026-03-06. WebSocket save path now uses atomic append/upsert, metrics handler collapses duplicate session scans and uses analytics GSIs by date/agency, feedback/session/FAQ handlers deduplicated onto shared utilities."
+    status: completed
   - id: phase4-analytics
     content: "Phase 4 [Issue #3]: Build enhanced analytics -- FAQ tracking + advanced traffic stats. Deployed: AnalyticsTable (DynamoDB), FAQ Classifier Lambda (async Haiku classification into 10 categories), enhanced metrics handler (overview/faq/traffic endpoints), MUI-based admin dashboard with LineChart, BarChart, KPI cards, FAQ Insights tab. Greetings filtered, low-confidence questions bucketed as Other."
     status: completed
@@ -102,8 +102,8 @@ todos:
     content: "Phase 5 [Issue #9]: Build SuperAdmin Add/Edit User page (Cognito user management) -- cannot be implemented due to SSO integration, needs clarity from OSD side"
     status: cancelled
   - id: phase5-streaming-ux
-    content: "Phase 5 [UX]: Fix streaming UX during tool-use pauses -- add backend status markers, blinking cursor during streaming, 'Searching knowledge base...' indicator during tool execution"
-    status: pending
+    content: "Phase 5 [UX]: Streaming UX with dynamic agent thinking status -- backend sends context-aware status messages ('Searching knowledge base...', 'Looking up contract data...'), frontend shows animated thinking indicator during tool execution. Also fixed reasoning text leaking to user in multi-tool responses and increased max_tokens from 2048 to 8192 to prevent response truncation."
+    status: completed
   - id: phase2-guardrails-streaming
     content: "Phase 2: Add guardrail support to streaming path (InvokeModelWithResponseStreamCommand) in chat-model.mjs -- guardrailIdentifier/guardrailVersion now passed as top-level params on both streaming and non-streaming calls"
     status: completed
@@ -115,6 +115,15 @@ todos:
     status: completed
   - id: phase2-thumbsup-test-library
     content: "Phase 2 [Issue #5 continued]: Thumbs-up to Test Library pipeline -- when user clicks thumbs up, Snackbar asks 'Help us improve — save this as a good example?'; on confirm, enqueues prompt+completion to SQS, consumer Lambda calls Bedrock (Sonnet 4) to rewrite the user question as a clean standalone question, preserves the original chatbot answer verbatim as expectedResponse (since that is what the user approved), upserts into Test Library with source='feedback' + submittedBy/submittedAt/feedbackSessionId metadata. Model upgraded from Haiku to Sonnet for quality; prompt rewritten with OSD domain context and few-shot examples; Lambda logging fixed (basicConfig → getLogger root)."
+    status: completed
+  - id: phase2-citations-sources
+    content: "Phase 2 [UX]: Inline citations and enriched source attribution -- added numbered citation markers in response text, redesigned sources UI with relative relevance indicators and clearer labels"
+    status: completed
+  - id: phase2-generic-index
+    content: "Phase 2 [Issue #1]: Consolidated per-index Lambdas into fully scalable generic Excel index system -- single parser/query/status Lambda handles any number of indexes, AI-generated descriptions, editable title/description, group_by parameter, count_unique, auto-polling, all preview columns"
+    status: completed
+  - id: phase2-max-tokens
+    content: "Phase 2 [BUG]: Increase max_tokens from 2048 to 8192 to prevent response truncation on detailed answers"
     status: completed
   - id: phase5-help-tips-merge
     content: "Phase 5 [UX]: Merge Help & Guide (navbar) and Tips & Questions (sidebar) into single tabbed Help page at /help, remove duplicate sidebar link"
@@ -418,7 +427,61 @@ The current RAG pipeline has fundamental quality and cost issues.
 
 **Pushed to main:** 9c5b209 — Fix contract-index: arm64 pydantic wheels and preview DynamoDB ValidationException.
 
-**Trade Index:** Not yet implemented; Phase 2 [Issue #1] remains in progress for Trade Index.
+### Generic Excel Index System & Trade Index -- 2026-03-06
+
+**Status: COMPLETE** — Per-index Lambdas consolidated into a fully generic, scalable Excel index system. Trade Index received and implemented.
+
+**What was implemented:**
+
+**Backend — Generic Index Architecture (87d20cd):**
+- Consolidated separate Contract Index and Trade Index Lambdas into a single generic parser/query/status Lambda set
+- Any number of indexes can be created by uploading an Excel file — no new code required
+- Parser Lambda auto-detects columns from the uploaded Excel file and stores metadata
+- Query Lambda supports dynamic filtering on any column, `group_by` parameter for category counts, `count_unique` for distinct value counts
+- Load index metadata per-request for always-fresh schema awareness
+- Fixed DynamoDB reserved keyword error for `columns` in parser UpdateExpression
+
+**Backend — Index Enhancements:**
+- AI-generated descriptions: Bedrock Haiku analyzes uploaded data and generates human-readable index description
+- Editable title/description: Admins can customize index metadata after upload
+- Auto-polling for index status after creation
+- `group_by` parameter in query tool for accurate category counts (e.g., count contracts by vendor)
+- Generic `count_unique` parameter replaces hardcoded `unique_vendors`
+
+**Frontend — Data Dashboard Improvements:**
+- Simplified index creation flow with AI descriptions
+- Editable index title/description in Data Dashboard
+- Show all preview columns (not just a subset)
+- Auto-polling for processing status after upload
+- Restricted Documents tab uploads (Excel indexes have their own flow)
+- Fix index edit save and eliminate status API spamming
+
+**Trade Index:** Received from client and uploaded successfully. Works through the generic system alongside Contract Index.
+
+**Files modified:** `functions.ts`, parser/query/status Lambdas (now generic), `data-indexes-tab.tsx`, `claude3Sonnet.mjs` (tool descriptions updated for generic indexes)
+
+### Inline Citations & Sources Redesign -- 2026-03-06
+
+**Status: COMPLETE** — Rich source attribution with inline citations and relevance indicators.
+
+**What was implemented:**
+- **Inline citations**: Numbered citation markers (`[1]`, `[2]`, etc.) embedded in response text linking to source documents
+- **Enriched source attribution**: Each source now includes relevance score, document metadata, and section context
+- **Sources UI redesign**: Replaced flat list with relative relevance indicators (bars), clearer labels, and improved visual hierarchy
+- **CORS fix**: Added PUT and PATCH to HTTP API CORS allowed methods for index management
+
+**Files modified:** `chat-message.tsx`, `claude3Sonnet.mjs`, `index.mjs` (websocket-chat), `rest-api.ts`
+
+### Streaming UX & Response Quality Fixes -- 2026-03-06
+
+**Status: COMPLETE** — Dynamic agent thinking indicators and response quality improvements.
+
+**What was implemented:**
+- **Dynamic thinking status**: Backend sends context-aware status messages during tool execution (e.g., "Searching knowledge base...", "Looking up contract data...") instead of generic "Loading"
+- **Reasoning text leak fix**: Fixed reasoning/thinking text leaking to user in multi-tool response scenarios
+- **Response truncation fix**: Increased `max_tokens` from 2048 to 8192 to prevent long responses from being cut off
+
+**Files modified:** `index.mjs` (websocket-chat), `claude3Sonnet.mjs`, `chat-input-panel.tsx`, `chat-message.tsx`
 
 ### 2.1 [Issue #1] Statewide Contract Index & Trade Index Excel Files
 
@@ -724,6 +787,21 @@ model_id = os.environ.get('FAST_MODEL_ID', 'us.anthropic.claude-haiku-4-5-202510
 **New frontend dependencies:** `@mui/material@^6.4.8`, `@mui/x-charts@^7`
 
 **Verified:** `cdk synth` passed, `cdk diff` confirmed expected changes, TypeScript clean, Vite build clean, Python syntax clean. Deployed successfully (19 resources created/updated).
+
+### Phase 4 Backend Utilities & Race Fixes -- 2026-03-06
+
+**Deployed items (4.1 + 4.2):**
+
+- 4.1 Shared Python Lambda Layer: Added `python-common` layer with shared logger, JSON response builder, auth helpers, and lightweight validation helpers. Attached to the Python Lambdas defined in `functions.ts` so boilerplate is centralized instead of copied across handlers.
+- 4.2 Session race condition fix: Replaced the WebSocket chat path's read-then-write session persistence with a single atomic `append_chat_entry` update in `session-handler`. Titles are generated only on the first turn and DynamoDB now appends chat history with `if_not_exists(...)` semantics in one write.
+- 4.2 Metrics/read amplification cleanup: `metrics-handler` now computes session KPIs in a single session-table scan for overview/traffic requests and reads analytics from `DateIndex` / `AgencyIndex` instead of table-wide scans with filters. This removes the repeated full-table analytics scans called out in the plan.
+- 4.2 Code duplication cleanup: `feedback-handler`, `session-handler`, and `faq-classifier` now use shared auth/response/logging utilities. `metadata-handler` also uses the shared JSON object extractor for safer LLM-output parsing.
+
+**Files created:** `lib/chatbot-api/functions/layers/python-common/python/abe_utils/*`
+
+**Files modified:** `lib/chatbot-api/functions/functions.ts`, `lib/chatbot-api/functions/session-handler/lambda_function.py`, `lib/chatbot-api/functions/metrics-handler/lambda_function.py`, `lib/chatbot-api/functions/feedback-handler/lambda_function.py`, `lib/chatbot-api/functions/faq-classifier/lambda_function.py`, `lib/chatbot-api/functions/metadata-handler/lambda_function.py`, `lib/chatbot-api/functions/websocket-chat/index.mjs`
+
+**Verified:** root `npm run build` (TypeScript/CDK) passed, frontend `npm run build` passed, `python3 -m py_compile` passed for all touched Python handlers and the new layer.
 
 ### 3.1 Enable CDK Nag
 
@@ -1254,9 +1332,11 @@ This prevents admin-only code from loading for regular users.
   - Add `/admin/users` routes to [rest-api.ts](lib/chatbot-api/gateway/rest-api.ts) with JWT authorizer
   - Add the Lambda function to [functions.ts](lib/chatbot-api/functions/functions.ts)
 
-### 5.13 Streaming UX Indicators (Tool-Use Pause Fix)
+### 5.13 Streaming UX Indicators (Tool-Use Pause Fix) — COMPLETED 2026-03-06
 
-**Bug**: When the chatbot response involves a tool call (KB retrieval), the AI appears to finish its answer, then suddenly continues seconds later with no visual indicator that it was still working.
+**Status: COMPLETE** — Dynamic agent thinking indicators deployed. Backend sends context-aware status messages during tool execution; frontend shows animated thinking indicator. Also fixed reasoning text leaking to user in multi-tool responses, and increased max_tokens from 2048 to 8192.
+
+**Original Bug**: When the chatbot response involves a tool call (KB retrieval), the AI appears to finish its answer, then suddenly continues seconds later with no visual indicator that it was still working.
 
 **Root Cause**: The streaming flow has a multi-second gap during tool execution that the UI does not communicate:
 
@@ -1391,9 +1471,9 @@ In [deploy.yml](.github/workflows/deploy.yml):
 
 | #   | Requirement                                     | Phase   | Section | Status                                                                 |
 | --- | ----------------------------------------------- | ------- | ------- | ---------------------------------------------------------------------- |
-| 1   | Excel file ingestion (Contract/Trade Index)     | Phase 2 | 2.1     | Needs Excel files from OSD team                                        |
-| 2   | Non-clickable hyperlinks                        | Phase 2 | 2.3     | Needs data verification                                                |
-| 3   | Enhanced analytics (FAQ, logs, traffic, agency) | Phase 4 | 4.3     | **DEPLOYED 2026-02-21** -- FAQ tracking (Haiku classification), MUI dashboard with charts, enhanced traffic stats. Agency info pending OSD clarification. |
+| 1   | Excel file ingestion (Contract/Trade Index)     | Phase 2 | 2.1     | **DEPLOYED 2026-03-06** -- Generic scalable Excel index system; both Contract Index and Trade Index live. AI descriptions, editable metadata, group_by, count_unique, auto-polling. |
+| 2   | Non-clickable hyperlinks                        | Phase 2 | 2.3     | **DEPLOYED 2026-02-11** -- Prompt hyperlink instructions strengthened; inline citations with numbered markers added 2026-03-06 |
+| 3   | Enhanced analytics (FAQ, logs, traffic, agency) | Phase 4 | 4.3     | **DEPLOYED 2026-02-21** -- FAQ tracking (Haiku classification), MUI dashboard with charts, enhanced traffic stats. Agency enrichment deployed 2026-03-02. |
 | 4   | Plug-and-play chatbot                           | Phase 7 | 7.0     | Pending scoping call                                                   |
 | 5   | LLM evaluation fix                              | Phase 2 | 2.12    | **COMPLETE 2026-03-02** -- RAGAS 0.2.14 pinned, pipeline fixed, quality monitoring platform with Test Library, visual graphs, live progress. Thumbs-up to Test Library pipeline added (SQS + Bedrock Q&A generation + admin audit metadata). |
 | 6   | Error page with acronyms                        | Phase 1 | 1.9     | **DEPLOYED 2026-02-10** -- sanitized error messages + replaced alert() |
@@ -1476,10 +1556,10 @@ graph TD
 ### Estimated Effort
 
 - **Phase 1** (Security + Critical Bugs): ~~1-2 weeks, 1-2 engineers~~ **COMPLETE -- deployed 2026-02-10** -- includes Issue #6, #7, tool-use crash fix
-- **Phase 2** (GenAI + Data Fixes): ~~2-3 weeks, 1 engineer with GenAI expertise~~ **MOSTLY COMPLETE** -- Issue #2 (hyperlinks), #5 (eval pipeline + quality monitoring platform), chunking, prompt caching, model upgrades, RAG grounding, Contract Index all deployed. Remaining: Issue #1 Trade Index (awaiting Excel from client).
+- **Phase 2** (GenAI + Data Fixes): ~~2-3 weeks, 1 engineer with GenAI expertise~~ **COMPLETE** -- All items deployed. Issue #1 (Contract + Trade Index via generic scalable system), Issue #2 (hyperlinks + inline citations), Issue #5 (eval pipeline + quality monitoring platform + thumbs-up pipeline), chunking, prompt caching, model upgrades, RAG grounding, anti-sycophancy, streaming fixes, max_tokens fix, sources redesign.
 - **Phase 3** (CDK Hardening): ~~2-3 weeks, 1 infrastructure engineer~~ **COMPLETE -- deployed 2026-02-18, 2026-02-20** -- CDK Nag, Construct refactor, DynamoDB/S3/Lambda hardening, env parameterization, WAF + CloudFront modernization, API Gateway access logging + throttling, monitoring construct with alarms + dashboard + SNS alerts.
-- **Phase 4** (Backend + Analytics): ~~2-3 weeks, 1-2 engineers~~ **PARTIALLY COMPLETE -- deployed 2026-02-21** -- Issue #3 (enhanced analytics with FAQ tracking, MUI dashboard, Haiku classification) and Issue #8 (sync timestamp) deployed. Remaining: 4.1 shared Lambda Layer, 4.2 session race condition, 4.8 Pydantic/Zod validation.
-- **Phase 5** (Frontend + Admin): 3-4 weeks, 1-2 frontend engineers -- includes Issue #9
+- **Phase 4** (Backend + Analytics): ~~2-3 weeks, 1-2 engineers~~ **MOSTLY COMPLETE -- deployed 2026-02-21, 2026-03-02, 2026-03-06** -- Issue #3 (enhanced analytics with FAQ tracking, MUI dashboard, Haiku classification, agency enrichment), Issue #8 (sync timestamp), shared Python Lambda layer, session race fix, and metrics scan reductions are deployed. Remaining: 4.8 Pydantic/Zod validation.
+- **Phase 5** (Frontend + Admin): ~~3-4 weeks, 1-2 frontend engineers~~ **PARTIALLY COMPLETE** -- 5.9 (Help consolidation) and 5.13 (Streaming UX indicators) deployed. Issue #9 (SuperAdmin) cancelled (SSO). Remaining: 5.1 WebSocket abstraction, 5.2 TypeScript strict, 5.3-5.4 Error Boundaries + code splitting, 5.5 React Query, 5.6 a11y, 5.7 dependency cleanup, 5.8 production hardening, 5.10 mobile responsiveness.
 - **Phase 6** (Operations): 2-4 weeks, 1 engineer
 - **Phase 7** (Plug-and-Play): TBD after scoping call -- includes Issue #4
 

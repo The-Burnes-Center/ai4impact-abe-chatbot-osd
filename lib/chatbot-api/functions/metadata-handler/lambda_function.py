@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from botocore.exceptions import ClientError
 from config import get_full_prompt, get_all_tags, CATEGORIES, CUSTOM_TAGS
+from abe_utils import extract_json_object, get_logger
 
 
 
@@ -12,6 +13,7 @@ s3 = boto3.client('s3')
 bedrock = boto3.client('bedrock-agent-runtime', region_name = 'us-east-1') #For using retrieve function
 bedrock_invoke =boto3.client('bedrock-runtime', region_name = 'us-east-1') #For using invoke function
 kb_id = os.environ['KB_ID']
+logger = get_logger(__name__)
 
 
 # Using Knowledge Base to fetch document contents
@@ -99,13 +101,13 @@ def summarize_and_categorize(key,content):
 
         #
         raw_response_body= response['body'].read().decode('utf-8') #Added decoding
-        print(f"Raw llm output : {raw_response_body}")
+        logger.info("Raw llm output received for metadata summarization")
 
         # Parse the raw response body
         try:
             result = json.loads(raw_response_body)
         except json.JSONDecodeError:
-            print("Error: Response body is not valid JSON")
+            logger.warning("Response body is not valid JSON")
             return {
                 "summary": "Error parsing response body",
                 "tags": {"category": "unknown"}
@@ -113,7 +115,7 @@ def summarize_and_categorize(key,content):
 
         # Validate 'content' field
         if 'content' not in result or not result['content']:
-            print("Error: 'content' field is missing or empty")
+            logger.warning("Response body missing content field")
             return {
                 "summary": "Error generating summary",
                 "tags": {"category": "unknown"}
@@ -122,23 +124,20 @@ def summarize_and_categorize(key,content):
         # Extract and parse the text field
         text_content = result['content'][0].get('text', '')
         if not text_content:
-            print("Error: 'text' field in 'content' is empty")
+            logger.warning("Response content missing text field")
             return {
                 "summary": "Error generating summary",
                 "tags": {"category": "unknown"}
             }
 
-        # Parse the nested JSON string in the 'text' field
         try:
-            summary_and_tags = json.loads(text_content)
-        except json.JSONDecodeError:
-            print(f"Error parsing 'text' as JSON: {text_content}")
+            summary_and_tags = extract_json_object(text_content)
+        except Exception:
+            logger.warning("Error parsing nested JSON in model text: %s", text_content[:500])
             return {
                 "summary": "Error parsing nested JSON in 'text'",
                 "tags": {"category": "unknown"}
             }
-
-        summary_and_tags = json.loads(result['content'][0]['text'])
         creation_date = datetime.utcnow().strftime('%Y-%m-%d')
 
         # Validate the tags
@@ -149,7 +148,7 @@ def summarize_and_categorize(key,content):
                 try:
                     datetime.strptime(value, "%Y-%m-%d")
                 except ValueError:
-                    print(f"Invalid creation_date format for {key}, resetting to blank.")
+                    logger.warning("Invalid creation_date format for %s, resetting to blank", key)
                     summary_and_tags['tags'][tag] = ""
                 continue
 
@@ -168,7 +167,7 @@ def summarize_and_categorize(key,content):
 
         return summary_and_tags
     except Exception as e:
-        print(f"Error generating summary and tags: {e}")
+        logger.exception("Error generating summary and tags")
         return {"summary": "Error generating summary", "tags": {"category": "unknown"}}
 
 # Getting metadata information from a file
