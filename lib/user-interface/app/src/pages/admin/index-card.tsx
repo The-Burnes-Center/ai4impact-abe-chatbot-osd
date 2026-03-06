@@ -47,6 +47,8 @@ interface IndexCardProps {
   api: IndexApiAdapter;
   onStatusChange?: (status: IndexStatus | null) => void;
   onDelete?: () => void;
+  /** When true, poll even while status is NO_DATA (for newly created indexes). */
+  pollUntilReady?: boolean;
 }
 
 const XLSX_MIME =
@@ -80,6 +82,7 @@ export default function IndexCard({
   api,
   onStatusChange,
   onDelete,
+  pollUntilReady,
 }: IndexCardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<IndexStatus | null>(null);
@@ -115,6 +118,26 @@ export default function IndexCard({
   useEffect(() => {
     loadStatus();
   }, [loadStatus]);
+
+  useEffect(() => {
+    if (!status) return undefined;
+    const shouldPoll =
+      status.status === "PROCESSING" ||
+      (pollUntilReady && status.status === "NO_DATA");
+    if (!shouldPoll) return undefined;
+
+    const interval = setInterval(async () => {
+      try {
+        const data = await api.getStatus();
+        setStatus(data);
+        onStatusChange?.(data);
+      } catch {
+        /* ignore polling errors */
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [status?.status, pollUntilReady, api, onStatusChange]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

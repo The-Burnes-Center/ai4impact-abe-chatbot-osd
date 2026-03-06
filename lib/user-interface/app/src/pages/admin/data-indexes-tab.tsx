@@ -42,6 +42,7 @@ export default function DataIndexesTab() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
 
   const loadIndexes = useCallback(async () => {
     setError(null);
@@ -94,6 +95,7 @@ export default function DataIndexesTab() {
       );
 
       resetCreateDialog();
+      setJustCreatedId(indexName);
       await loadIndexes();
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : String(e));
@@ -151,6 +153,16 @@ export default function DataIndexesTab() {
           description={idx.description || `Upload a .xlsx file to replace the current data for this index. Columns will be auto-detected.`}
           api={buildAdapter(idx.index_name)}
           onDelete={() => handleDelete(idx.index_name)}
+          pollUntilReady={idx.index_name === justCreatedId}
+          onStatusChange={(status) => {
+            if (
+              idx.index_name === justCreatedId &&
+              status &&
+              (status.status === "COMPLETE" || status.status === "ERROR")
+            ) {
+              setJustCreatedId(null);
+            }
+          }}
         />
       ))}
 
