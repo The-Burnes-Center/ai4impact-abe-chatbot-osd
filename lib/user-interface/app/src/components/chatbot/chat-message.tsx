@@ -21,7 +21,6 @@ import Avatar from "@mui/material/Avatar";
 import CircularProgress from "@mui/material/CircularProgress";
 import Popper from "@mui/material/Popper";
 import Fade from "@mui/material/Fade";
-import LinearProgress from "@mui/material/LinearProgress";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import CheckIcon from "@mui/icons-material/Check";
 import ThumbUpIcon from "@mui/icons-material/ThumbUp";
@@ -59,7 +58,33 @@ interface SourceItem {
   sourceType: "knowledgeBase" | "excelIndex";
 }
 
-function CitationBadge({ source }: { source: SourceItem }) {
+type RelevanceLevel = "high" | "medium" | "low";
+
+function getRelevanceLevel(score: number, maxScore: number): RelevanceLevel {
+  const normalized = maxScore > 0 ? score / maxScore : 0;
+  if (normalized >= 0.85) return "high";
+  if (normalized >= 0.6) return "medium";
+  return "low";
+}
+
+const RELEVANCE_CONFIG: Record<RelevanceLevel, { label: string; className: string }> = {
+  high: { label: "High relevance", className: "relevanceHigh" },
+  medium: { label: "Relevant", className: "relevanceMedium" },
+  low: { label: "Partial match", className: "relevanceLow" },
+};
+
+function RelevanceIndicator({ score, maxScore }: { score: number; maxScore: number }) {
+  const level = getRelevanceLevel(score, maxScore);
+  const config = RELEVANCE_CONFIG[level];
+  return (
+    <span className={`${styles.relevancePill} ${styles[config.className]}`}>
+      <span className={styles.relevanceDot} />
+      {config.label}
+    </span>
+  );
+}
+
+function CitationBadge({ source, maxScore }: { source: SourceItem; maxScore: number }) {
   const [anchorEl, setAnchorEl] = React.useState<HTMLElement | null>(null);
   const open = Boolean(anchorEl);
 
@@ -101,27 +126,16 @@ function CitationBadge({ source }: { source: SourceItem }) {
               </div>
               <div className={styles.citationCardMeta}>
                 {source.score != null && (
-                  <div className={styles.citationScorePill}>
-                    <LinearProgress
-                      variant="determinate"
-                      value={source.score * 100}
-                      sx={{ width: 40, height: 4, borderRadius: 2, flexShrink: 0 }}
-                    />
-                    <Typography variant="caption" sx={{ fontSize: "0.6875rem", color: "text.secondary" }}>
-                      {Math.round(source.score * 100)}%
-                    </Typography>
-                  </div>
+                  <RelevanceIndicator score={source.score} maxScore={maxScore} />
+                )}
+                {source.page != null && (
+                  <span className={styles.metaDivider}>·</span>
                 )}
                 {source.page != null && (
                   <Typography variant="caption" sx={{ fontSize: "0.6875rem", color: "text.secondary" }}>
-                    p.{source.page}
+                    Page {source.page}
                   </Typography>
                 )}
-                <Chip
-                  label={source.sourceType === "excelIndex" ? "Excel" : "KB"}
-                  size="small"
-                  sx={{ height: 18, fontSize: "0.625rem" }}
-                />
               </div>
               {source.excerpt && (
                 <Typography variant="body2" className={styles.citationExcerpt}>
@@ -133,7 +147,7 @@ function CitationBadge({ source }: { source: SourceItem }) {
                   variant="caption"
                   sx={{ color: "primary.main", cursor: "pointer", mt: 0.5, display: "block", fontSize: "0.6875rem" }}
                 >
-                  Click badge to open document
+                  Click to open document
                 </Typography>
               )}
             </Paper>
@@ -147,6 +161,7 @@ function CitationBadge({ source }: { source: SourceItem }) {
 function renderWithCitations(
   children: React.ReactNode,
   sources: SourceItem[],
+  maxScore: number,
   keyPrefix = "cit"
 ): React.ReactNode {
   if (typeof children === "string") {
@@ -158,7 +173,7 @@ function renderWithCitations(
         const idx = parseInt(match[1], 10);
         const source = sources.find((s) => s.chunkIndex === idx);
         if (source) {
-          return <CitationBadge key={`${keyPrefix}-${i}`} source={source} />;
+          return <CitationBadge key={`${keyPrefix}-${i}`} source={source} maxScore={maxScore} />;
         }
       }
       return part;
@@ -166,24 +181,24 @@ function renderWithCitations(
   }
   if (Array.isArray(children)) {
     return children.map((child, i) =>
-      renderWithCitations(child, sources, `${keyPrefix}-${i}`)
+      renderWithCitations(child, sources, maxScore, `${keyPrefix}-${i}`)
     );
   }
   if (React.isValidElement(children) && children.props?.children) {
     return React.cloneElement(
       children,
       { ...children.props, key: children.key ?? `${keyPrefix}-el` },
-      renderWithCitations(children.props.children, sources, `${keyPrefix}-ch`)
+      renderWithCitations(children.props.children, sources, maxScore, `${keyPrefix}-ch`)
     );
   }
   return children;
 }
 
-function buildMarkdownComponents(sources: SourceItem[]) {
+function buildMarkdownComponents(sources: SourceItem[], maxScore: number) {
   const wrapChildren = (Tag: string) =>
     function WrappedComponent(props: any) {
       const { children, node, ...rest } = props;
-      return React.createElement(Tag, rest, renderWithCitations(children, sources));
+      return React.createElement(Tag, rest, renderWithCitations(children, sources, maxScore));
     };
 
   return {
@@ -193,7 +208,7 @@ function buildMarkdownComponents(sources: SourceItem[]) {
       const { children, node, ...rest } = props;
       return (
         <td {...rest} className={styles.markdownTableCell}>
-          {renderWithCitations(children, sources)}
+          {renderWithCitations(children, sources, maxScore)}
         </td>
       );
     },
@@ -201,7 +216,7 @@ function buildMarkdownComponents(sources: SourceItem[]) {
       const { children, node, ...rest } = props;
       return (
         <th {...rest} className={styles.markdownTableCell}>
-          {renderWithCitations(children, sources)}
+          {renderWithCitations(children, sources, maxScore)}
         </th>
       );
     },
@@ -290,9 +305,17 @@ export default function ChatMessage(props: ChatMessageProps) {
     return (props.message.metadata.Sources as any[]);
   }, [props.message.metadata?.Sources]);
 
+  const maxScore = useMemo(() => {
+    let max = 0;
+    for (const s of sourcesArray) {
+      if (s.score != null && s.score > max) max = s.score;
+    }
+    return max;
+  }, [sourcesArray]);
+
   const showSources = sourcesArray.length > 0;
   const sourceGroups = useMemo(() => groupSources(sourcesArray), [sourcesArray]);
-  const mdComponents = useMemo(() => buildMarkdownComponents(sourcesArray), [sourcesArray]);
+  const mdComponents = useMemo(() => buildMarkdownComponents(sourcesArray, maxScore), [sourcesArray, maxScore]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(props.message.content);
@@ -552,8 +575,7 @@ export default function ChatMessage(props: ChatMessageProps) {
                 >
                   <DescriptionOutlinedIcon sx={{ fontSize: 16, color: "text.secondary" }} />
                   <Typography variant="body2" sx={{ color: "text.secondary", fontSize: "0.8125rem" }}>
-                    {sourcesArray.length} source{sourcesArray.length !== 1 ? "s" : ""} from{" "}
-                    {sourceGroups.length} document{sourceGroups.length !== 1 ? "s" : ""}
+                    {sourceGroups.length} document{sourceGroups.length !== 1 ? "s" : ""} referenced
                   </Typography>
                   <ExpandMoreIcon
                     sx={{
@@ -570,18 +592,24 @@ export default function ChatMessage(props: ChatMessageProps) {
                       <div key={`group-${gi}`} className={styles.sourceGroup}>
                         <div className={styles.sourceGroupHeader}>
                           {group.sourceType === "excelIndex" ? (
-                            <TableChartOutlinedIcon sx={{ fontSize: 14, color: "text.secondary", flexShrink: 0 }} />
+                            <TableChartOutlinedIcon sx={{ fontSize: 16, color: "var(--abe-primary, #14558f)", flexShrink: 0 }} />
                           ) : (
-                            <DescriptionOutlinedIcon sx={{ fontSize: 14, color: "text.secondary", flexShrink: 0 }} />
+                            <DescriptionOutlinedIcon sx={{ fontSize: 16, color: "var(--abe-primary, #14558f)", flexShrink: 0 }} />
                           )}
-                          <Typography variant="caption" className={styles.sourceGroupTitle} noWrap>
+                          <Typography variant="body2" className={styles.sourceGroupTitle} noWrap>
                             {group.documentTitle}
                           </Typography>
-                          <Chip
-                            label={group.sourceType === "excelIndex" ? "Excel" : "Knowledge Base"}
-                            size="small"
-                            sx={{ height: 18, fontSize: "0.625rem", ml: "auto", flexShrink: 0 }}
-                          />
+                          {group.items[0]?.uri && (
+                            <a
+                              href={group.items[0].uri}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={styles.sourceCardLink}
+                              aria-label={`Open ${group.documentTitle}`}
+                            >
+                              <OpenInNewIcon sx={{ fontSize: 14 }} />
+                            </a>
+                          )}
                         </div>
                         {group.items.map((item, ii) => (
                           <div key={`src-${gi}-${ii}`} className={styles.sourceCard}>
@@ -591,21 +619,15 @@ export default function ChatMessage(props: ChatMessageProps) {
                               )}
                               <div className={styles.sourceCardInfo}>
                                 {item.score != null && (
-                                  <div className={styles.sourceCardScore}>
-                                    <LinearProgress
-                                      variant="determinate"
-                                      value={item.score * 100}
-                                      sx={{ width: 36, height: 3, borderRadius: 2 }}
-                                    />
-                                    <Typography variant="caption" sx={{ fontSize: "0.625rem", color: "text.secondary" }}>
-                                      {Math.round(item.score * 100)}%
-                                    </Typography>
-                                  </div>
+                                  <RelevanceIndicator score={item.score} maxScore={maxScore} />
                                 )}
                                 {item.page != null && (
-                                  <Typography variant="caption" sx={{ fontSize: "0.625rem", color: "text.secondary" }}>
-                                    p.{item.page}
-                                  </Typography>
+                                  <>
+                                    {item.score != null && <span className={styles.metaDivider}>·</span>}
+                                    <Typography variant="caption" sx={{ fontSize: "0.6875rem", color: "text.secondary" }}>
+                                      Page {item.page}
+                                    </Typography>
+                                  </>
                                 )}
                               </div>
                               {item.uri && (
