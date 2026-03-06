@@ -1,11 +1,12 @@
 import {
   Alert,
   Button,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  Paper,
+  Skeleton,
   Stack,
   TextField,
   Typography,
@@ -14,7 +15,14 @@ import {
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
-import { useContext, useEffect, useMemo, useState, useCallback, useRef } from "react";
+import {
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
 import { AppContext } from "../../common/app-context";
 import { ApiClient } from "../../common/api-client/api-client";
 import type { IndexInfo } from "../../common/api-client/excel-index-client";
@@ -25,6 +33,30 @@ import IndexCard, { type IndexApiAdapter } from "./index-card";
 const XLSX_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
+function IndexCardSkeleton() {
+  return (
+    <Paper sx={{ p: 2.5 }}>
+      <Stack spacing={1.5}>
+        <Stack
+          direction="row"
+          justifyContent="space-between"
+          alignItems="center"
+        >
+          <Stack spacing={0.75} flex={1}>
+            <Skeleton variant="text" width="35%" height={24} />
+            <Skeleton variant="text" width="55%" height={18} />
+          </Stack>
+          <Skeleton variant="rounded" width={80} height={24} />
+        </Stack>
+        <Stack direction="row" spacing={1}>
+          <Skeleton variant="rounded" width={120} height={32} />
+          <Skeleton variant="rounded" width={120} height={32} />
+        </Stack>
+      </Stack>
+    </Paper>
+  );
+}
+
 export default function DataIndexesTab() {
   const appContext = useContext(AppContext);
   const apiClient = useMemo(() => new ApiClient(appContext), [appContext]);
@@ -33,7 +65,6 @@ export default function DataIndexesTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Create dialog state
   const [showCreate, setShowCreate] = useState(false);
   const [newDisplayName, setNewDisplayName] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -44,17 +75,31 @@ export default function DataIndexesTab() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
 
+  // ── stable refs to prevent re-render cascades ──
+  const apiClientRef = useRef(apiClient);
+  apiClientRef.current = apiClient;
+  const adapterCache = useRef(new Map<string, IndexApiAdapter>());
+  const justCreatedIdRef = useRef<string | null>(null);
+  justCreatedIdRef.current = justCreatedId;
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── stable loadIndexes (uses ref, no deps) ──
   const loadIndexes = useCallback(async () => {
     setError(null);
     try {
-      const list = await apiClient.excelIndex.listIndexes();
+      const list = await apiClientRef.current.excelIndex.listIndexes();
       setIndexes(list);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, [apiClient]);
+  }, []);
+
+  const debouncedRefresh = useCallback(() => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => loadIndexes(), 400);
+  }, [loadIndexes]);
 
   useEffect(() => {
     loadIndexes();
@@ -82,13 +127,14 @@ export default function DataIndexesTab() {
         .replace(/[^a-z0-9]+/g, "_")
         .replace(/^_|_$/g, "");
 
-      await apiClient.excelIndex.createIndex(
+      await apiClientRef.current.excelIndex.createIndex(
         indexName,
         newDisplayName.trim(),
         newDescription.trim() || undefined
       );
 
-      const signedUrl = await apiClient.excelIndex.getUploadUrl(indexName);
+      const signedUrl =
+        await apiClientRef.current.excelIndex.getUploadUrl(indexName);
       const uploader = new FileUploader();
       await uploader.upload(newFile, signedUrl, XLSX_MIME, (uploaded) =>
         setUploadProgress(Math.round((uploaded / newFile.size) * 100))
@@ -104,14 +150,20 @@ export default function DataIndexesTab() {
     }
   };
 
-  const handleDelete = async (indexId: string) => {
-    try {
-      await apiClient.excelIndex.deleteIndex(indexId);
-      await loadIndexes();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
+  // ── optimistic delete — remove card immediately ──
+  const handleDelete = useCallback(
+    async (indexId: string) => {
+      setIndexes((prev) => prev.filter((i) => i.index_name !== indexId));
+      adapterCache.current.delete(indexId);
+      try {
+        await apiClientRef.current.excelIndex.deleteIndex(indexId);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        loadIndexes();
+      }
+    },
+    [loadIndexes]
+  );
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -125,20 +177,31 @@ export default function DataIndexesTab() {
     setNewFile(file);
   };
 
-  const buildAdapter = useCallback(
-    (indexId: string): IndexApiAdapter => ({
-      getStatus: () => apiClient.excelIndex.getStatus(indexId),
-      getUploadUrl: () => apiClient.excelIndex.getUploadUrl(indexId),
-      getPreview: () => apiClient.excelIndex.getPreview(indexId),
-      updateIndex: (fields) => apiClient.excelIndex.updateIndex(indexId, fields),
-    }),
-    [apiClient]
-  );
+  // ── stable adapter cache — same object reference per indexId ──
+  const getAdapter = useCallback((indexId: string): IndexApiAdapter => {
+    let adapter = adapterCache.current.get(indexId);
+    if (!adapter) {
+      adapter = {
+        getStatus: () =>
+          apiClientRef.current.excelIndex.getStatus(indexId),
+        getUploadUrl: () =>
+          apiClientRef.current.excelIndex.getUploadUrl(indexId),
+        getPreview: () =>
+          apiClientRef.current.excelIndex.getPreview(indexId),
+        updateIndex: (fields) =>
+          apiClientRef.current.excelIndex.updateIndex(indexId, fields),
+      };
+      adapterCache.current.set(indexId, adapter);
+    }
+    return adapter;
+  }, []);
 
+  // ── skeleton loading ──
   if (loading) {
     return (
-      <Stack alignItems="center" py={6}>
-        <CircularProgress />
+      <Stack spacing={2.5}>
+        <IndexCardSkeleton />
+        <IndexCardSkeleton />
       </Stack>
     );
   }
@@ -152,16 +215,19 @@ export default function DataIndexesTab() {
           key={idx.index_name}
           title={idx.display_name || idx.index_name}
           description={idx.description || ""}
-          api={buildAdapter(idx.index_name)}
+          api={getAdapter(idx.index_name)}
           onDelete={() => handleDelete(idx.index_name)}
           onUpdated={() => loadIndexes()}
           pollUntilReady={idx.index_name === justCreatedId}
           onStatusChange={(status) => {
-            if (status && (status.status === "COMPLETE" || status.status === "ERROR")) {
-              if (idx.index_name === justCreatedId) {
+            if (
+              status &&
+              (status.status === "COMPLETE" || status.status === "ERROR")
+            ) {
+              if (justCreatedIdRef.current === idx.index_name) {
                 setJustCreatedId(null);
               }
-              loadIndexes();
+              debouncedRefresh();
             }
           }}
         />
@@ -169,7 +235,8 @@ export default function DataIndexesTab() {
 
       {indexes.length === 0 && !error && (
         <Typography variant="body2" color="text.secondary" textAlign="center">
-          No indexes registered yet. Click "Add New Index" to get started.
+          No indexes registered yet. Click &ldquo;Add New Index&rdquo; to get
+          started.
         </Typography>
       )}
 
@@ -202,7 +269,7 @@ export default function DataIndexesTab() {
               required
             />
             <TextField
-              label="Description (optional — AI will generate if left blank)"
+              label="Description (optional \u2014 AI will generate if left blank)"
               placeholder="e.g. Contains vendor contract data for statewide procurement"
               value={newDescription}
               onChange={(e) => setNewDescription(e.target.value)}
@@ -229,7 +296,11 @@ export default function DataIndexesTab() {
                 {newFile ? newFile.name : "Choose .xlsx file"}
               </Button>
               {newFile && (
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 1.5 }}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ ml: 1.5 }}
+                >
                   {Utils.bytesToSize(newFile.size)}
                 </Typography>
               )}
@@ -237,9 +308,7 @@ export default function DataIndexesTab() {
             {creating && uploadProgress > 0 && (
               <LinearProgress variant="determinate" value={uploadProgress} />
             )}
-            {creating && uploadProgress === 0 && (
-              <LinearProgress />
-            )}
+            {creating && uploadProgress === 0 && <LinearProgress />}
             {createError && <Alert severity="error">{createError}</Alert>}
           </Stack>
         </DialogContent>
@@ -252,7 +321,7 @@ export default function DataIndexesTab() {
             onClick={handleCreate}
             disabled={!newDisplayName.trim() || !newFile || creating}
           >
-            {creating ? "Creating..." : "Create & Upload"}
+            {creating ? "Creating\u2026" : "Create & Upload"}
           </Button>
         </DialogActions>
       </Dialog>

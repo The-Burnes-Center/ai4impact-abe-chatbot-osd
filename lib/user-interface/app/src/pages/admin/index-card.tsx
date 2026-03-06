@@ -2,6 +2,11 @@ import {
   Alert,
   Button,
   Collapse,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   IconButton,
   LinearProgress,
   Paper,
@@ -45,7 +50,10 @@ export interface IndexApiAdapter {
   getStatus: () => Promise<IndexStatus>;
   getUploadUrl: () => Promise<string>;
   getPreview: () => Promise<IndexPreview>;
-  updateIndex: (fields: { display_name?: string; description?: string }) => Promise<unknown>;
+  updateIndex: (fields: {
+    display_name?: string;
+    description?: string;
+  }) => Promise<unknown>;
 }
 
 interface IndexCardProps {
@@ -55,7 +63,6 @@ interface IndexCardProps {
   onStatusChange?: (status: IndexStatus | null) => void;
   onDelete?: () => void;
   onUpdated?: () => void;
-  /** When true, poll even while status is NO_DATA (for newly created indexes). */
   pollUntilReady?: boolean;
 }
 
@@ -71,8 +78,8 @@ function toChipVariant(s: IndexStatus | null): StatusVariant {
 }
 
 function statusLabel(s: IndexStatus | null): string {
-  if (!s) return "Loading...";
-  if (s.status === "PROCESSING") return "Processing";
+  if (!s) return "Loading\u2026";
+  if (s.status === "PROCESSING") return "Processing\u2026";
   if (s.status === "ERROR" || s.error_message)
     return s.error_message ?? "Error";
   if (s.status === "COMPLETE" || s.has_data) {
@@ -93,10 +100,24 @@ export default function IndexCard({
   onUpdated,
   pollUntilReady,
 }: IndexCardProps) {
+  // ── stable refs for parent callbacks (avoids effect dependency churn) ──
+  const onStatusChangeRef = useRef(onStatusChange);
+  const onDeleteRef = useRef(onDelete);
+  const onUpdatedRef = useRef(onUpdated);
+  useEffect(() => {
+    onStatusChangeRef.current = onStatusChange;
+    onDeleteRef.current = onDelete;
+    onUpdatedRef.current = onUpdated;
+  });
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── status ──
   const [status, setStatus] = useState<IndexStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const prevStatusValueRef = useRef<string | null>(null);
 
+  // ── upload ──
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -106,34 +127,53 @@ export default function IndexCard({
   >("idle");
   const [uploadError, setUploadError] = useState<string | null>(null);
 
+  // ── preview ──
   const [showPreview, setShowPreview] = useState(false);
   const [preview, setPreview] = useState<IndexPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
+  // ── inline edit ──
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(title);
   const [editDesc, setEditDesc] = useState(description);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // ── delete ──
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const applyStatus = useCallback(
+    (data: IndexStatus | null) => {
+      const prev = prevStatusValueRef.current;
+      const next = data?.status ?? null;
+      setStatus(data);
+      if (next !== prev) {
+        prevStatusValueRef.current = next;
+        onStatusChangeRef.current?.(data);
+      }
+    },
+    []
+  );
+
+  // ── fetch status (stable — no callback deps) ──
   const loadStatus = useCallback(async () => {
     setStatusError(null);
     try {
       const data = await api.getStatus();
-      setStatus(data);
-      onStatusChange?.(data);
+      applyStatus(data);
     } catch (e) {
       setStatusError(Utils.getErrorMessage(e));
-      setStatus(null);
-      onStatusChange?.(null);
+      applyStatus(null);
     }
-  }, [api, onStatusChange]);
+  }, [api, applyStatus]);
 
   useEffect(() => {
     loadStatus();
   }, [loadStatus]);
 
+  // ── single polling mechanism for PROCESSING / newly-created NO_DATA ──
   useEffect(() => {
     if (!status) return undefined;
     const shouldPoll =
@@ -144,16 +184,16 @@ export default function IndexCard({
     const interval = setInterval(async () => {
       try {
         const data = await api.getStatus();
-        setStatus(data);
-        onStatusChange?.(data);
+        applyStatus(data);
       } catch {
         /* ignore polling errors */
       }
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [status?.status, pollUntilReady, api, onStatusChange]);
+  }, [status?.status, pollUntilReady, api, applyStatus]);
 
+  // ── file selection ──
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -165,6 +205,7 @@ export default function IndexCard({
     setUploadResult("idle");
   };
 
+  // ── upload handler (no inline polling — useEffect takes over) ──
   const onUpload = async () => {
     if (!uploadFile) return;
     setUploading(true);
@@ -180,22 +221,8 @@ export default function IndexCard({
       setUploadResult("success");
       setUploadFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
+      setShowUpload(false);
       await loadStatus();
-
-      const pollMs = 3000;
-      const timeoutMs = 60000;
-      const deadline = Date.now() + timeoutMs;
-      while (Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, pollMs));
-        try {
-          const data = await api.getStatus();
-          setStatus(data);
-          onStatusChange?.(data);
-          if (data.status === "COMPLETE" || data.status === "ERROR") break;
-        } catch {
-          break;
-        }
-      }
     } catch (e) {
       setUploadResult("error");
       setUploadError(Utils.getErrorMessage(e));
@@ -205,6 +232,7 @@ export default function IndexCard({
     }
   };
 
+  // ── preview ──
   const loadPreview = async () => {
     setPreviewError(null);
     setPreviewLoading(true);
@@ -225,6 +253,7 @@ export default function IndexCard({
     if (next && !preview && !previewLoading) loadPreview();
   };
 
+  // ── inline edit ──
   const startEditing = () => {
     setEditTitle(title);
     setEditDesc(description);
@@ -247,13 +276,26 @@ export default function IndexCard({
         description: editDesc.trim(),
       });
       setEditing(false);
-      onUpdated?.();
+      onUpdatedRef.current?.();
     } catch (e) {
       setSaveError(Utils.getErrorMessage(e));
     } finally {
       setSaving(false);
     }
   };
+
+  // ── delete with confirmation ──
+  const confirmDelete = async () => {
+    setDeleting(true);
+    try {
+      await onDeleteRef.current?.();
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  const chipVariant = toChipVariant(status);
 
   return (
     <Paper sx={{ p: 0, overflow: "hidden" }}>
@@ -286,7 +328,11 @@ export default function IndexCard({
               minRows={2}
               maxRows={4}
             />
-            {saveError && <Alert severity="error" sx={{ py: 0 }}>{saveError}</Alert>}
+            {saveError && (
+              <Alert severity="error" sx={{ py: 0 }}>
+                {saveError}
+              </Alert>
+            )}
             <Stack direction="row" spacing={1}>
               <Button
                 size="small"
@@ -295,7 +341,7 @@ export default function IndexCard({
                 onClick={saveEdits}
                 disabled={saving || !editTitle.trim()}
               >
-                {saving ? "Saving..." : "Save"}
+                {saving ? "Saving\u2026" : "Save"}
               </Button>
               <Button
                 size="small"
@@ -319,7 +365,11 @@ export default function IndexCard({
               </Tooltip>
             </Stack>
             {description && (
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mb: 0.5 }}
+              >
                 {description}
               </Typography>
             )}
@@ -328,20 +378,29 @@ export default function IndexCard({
             </Typography>
           </Stack>
         )}
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ pt: 0.5 }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          alignItems="center"
+          sx={{ pt: 0.5 }}
+        >
           <StatusChip
-            status={toChipVariant(status)}
-            label={toChipVariant(status) === "ready" ? "Ready" : toChipVariant(status) === "processing" ? "Processing" : toChipVariant(status) === "error" ? "Error" : "No data"}
+            status={chipVariant}
+            label={
+              chipVariant === "ready"
+                ? "Ready"
+                : chipVariant === "processing"
+                  ? "Processing"
+                  : chipVariant === "error"
+                    ? "Error"
+                    : "No data"
+            }
           />
         </Stack>
       </Stack>
 
       {/* Action buttons */}
-      <Stack
-        direction="row"
-        spacing={1}
-        sx={{ px: 2.5, pb: 2 }}
-      >
+      <Stack direction="row" spacing={1} sx={{ px: 2.5, pb: 2 }}>
         <Button
           size="small"
           variant={showUpload ? "contained" : "outlined"}
@@ -365,7 +424,8 @@ export default function IndexCard({
             variant="outlined"
             color="error"
             startIcon={<DeleteOutlineIcon />}
-            onClick={onDelete}
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={deleting}
           >
             Delete
           </Button>
@@ -431,25 +491,28 @@ export default function IndexCard({
         <Stack spacing={1} sx={{ px: 2.5, pb: 2.5 }}>
           {previewLoading && (
             <Typography variant="body2" color="text.secondary">
-              Loading preview...
+              Loading preview&hellip;
             </Typography>
           )}
-          {previewError && (
-            <Alert severity="error">{previewError}</Alert>
-          )}
+          {previewError && <Alert severity="error">{previewError}</Alert>}
           {preview && preview.rows.length > 0 && (
             <>
               <Typography variant="body2" color="text.secondary">
-                {preview.columns.length} column{preview.columns.length !== 1 ? "s" : ""}
+                {preview.columns.length} column
+                {preview.columns.length !== 1 ? "s" : ""}
                 {" \u00b7 "}
-                showing {preview.rows.length} sample row{preview.rows.length !== 1 ? "s" : ""}
+                showing {preview.rows.length} sample row
+                {preview.rows.length !== 1 ? "s" : ""}
               </Typography>
               <TableContainer sx={{ maxHeight: 400 }}>
                 <Table size="small" stickyHeader>
                   <TableHead>
                     <TableRow>
                       {preview.columns.map((col) => (
-                        <TableCell key={col} sx={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+                        <TableCell
+                          key={col}
+                          sx={{ fontWeight: 600, whiteSpace: "nowrap" }}
+                        >
                           {col.replace(/_/g, " ")}
                         </TableCell>
                       ))}
@@ -459,7 +522,15 @@ export default function IndexCard({
                     {preview.rows.map((row, i) => (
                       <TableRow key={i}>
                         {preview.columns.map((col) => (
-                          <TableCell key={col} sx={{ whiteSpace: "nowrap", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis" }}>
+                          <TableCell
+                            key={col}
+                            sx={{
+                              whiteSpace: "nowrap",
+                              maxWidth: 300,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
                             {String(row[col] ?? "")}
                           </TableCell>
                         ))}
@@ -477,6 +548,36 @@ export default function IndexCard({
           )}
         </Stack>
       </Collapse>
+
+      {/* Delete confirmation */}
+      <Dialog
+        open={showDeleteConfirm}
+        onClose={deleting ? undefined : () => setShowDeleteConfirm(false)}
+      >
+        <DialogTitle>Delete Index</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete &ldquo;{title}&rdquo;? This will
+            permanently remove all data and cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setShowDeleteConfirm(false)}
+            disabled={deleting}
+          >
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={confirmDelete}
+            disabled={deleting}
+          >
+            {deleting ? "Deleting\u2026" : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Paper>
   );
 }

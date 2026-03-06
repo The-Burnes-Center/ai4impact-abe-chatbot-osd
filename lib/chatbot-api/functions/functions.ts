@@ -599,7 +599,7 @@ excelIndexApiFunction.addToRolePolicy(new iam.PolicyStatement({
 }));
 excelIndexApiFunction.addToRolePolicy(new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
-  actions: ['dynamodb:Query', 'dynamodb:PutItem', 'dynamodb:DeleteItem'],
+  actions: ['dynamodb:Query', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem'],
   resources: [props.indexRegistryTable.tableArn],
 }));
 excelIndexApiFunction.addToRolePolicy(new iam.PolicyStatement({
