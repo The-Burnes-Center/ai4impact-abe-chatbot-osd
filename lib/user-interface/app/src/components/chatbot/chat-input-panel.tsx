@@ -163,6 +163,8 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
 
       onError(message) {
         props.setStreamingStatus({ text: "", active: false });
+        messageHistoryRef.current = messageHistoryRef.current.slice(0, -1);
+        props.setMessageHistory(messageHistoryRef.current);
         addNotification(
           "error",
           message || "Sorry, something went wrong. Please try again."

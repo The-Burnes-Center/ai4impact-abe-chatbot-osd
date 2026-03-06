@@ -15,7 +15,9 @@ class QueryIndexRequest(BaseModel):
     count_only: bool = False
     count_unique: Optional[str] = None
     group_by: Optional[str] = None
-    limit: int = Field(default=500, ge=1, le=500)
+    columns: Optional[list[str]] = None
+    limit: int = Field(default=100, ge=1, le=500)
+    offset: int = Field(default=0, ge=0)
     preview_rows: int = Field(default=10, ge=1, le=50)
 
 

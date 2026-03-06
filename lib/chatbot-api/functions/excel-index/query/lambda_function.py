@@ -44,7 +44,9 @@ def lambda_handler(event, context):
                 count_only=req.count_only,
                 count_unique=req.count_unique,
                 group_by=req.group_by,
+                columns=req.columns,
                 limit=req.limit,
+                offset=req.offset,
             )
         return _response(200, out)
     except Exception as e:
@@ -149,6 +151,14 @@ def _row_matches(
     return True
 
 
+def _project_row(row: dict[str, Any], columns: list[str] | None) -> dict[str, Any]:
+    """Return only the requested columns from a row, or all columns if None."""
+    if columns is None:
+        return row
+    cols_set = set(columns)
+    return {k: v for k, v in row.items() if k in cols_set}
+
+
 def _do_query(
     pk: str,
     free_text: str | None = None,
@@ -156,12 +166,15 @@ def _do_query(
     count_only: bool = False,
     count_unique: str | None = None,
     group_by: str | None = None,
-    limit: int = 500,
+    columns: list[str] | None = None,
+    limit: int = 100,
+    offset: int = 0,
 ) -> dict:
     """Scan partition and filter in code. Scans all pages for accurate totals."""
     table = DDB.Table(TABLE_NAME)
     collected: list[dict] = []
     total = 0
+    skipped = 0
     unique_vals: set[str] = set() if count_unique else None
     group_counts: dict[str, int] = {} if group_by else None
     scan_kw: dict[str, Any] = {"FilterExpression": Attr("pk").eq(pk) & Attr("sk").ne(SK_META)}
@@ -178,8 +191,11 @@ def _do_query(
                 if group_counts is not None:
                     gval = str(row.get(group_by) or "").strip() or "(empty)"
                     group_counts[gval] = group_counts.get(gval, 0) + 1
-                if not count_only and len(collected) < limit:
-                    collected.append(row)
+                if not count_only:
+                    if skipped < offset:
+                        skipped += 1
+                    elif len(collected) < limit:
+                        collected.append(_project_row(row, columns))
         last_key = resp.get("LastEvaluatedKey")
         if not last_key:
             break
@@ -188,6 +204,7 @@ def _do_query(
         "rows": [] if count_only else collected,
         "total_matches": total,
         "returned": 0 if count_only else len(collected),
+        "offset": offset,
     }
     if unique_vals is not None:
         result["unique_count"] = len(unique_vals)
