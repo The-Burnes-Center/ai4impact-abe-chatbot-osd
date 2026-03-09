@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   ChatBotHistoryItem,
   ChatBotMessageType,
@@ -21,6 +21,7 @@ import ChatInputPanel from "./chat-input-panel";
 import styles from "../../styles/chat.module.scss";
 import { WELCOME_PAGE, SUGGESTED_PROMPTS } from "../../common/constants";
 import { useNotifications } from "../notif-manager";
+import { Utils } from "../../common/utils";
 import { useWebSocketChat, StreamingStatus } from "../../hooks/useWebSocketChat";
 
 export default function Chat(props: { sessionId?: string }) {
@@ -109,6 +110,7 @@ export default function Chat(props: { sessionId?: string }) {
         return () => clearTimeout(timer);
       }
     }
+    return undefined;
   }, [running, messageHistory]);
 
   // Track scroll position for scroll-to-bottom button
@@ -178,6 +180,24 @@ export default function Chat(props: { sessionId?: string }) {
     }
   };
 
+  const handleOpenSource = useCallback(async (s3Key: string) => {
+    if (!appContext) return;
+    const api = appContext.httpEndpoint.slice(0, -1);
+    try {
+      const auth = await Utils.authenticate();
+      const res = await fetch(`${api}/source-presign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: auth },
+        body: JSON.stringify({ s3Key }),
+      });
+      if (!res.ok) throw new Error("Failed to get source URL");
+      const { signedUrl } = await res.json();
+      window.open(signedUrl, "_blank", "noopener,noreferrer");
+    } catch {
+      addNotification("error", "Could not open source document. Please try again.");
+    }
+  }, [appContext, addNotification]);
+
   const isEmpty = messageHistory.length === 0 && !session?.loading;
 
   const lastAiIdx = (() => {
@@ -241,6 +261,7 @@ export default function Chat(props: { sessionId?: string }) {
                   )
                 }
                 onAddToTestLibrary={() => handleAddToTestLibrary(idx, message)}
+                onOpenSource={handleOpenSource}
               />
             ))}
           </Stack>

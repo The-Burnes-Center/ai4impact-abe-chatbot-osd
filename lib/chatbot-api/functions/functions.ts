@@ -58,6 +58,7 @@ export class LambdaFunctionStack extends Construct {
   public readonly testLibraryFunction: lambda.Function;
   public readonly feedbackToTestLibraryEnqueueFunction: lambda.Function;
   public readonly feedbackToTestLibraryProcessFunction: lambda.Function;
+  public readonly sourcePresignFunction: lambda.Function;
 
   constructor(scope: Construct, id: string, props: LambdaFunctionStackProps) {
     super(scope, id);
@@ -716,6 +717,23 @@ feedbackToTestLibraryProcessFunction.addEventSource(new SqsEventSource(props.fee
   batchSize: 1,
 }));
 this.feedbackToTestLibraryProcessFunction = feedbackToTestLibraryProcessFunction;
+
+const sourcePresignFunction = new lambda.Function(scope, 'SourcePresignFunction', {
+  ...LAMBDA_DEFAULTS,
+  runtime: lambda.Runtime.NODEJS_20_X,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'source-presign')),
+  handler: 'index.handler',
+  environment: {
+    "BUCKET": props.knowledgeBucket.bucketName,
+  },
+  timeout: cdk.Duration.seconds(10),
+});
+sourcePresignFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['s3:GetObject'],
+  resources: [props.knowledgeBucket.bucketArn + '/*'],
+}));
+this.sourcePresignFunction = sourcePresignFunction;
 
 this.stepFunctionsStack = new StepFunctionsStack(scope, 'StepFunctionsStack', {
   knowledgeBase: props.knowledgeBase,

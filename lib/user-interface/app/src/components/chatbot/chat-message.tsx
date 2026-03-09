@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
@@ -60,10 +60,9 @@ interface SourceItem {
 
 type RelevanceLevel = "high" | "medium" | "low";
 
-function getRelevanceLevel(score: number, maxScore: number): RelevanceLevel {
-  const normalized = maxScore > 0 ? score / maxScore : 0;
-  if (normalized >= 0.85) return "high";
-  if (normalized >= 0.6) return "medium";
+function getRelevanceLevel(score: number): RelevanceLevel {
+  if (score >= 0.75) return "high";
+  if (score >= 0.6) return "medium";
   return "low";
 }
 
@@ -73,8 +72,8 @@ const RELEVANCE_CONFIG: Record<RelevanceLevel, { label: string; className: strin
   low: { label: "Partial match", className: "relevanceLow" },
 };
 
-function RelevanceIndicator({ score, maxScore }: { score: number; maxScore: number }) {
-  const level = getRelevanceLevel(score, maxScore);
+function RelevanceIndicator({ score }: { score: number }) {
+  const level = getRelevanceLevel(score);
   const config = RELEVANCE_CONFIG[level];
   return (
     <span className={`${styles.relevancePill} ${styles[config.className]}`}>
@@ -84,15 +83,13 @@ function RelevanceIndicator({ score, maxScore }: { score: number; maxScore: numb
   );
 }
 
-function CitationBadge({ source, maxScore }: { source: SourceItem; maxScore: number }) {
+function CitationBadge({ source, onCitationClick }: { source: SourceItem; onCitationClick?: (chunkIndex: number) => void }) {
   const [anchorEl, setAnchorEl] = React.useState<HTMLElement | null>(null);
   const open = Boolean(anchorEl);
 
-  const handleClick = (e: React.MouseEvent<HTMLElement>) => {
-    if (source.uri) {
-      window.open(source.uri, "_blank", "noopener,noreferrer");
-    } else {
-      setAnchorEl(anchorEl ? null : e.currentTarget);
+  const handleClick = () => {
+    if (source.chunkIndex != null && onCitationClick) {
+      onCitationClick(source.chunkIndex);
     }
   };
 
@@ -105,7 +102,7 @@ function CitationBadge({ source, maxScore }: { source: SourceItem; maxScore: num
         onFocus={(e) => setAnchorEl(e.currentTarget)}
         onBlur={() => setAnchorEl(null)}
         onClick={handleClick}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleClick(e as any); }}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleClick(); }}
         role="button"
         tabIndex={0}
         aria-label={`Source ${source.chunkIndex}: ${source.title}`}
@@ -128,7 +125,7 @@ function CitationBadge({ source, maxScore }: { source: SourceItem; maxScore: num
               </div>
               <div className={styles.citationCardMeta}>
                 {source.score != null && (
-                  <RelevanceIndicator score={source.score} maxScore={maxScore} />
+                  <RelevanceIndicator score={source.score} />
                 )}
                 {source.page != null && (
                   <span className={styles.metaDivider}>·</span>
@@ -163,7 +160,7 @@ function CitationBadge({ source, maxScore }: { source: SourceItem; maxScore: num
 function renderWithCitations(
   children: React.ReactNode,
   sources: SourceItem[],
-  maxScore: number,
+  onCitationClick?: (chunkIndex: number) => void,
   keyPrefix = "cit"
 ): React.ReactNode {
   if (typeof children === "string") {
@@ -175,7 +172,7 @@ function renderWithCitations(
         const idx = parseInt(match[1], 10);
         const source = sources.find((s) => s.chunkIndex === idx);
         if (source) {
-          return <CitationBadge key={`${keyPrefix}-${i}`} source={source} maxScore={maxScore} />;
+          return <CitationBadge key={`${keyPrefix}-${i}`} source={source} onCitationClick={onCitationClick} />;
         }
       }
       return part;
@@ -183,24 +180,24 @@ function renderWithCitations(
   }
   if (Array.isArray(children)) {
     return children.map((child, i) =>
-      renderWithCitations(child, sources, maxScore, `${keyPrefix}-${i}`)
+      renderWithCitations(child, sources, onCitationClick, `${keyPrefix}-${i}`)
     );
   }
   if (React.isValidElement(children) && children.props?.children) {
     return React.cloneElement(
       children,
       { ...children.props, key: children.key ?? `${keyPrefix}-el` },
-      renderWithCitations(children.props.children, sources, maxScore, `${keyPrefix}-ch`)
+      renderWithCitations(children.props.children, sources, onCitationClick, `${keyPrefix}-ch`)
     );
   }
   return children;
 }
 
-function buildMarkdownComponents(sources: SourceItem[], maxScore: number) {
+function buildMarkdownComponents(sources: SourceItem[], onCitationClick?: (chunkIndex: number) => void) {
   const wrapChildren = (Tag: string) =>
     function WrappedComponent(props: any) {
       const { children, node, ...rest } = props;
-      return React.createElement(Tag, rest, renderWithCitations(children, sources, maxScore));
+      return React.createElement(Tag, rest, renderWithCitations(children, sources, onCitationClick));
     };
 
   return {
@@ -210,7 +207,7 @@ function buildMarkdownComponents(sources: SourceItem[], maxScore: number) {
       const { children, node, ...rest } = props;
       return (
         <td {...rest} className={styles.markdownTableCell}>
-          {renderWithCitations(children, sources, maxScore)}
+          {renderWithCitations(children, sources, onCitationClick)}
         </td>
       );
     },
@@ -218,7 +215,7 @@ function buildMarkdownComponents(sources: SourceItem[], maxScore: number) {
       const { children, node, ...rest } = props;
       return (
         <th {...rest} className={styles.markdownTableCell}>
-          {renderWithCitations(children, sources, maxScore)}
+          {renderWithCitations(children, sources, onCitationClick)}
         </th>
       );
     },
@@ -249,28 +246,60 @@ function buildMarkdownComponents(sources: SourceItem[], maxScore: number) {
   };
 }
 
+interface MergedCard {
+  chunkIndices: number[];
+  excerpt: string | null;
+  score: number | null;
+  page: number | null;
+  uri: string | null;
+}
+
 interface SourceGroup {
   documentTitle: string;
   s3Key: string | null;
   sourceType: "knowledgeBase" | "excelIndex";
-  items: SourceItem[];
+  cards: MergedCard[];
 }
 
 function groupSources(sources: SourceItem[]): SourceGroup[] {
-  const groups: Map<string, SourceGroup> = new Map();
+  const docGroups: Map<string, { title: string; s3Key: string | null; sourceType: SourceItem["sourceType"]; items: SourceItem[] }> = new Map();
   for (const src of sources) {
     const key = src.s3Key || `__excel__${src.title}`;
-    if (!groups.has(key)) {
-      groups.set(key, {
-        documentTitle: src.title,
-        s3Key: src.s3Key,
-        sourceType: src.sourceType,
-        items: [],
+    if (!docGroups.has(key)) {
+      docGroups.set(key, { title: src.title, s3Key: src.s3Key, sourceType: src.sourceType, items: [] });
+    }
+    docGroups.get(key)!.items.push(src);
+  }
+
+  const result: SourceGroup[] = [];
+  for (const doc of docGroups.values()) {
+    const pageMap: Map<string, SourceItem[]> = new Map();
+    for (const item of doc.items) {
+      const pageKey = item.page != null ? String(item.page) : `__chunk_${item.chunkIndex}`;
+      if (!pageMap.has(pageKey)) pageMap.set(pageKey, []);
+      pageMap.get(pageKey)!.push(item);
+    }
+
+    const cards: MergedCard[] = [];
+    for (const items of pageMap.values()) {
+      const indices = items.map((i) => i.chunkIndex).filter((i): i is number => i != null);
+      const bestScore = items.reduce<number | null>((best, i) => {
+        if (i.score == null) return best;
+        return best == null || i.score > best ? i.score : best;
+      }, null);
+      const excerpts = items.map((i) => i.excerpt).filter((e): e is string => !!e);
+      const merged = excerpts.length > 1 ? excerpts.join(" ... ") : excerpts[0] ?? null;
+      cards.push({
+        chunkIndices: indices,
+        excerpt: merged,
+        score: bestScore,
+        page: items[0].page,
+        uri: items[0].uri,
       });
     }
-    groups.get(key)!.items.push(src);
+    result.push({ documentTitle: doc.title, s3Key: doc.s3Key, sourceType: doc.sourceType, cards });
   }
-  return Array.from(groups.values());
+  return result;
 }
 
 export interface ChatMessageProps {
@@ -280,6 +309,7 @@ export interface ChatMessageProps {
   onThumbsUp: () => void;
   onThumbsDown: (feedbackTopic: string, feedbackType: string, feedbackMessage: string) => void;
   onAddToTestLibrary?: () => void;
+  onOpenSource?: (s3Key: string) => void;
 }
 
 export default function ChatMessage(props: ChatMessageProps) {
@@ -292,6 +322,8 @@ export default function ChatMessage(props: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [showTestLibrarySnackbar, setShowTestLibrarySnackbar] = useState(false);
+  const [highlightedChunk, setHighlightedChunk] = useState<number | null>(null);
+  const sourcesListRef = useRef<HTMLDivElement>(null);
 
   const formattedTime = props.message.timestamp
     ? new Date(props.message.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
@@ -307,17 +339,29 @@ export default function ChatMessage(props: ChatMessageProps) {
     return (props.message.metadata.Sources as any[]);
   }, [props.message.metadata?.Sources]);
 
-  const maxScore = useMemo(() => {
-    let max = 0;
-    for (const s of sourcesArray) {
-      if (s.score != null && s.score > max) max = s.score;
-    }
-    return max;
-  }, [sourcesArray]);
-
   const showSources = sourcesArray.length > 0;
   const sourceGroups = useMemo(() => groupSources(sourcesArray), [sourcesArray]);
-  const mdComponents = useMemo(() => buildMarkdownComponents(sourcesArray, maxScore), [sourcesArray, maxScore]);
+
+  const scrollToChunk = useCallback((chunkIndex: number) => {
+    const el = sourcesListRef.current?.querySelector(`[data-chunk-indices~="${chunkIndex}"]`) as HTMLElement | null;
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      setHighlightedChunk(chunkIndex);
+      setTimeout(() => setHighlightedChunk(null), 1500);
+    }
+  }, []);
+
+  const handleCitationClick = useCallback((chunkIndex: number) => {
+    if (!sourcesOpen) {
+      setSourcesOpen(true);
+      // Wait for Collapse animation (200ms) + a small buffer before scrolling
+      setTimeout(() => scrollToChunk(chunkIndex), 250);
+    } else {
+      scrollToChunk(chunkIndex);
+    }
+  }, [sourcesOpen, scrollToChunk]);
+
+  const mdComponents = useMemo(() => buildMarkdownComponents(sourcesArray, handleCitationClick), [sourcesArray, handleCitationClick]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(props.message.content);
@@ -590,7 +634,7 @@ export default function ChatMessage(props: ChatMessageProps) {
                   />
                 </button>
                 <Collapse in={sourcesOpen} timeout={200}>
-                  <div id="sources-list" className={styles.sourcesList}>
+                  <div id="sources-list" className={styles.sourcesList} ref={sourcesListRef}>
                     {sourceGroups.map((group, gi) => (
                       <div key={`group-${gi}`} className={styles.sourceGroup}>
                         <div className={styles.sourceGroupHeader}>
@@ -602,56 +646,77 @@ export default function ChatMessage(props: ChatMessageProps) {
                           <Typography variant="body2" className={styles.sourceGroupTitle} noWrap>
                             {group.documentTitle}
                           </Typography>
-                          {group.items[0]?.uri && (
-                            <a
-                              href={group.items[0].uri}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                          {(group.s3Key || group.cards[0]?.uri) && (
+                            <button
+                              type="button"
                               className={styles.sourceCardLink}
                               aria-label={`Open ${group.documentTitle}`}
+                              onClick={() => {
+                                if (group.s3Key && props.onOpenSource) {
+                                  props.onOpenSource(group.s3Key);
+                                } else if (group.cards[0]?.uri) {
+                                  window.open(group.cards[0].uri, "_blank", "noopener,noreferrer");
+                                }
+                              }}
                             >
                               <OpenInNewIcon sx={{ fontSize: 14 }} />
-                            </a>
+                            </button>
                           )}
                         </div>
-                        {group.items.map((item, ii) => (
-                          <div key={`src-${gi}-${ii}`} className={styles.sourceCard}>
+                        {group.cards.map((card, ci) => {
+                          const isHighlighted = highlightedChunk != null && card.chunkIndices.includes(highlightedChunk);
+                          return (
+                          <div
+                            key={`src-${gi}-${ci}`}
+                            className={`${styles.sourceCard} ${isHighlighted ? styles.sourceCardHighlight : ""}`}
+                            data-chunk-indices={card.chunkIndices.join(" ")}
+                          >
                             <div className={styles.sourceCardTop}>
-                              {item.chunkIndex != null && (
-                                <span className={styles.sourceCardBadge}>{item.chunkIndex}</span>
+                              {card.chunkIndices.length > 0 && (
+                                <span className={styles.sourceCardBadges}>
+                                  {card.chunkIndices.map((idx) => (
+                                    <span key={idx} className={styles.sourceCardBadge}>{idx}</span>
+                                  ))}
+                                </span>
                               )}
                               <div className={styles.sourceCardInfo}>
-                                {item.score != null && (
-                                  <RelevanceIndicator score={item.score} maxScore={maxScore} />
+                                {card.score != null && (
+                                  <RelevanceIndicator score={card.score} />
                                 )}
-                                {item.page != null && (
+                                {card.page != null && (
                                   <>
-                                    {item.score != null && <span className={styles.metaDivider}>·</span>}
+                                    {card.score != null && <span className={styles.metaDivider}>·</span>}
                                     <Typography variant="caption" sx={{ fontSize: "0.6875rem", color: "text.secondary" }}>
-                                      Page {item.page}
+                                      Page {card.page}
                                     </Typography>
                                   </>
                                 )}
                               </div>
-                              {item.uri && (
-                                <a
-                                  href={item.uri}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
+                              {(group.s3Key || card.uri) && (
+                                <button
+                                  type="button"
                                   className={styles.sourceCardLink}
-                                  aria-label={`Open ${item.title}`}
+                                  aria-label={`Open ${group.documentTitle}`}
+                                  onClick={() => {
+                                    if (group.s3Key && props.onOpenSource) {
+                                      props.onOpenSource(group.s3Key);
+                                    } else if (card.uri) {
+                                      window.open(card.uri, "_blank", "noopener,noreferrer");
+                                    }
+                                  }}
                                 >
                                   <OpenInNewIcon sx={{ fontSize: 12 }} />
-                                </a>
+                                </button>
                               )}
                             </div>
-                            {item.excerpt && (
+                            {card.excerpt && (
                               <Typography variant="body2" className={styles.sourceCardExcerpt}>
-                                {item.excerpt.length > 180 ? item.excerpt.slice(0, 180) + "..." : item.excerpt}
+                                {card.excerpt.length > 250 ? card.excerpt.slice(0, 250) + "..." : card.excerpt}
                               </Typography>
                             )}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ))}
                   </div>

@@ -442,10 +442,30 @@
   }
 }
 
+.sourceCardHighlight {
+  animation: sourceHighlightPulse 1.5s ease-out;
+}
+
+@keyframes sourceHighlightPulse {
+  0% {
+    background-color: var(--abe-primaryLight, #e8f2fc);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
 .sourceCardTop {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.sourceCardBadges {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
 }
 
 .sourceCardBadge {
@@ -482,6 +502,11 @@
   text-decoration: none;
   flex-shrink: 0;
   transition: background-color var(--abe-transition-fast, 150ms);
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
 
   &:hover {
     background-color: var(--abe-hoverBg, rgba(0, 0, 0, 0.04));
@@ -500,8 +525,9 @@
   margin-top: 4px;
   overflow: hidden;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
+  word-break: break-word;
 }
 
 /* Typing indicator */

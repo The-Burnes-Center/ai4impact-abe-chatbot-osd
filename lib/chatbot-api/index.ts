@@ -495,6 +495,19 @@ export class ChatBotApi extends Construct {
       authorizer: httpAuthorizer,
     });
 
+    const sourcePresignIntegration = new HttpLambdaIntegration('SourcePresignIntegration', lambdaFunctions.sourcePresignFunction);
+    restBackend.restAPI.addRoutes({
+      path: "/source-presign",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/source-presign",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: sourcePresignIntegration,
+      authorizer: httpAuthorizer,
+    });
+
     const feedbackToTestLibraryIntegration = new HttpLambdaIntegration(
       'FeedbackToTestLibraryIntegration',
       lambdaFunctions.feedbackToTestLibraryEnqueueFunction
