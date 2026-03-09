@@ -267,7 +267,7 @@
 
   &:hover {
     background-color: var(--abe-primary, #14558f);
-    color: #fff;
+    color: var(--abe-primaryContrast, #fff);
     transform: scale(1.1);
   }
 
@@ -338,29 +338,29 @@
 }
 
 .relevanceHigh {
-  background-color: #e8f5e9;
-  color: #2e7d32;
+  background-color: var(--abe-successLight, #ECFDF3);
+  color: var(--abe-success, #0D7C3F);
 
   .relevanceDot {
-    background-color: #4caf50;
+    background-color: var(--abe-success, #0D7C3F);
   }
 }
 
 .relevanceMedium {
-  background-color: #e3f2fd;
-  color: #1565c0;
+  background-color: var(--abe-infoLight, #EBF5FF);
+  color: var(--abe-info, #0B6BCB);
 
   .relevanceDot {
-    background-color: #42a5f5;
+    background-color: var(--abe-info, #0B6BCB);
   }
 }
 
 .relevanceLow {
-  background-color: #f5f5f5;
-  color: #757575;
+  background-color: var(--abe-surfaceAlt, #F7F8FA);
+  color: var(--abe-textSecondary, #555D6B);
 
   .relevanceDot {
-    background-color: #bdbdbd;
+    background-color: var(--abe-textTertiary, #6B7280);
   }
 }
 

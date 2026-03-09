@@ -288,7 +288,7 @@ export default function DataFileUpload({
               sx={{
                 py: 0.5,
                 px: 1,
-                bgcolor: "grey.50",
+                    bgcolor: "action.hover",
                 borderRadius: 1,
               }}
             >

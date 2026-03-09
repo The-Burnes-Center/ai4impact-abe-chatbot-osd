@@ -237,7 +237,7 @@ export default function DataFileUpload(props: FileUploadTabProps) {
             aria-label="Upload files - click or drag and drop"
             sx={{
               border: "2px dashed",
-              borderColor: "grey.400",
+              borderColor: "divider",
               borderRadius: 2,
               p: 4,
               textAlign: "center",
@@ -251,7 +251,7 @@ export default function DataFileUpload(props: FileUploadTabProps) {
             onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInputRef.current?.click(); } }}
           >
             <CloudUploadIcon
-              sx={{ fontSize: 48, color: "grey.500", mb: 1 }}
+              sx={{ fontSize: 48, color: "text.secondary", mb: 1 }}
             />
             <Typography variant="body1">
               Click to choose files or drag and drop
@@ -276,7 +276,7 @@ export default function DataFileUpload(props: FileUploadTabProps) {
                   sx={{
                     py: 0.5,
                     px: 1,
-                    bgcolor: "grey.50",
+                    bgcolor: "action.hover",
                     borderRadius: 1,
                   }}
                 >

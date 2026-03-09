@@ -426,7 +426,7 @@ export default function ChatMessage(props: ChatMessageProps) {
             <Button
               size="small"
               onClick={() => setShowTestLibrarySnackbar(false)}
-              sx={{ color: "grey.400" }}
+              sx={{ color: "text.secondary" }}
             >
               Dismiss
             </Button>

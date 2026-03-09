@@ -497,7 +497,7 @@ export default function TestLibraryTab() {
                 <Typography variant="subtitle2" gutterBottom>
                   Current Answer:
                 </Typography>
-                <Paper variant="outlined" sx={{ p: 1.5, bgcolor: "#f0fef0" }}>
+                <Paper variant="outlined" sx={{ p: 1.5, bgcolor: "success.light" }}>
                   <Typography variant="body2">{historyData.expectedResponse}</Typography>
                   <Typography variant="caption" color="text.secondary">
                     Source: {historyData.source} | Updated: {historyData.updatedAt}

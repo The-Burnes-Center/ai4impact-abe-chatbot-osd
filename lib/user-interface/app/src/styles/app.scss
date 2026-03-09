@@ -62,20 +62,20 @@ body {
 }
 
 .jsonStrings {
-  color: #34d27b;
+  color: var(--abe-syntaxString, #0D7C3F);
 }
 
 .jsonNumbers {
-  color: #fbbf24;
+  color: var(--abe-syntaxNumber, #B45309);
 }
 
 .jsonBool {
-  color: #c084fc;
+  color: var(--abe-syntaxBool, #7C3AED);
   font-weight: 600;
 }
 
 .jsonNull {
-  color: #67e8f9;
+  color: var(--abe-syntaxNull, #0E7490);
   font-weight: 600;
 }
 
