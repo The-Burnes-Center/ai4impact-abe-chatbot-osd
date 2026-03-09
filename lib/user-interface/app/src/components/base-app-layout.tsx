@@ -103,7 +103,7 @@ export default function BaseAppLayout({ children, info }: BaseAppLayoutProps) {
               height: "100vh",
               display: "flex",
               flexDirection: "column",
-              outline: "none",
+              "&:focus:not(:focus-visible)": { outline: "none" },
               overflow: "hidden",
             }}
           >

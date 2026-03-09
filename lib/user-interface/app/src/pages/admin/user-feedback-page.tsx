@@ -1,8 +1,10 @@
 import { useState } from "react";
 import FeedbackTab from "./feedback-tab";
 import AdminPageLayout from "../../components/admin-page-layout";
+import { useDocumentTitle } from "../../common/hooks/use-document-title";
 
 export default function UserFeedbackPage() {
+  useDocumentTitle("User Feedback");
   const [feedback, setFeedback] = useState<any>({});
 
   return (

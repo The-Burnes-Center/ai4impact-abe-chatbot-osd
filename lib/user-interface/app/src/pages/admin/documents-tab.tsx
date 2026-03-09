@@ -283,8 +283,9 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       <Dialog
         open={showModalDelete}
         onClose={() => setShowModalDelete(false)}
+        aria-labelledby="delete-files-dialog-title"
       >
-        <DialogTitle>
+        <DialogTitle id="delete-files-dialog-title">
           {"Delete file" + (selectedItems.length > 1 ? "s" : "")}
         </DialogTitle>
         <DialogContent>
@@ -379,7 +380,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
           </Box>
         ) : (
           <TableContainer component={Paper}>
-            <Table size="small">
+            <Table size="small" aria-label="Documents">
               <TableHead>
                 <TableRow>
                   <TableCell padding="checkbox">
@@ -393,6 +394,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
                         selectedItems.length === currentItems.length
                       }
                       onChange={toggleSelectAll}
+                      aria-label="Select all documents"
                     />
                   </TableCell>
                   {columnDefinitions.map((col) => (
@@ -413,6 +415,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
                       <Checkbox
                         checked={isSelected(item)}
                         onChange={() => toggleSelection(item)}
+                        aria-label={`Select ${item.Key}`}
                       />
                     </TableCell>
                     {columnDefinitions.map((col) => (

@@ -37,6 +37,7 @@ import PersonIcon from "@mui/icons-material/Person";
 import { LineChart } from "@mui/x-charts/LineChart";
 import { BarChart } from "@mui/x-charts/BarChart";
 import AdminPageLayout from "../../components/admin-page-layout";
+import { useDocumentTitle } from "../../common/hooks/use-document-title";
 
 interface MetricsData {
   unique_users: number;
@@ -199,7 +200,7 @@ function OverviewTab({ metrics }: { metrics: MetricsData }) {
             Daily Breakdown
           </Typography>
           <TableContainer>
-            <Table size="small">
+            <Table size="small" aria-label="Daily breakdown">
               <TableHead>
                 <TableRow>
                   <TableCell>Date</TableCell>
@@ -237,7 +238,10 @@ function FAQRow({ topic }: { topic: FAQData["topics"][0] }) {
         hover
         sx={{ cursor: "pointer" }}
         onClick={() => setOpen(!open)}
+        onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(!open); } }}
+        tabIndex={0}
         aria-expanded={open}
+        aria-controls={`faq-details-${topic.topic}`}
       >
         <TableCell>
           <IconButton size="small" aria-label={open ? "Collapse" : "Expand"}>
@@ -253,7 +257,7 @@ function FAQRow({ topic }: { topic: FAQData["topics"][0] }) {
       </TableRow>
       <TableRow>
         <TableCell colSpan={3} sx={{ py: 0, borderBottom: open ? undefined : "none" }}>
-          <Collapse in={open} timeout={200} unmountOnExit>
+          <Collapse in={open} timeout={200} unmountOnExit id={`faq-details-${topic.topic}`}>
             <Box sx={{ py: 1.5, pl: 6 }}>
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Sample questions:
@@ -332,7 +336,7 @@ function FAQTab({ faqData }: { faqData: FAQData | null }) {
             All Topics
           </Typography>
           <TableContainer>
-            <Table size="small">
+            <Table size="small" aria-label="FAQ topics">
               <TableHead>
                 <TableRow>
                   <TableCell width={50} />
@@ -436,7 +440,7 @@ function AgencyTab({ agencyData }: { agencyData: AgencyData | null }) {
             All Agencies
           </Typography>
           <TableContainer>
-            <Table size="small">
+            <Table size="small" aria-label="Agencies">
               <TableHead>
                 <TableRow>
                   <TableCell width={50} />
@@ -458,6 +462,10 @@ function AgencyTab({ agencyData }: { agencyData: AgencyData | null }) {
                         hover
                         sx={{ cursor: "pointer" }}
                         onClick={() => setExpandedAgency(isOpen ? null : ag.agency)}
+                        onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedAgency(isOpen ? null : ag.agency); } }}
+                        tabIndex={0}
+                        aria-expanded={isOpen}
+                        aria-controls={`agency-details-${ag.agency}`}
                       >
                         <TableCell>
                           <IconButton size="small" aria-label={isOpen ? "Collapse" : "Expand"}>
@@ -475,7 +483,7 @@ function AgencyTab({ agencyData }: { agencyData: AgencyData | null }) {
                       </TableRow>
                       <TableRow>
                         <TableCell colSpan={5} sx={{ py: 0, borderBottom: isOpen ? undefined : "none" }}>
-                          <Collapse in={isOpen} timeout={200} unmountOnExit>
+                          <Collapse in={isOpen} timeout={200} unmountOnExit id={`agency-details-${ag.agency}`}>
                             <Box sx={{ py: 1.5, pl: 6 }}>
                               <Typography variant="body2" color="text.secondary" gutterBottom>
                                 Top topics:
@@ -530,7 +538,7 @@ function UsersTab({ userData }: { userData: UserData | null }) {
             All Users
           </Typography>
           <TableContainer>
-            <Table size="small">
+            <Table size="small" aria-label="Users">
               <TableHead>
                 <TableRow>
                   <TableCell width={50} />
@@ -549,6 +557,10 @@ function UsersTab({ userData }: { userData: UserData | null }) {
                         hover
                         sx={{ cursor: "pointer" }}
                         onClick={() => setExpandedUser(isOpen ? null : u.user_id)}
+                        onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedUser(isOpen ? null : u.user_id); } }}
+                        tabIndex={0}
+                        aria-expanded={isOpen}
+                        aria-controls={`user-details-${u.user_id}`}
                       >
                         <TableCell>
                           <IconButton size="small" aria-label={isOpen ? "Collapse" : "Expand"}>
@@ -577,7 +589,7 @@ function UsersTab({ userData }: { userData: UserData | null }) {
                       </TableRow>
                       <TableRow>
                         <TableCell colSpan={5} sx={{ py: 0, borderBottom: isOpen ? undefined : "none" }}>
-                          <Collapse in={isOpen} timeout={200} unmountOnExit>
+                          <Collapse in={isOpen} timeout={200} unmountOnExit id={`user-details-${u.user_id}`}>
                             <Box sx={{ py: 1.5, pl: 6 }}>
                               <Typography variant="body2" color="text.secondary" gutterBottom>
                                 Recent questions:
@@ -609,6 +621,7 @@ function UsersTab({ userData }: { userData: UserData | null }) {
 }
 
 export default function MetricsPage() {
+  useDocumentTitle("Analytics");
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState<MetricsData | null>(null);
   const [faqData, setFaqData] = useState<FAQData | null>(null);

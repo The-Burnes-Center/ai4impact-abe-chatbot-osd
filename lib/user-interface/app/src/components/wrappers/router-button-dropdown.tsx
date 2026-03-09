@@ -41,7 +41,7 @@ export default function RouterButtonDropdown({
 
   return (
     <>
-      <Button variant={variant} onClick={(e) => setAnchorEl(e.currentTarget)}>
+      <Button variant={variant} onClick={(e) => setAnchorEl(e.currentTarget)} aria-haspopup="true" aria-expanded={Boolean(anchorEl)}>
         {children}
       </Button>
       <Menu

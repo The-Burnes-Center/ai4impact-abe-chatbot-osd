@@ -28,7 +28,7 @@
   }
   
   .legalText-customizable {
-    color: #747474;
+    color: #666666;
     font-size: 11px;
   }
   
@@ -69,6 +69,7 @@
   .inputField-customizable:focus {
     border-color: #66afe9;
     outline: 0;
+    box-shadow: 0 0 0 3px rgba(102, 175, 233, 0.45);
   }
   
   .idpButton-customizable {

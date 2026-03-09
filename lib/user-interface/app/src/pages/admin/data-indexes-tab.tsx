@@ -254,8 +254,9 @@ export default function DataIndexesTab() {
         onClose={creating ? undefined : resetCreateDialog}
         maxWidth="sm"
         fullWidth
+        aria-labelledby="create-index-dialog-title"
       >
-        <DialogTitle>Add New Index</DialogTitle>
+        <DialogTitle id="create-index-dialog-title">Add New Index</DialogTitle>
         <DialogContent>
           <Stack spacing={2.5} pt={1}>
             <TextField
@@ -286,6 +287,7 @@ export default function DataIndexesTab() {
                 onChange={handleFileChange}
                 style={{ display: "none" }}
                 accept=".xlsx"
+                aria-label="Choose .xlsx file"
               />
               <Button
                 variant="outlined"

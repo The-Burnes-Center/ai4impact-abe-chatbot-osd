@@ -110,7 +110,7 @@ export default function GlobalHeader({ onMenuClick }: GlobalHeaderProps) {
           <Box
             component="img"
             src="/images/stateseal-color.png"
-            alt=""
+            alt="Massachusetts state seal"
             sx={{ height: { xs: 32, sm: 36 } }}
           />
           <Typography

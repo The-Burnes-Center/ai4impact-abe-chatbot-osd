@@ -205,6 +205,7 @@ export default function DataFileUpload({
         onChange={handleFileChange}
         style={{ display: "none" }}
         accept={Array.from(fileExtensions).join(",")}
+        aria-label="Choose files to upload"
       />
       <Box
         role="button"
@@ -299,7 +300,7 @@ export default function DataFileUpload({
                   {fileErrors[i]}
                 </Typography>
               )}
-              <IconButton size="small" onClick={() => removeFile(i)}>
+              <IconButton size="small" onClick={() => removeFile(i)} aria-label={`Remove file ${file.name}`}>
                 <CloseIcon fontSize="small" />
               </IconButton>
             </Stack>

@@ -258,6 +258,7 @@ export default function TestLibraryTab() {
             accept=".json,.csv"
             onChange={handleImport}
             style={{ display: "none" }}
+            aria-label="Choose file to import"
           />
           <Button
             size="small"
@@ -305,7 +306,7 @@ export default function TestLibraryTab() {
           InputProps={{
             startAdornment: <SearchIcon sx={{ mr: 1, color: "text.secondary" }} />,
             endAdornment: (
-              <IconButton size="small" onClick={fetchItems}>
+              <IconButton size="small" onClick={fetchItems} aria-label="Refresh search results">
                 <RefreshIcon />
               </IconButton>
             ),
@@ -325,7 +326,7 @@ export default function TestLibraryTab() {
         </Paper>
       ) : (
         <TableContainer component={Paper}>
-          <Table size="small">
+          <Table size="small" aria-label="Test library">
             <TableHead>
               <TableRow>
                 <TableCell sx={{ fontWeight: "bold", width: "5%" }}>#</TableCell>
@@ -368,6 +369,7 @@ export default function TestLibraryTab() {
                     <Tooltip title="Edit">
                       <IconButton
                         size="small"
+                        aria-label="Edit test case"
                         onClick={() => {
                           setEditItem(item);
                           setEditResponse(item.expectedResponse || "");
@@ -378,13 +380,13 @@ export default function TestLibraryTab() {
                     </Tooltip>
                     {item.versionCount > 0 && (
                       <Tooltip title="Version history">
-                        <IconButton size="small" onClick={() => handleViewHistory(item)}>
+                        <IconButton size="small" aria-label="View version history" onClick={() => handleViewHistory(item)}>
                           <HistoryIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                     )}
                     <Tooltip title="Delete">
-                      <IconButton size="small" onClick={() => setDeleteItem(item)}>
+                      <IconButton size="small" aria-label="Delete test case" onClick={() => setDeleteItem(item)}>
                         <DeleteIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
@@ -397,8 +399,8 @@ export default function TestLibraryTab() {
       )}
 
       {/* Add Dialog */}
-      <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Add Q&A Pair</DialogTitle>
+      <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} maxWidth="sm" fullWidth aria-labelledby="add-qa-dialog-title">
+        <DialogTitle id="add-qa-dialog-title">Add Q&A Pair</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
@@ -428,8 +430,8 @@ export default function TestLibraryTab() {
       </Dialog>
 
       {/* Edit Dialog */}
-      <Dialog open={!!editItem} onClose={() => setEditItem(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit Expected Response</DialogTitle>
+      <Dialog open={!!editItem} onClose={() => setEditItem(null)} maxWidth="sm" fullWidth aria-labelledby="edit-qa-dialog-title">
+        <DialogTitle id="edit-qa-dialog-title">Edit Expected Response</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Typography variant="subtitle2">Question:</Typography>
@@ -455,8 +457,8 @@ export default function TestLibraryTab() {
       </Dialog>
 
       {/* Delete Dialog */}
-      <Dialog open={!!deleteItem} onClose={() => setDeleteItem(null)}>
-        <DialogTitle>Delete Q&A Pair</DialogTitle>
+      <Dialog open={!!deleteItem} onClose={() => setDeleteItem(null)} aria-labelledby="delete-qa-dialog-title">
+        <DialogTitle id="delete-qa-dialog-title">Delete Q&A Pair</DialogTitle>
         <DialogContent>
           <Typography>Are you sure you want to delete this Q&A pair?</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -480,8 +482,9 @@ export default function TestLibraryTab() {
         }}
         maxWidth="md"
         fullWidth
+        aria-labelledby="version-history-dialog-title"
       >
-        <DialogTitle>Version History</DialogTitle>
+        <DialogTitle id="version-history-dialog-title">Version History</DialogTitle>
         <DialogContent>
           {historyData ? (
             <Stack spacing={2}>
@@ -542,8 +545,8 @@ export default function TestLibraryTab() {
       </Dialog>
 
       {/* Import Result Dialog */}
-      <Dialog open={importDialogOpen} onClose={() => setImportDialogOpen(false)}>
-        <DialogTitle>Import Complete</DialogTitle>
+      <Dialog open={importDialogOpen} onClose={() => setImportDialogOpen(false)} aria-labelledby="import-result-dialog-title">
+        <DialogTitle id="import-result-dialog-title">Import Complete</DialogTitle>
         <DialogContent>
           {importResult && (
             <Stack spacing={1}>

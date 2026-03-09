@@ -38,6 +38,7 @@ export default function Chat(props: { sessionId?: string }) {
   const [showScrollButton, setShowScrollButton] = useState(false);
 
   const [messageHistory, setMessageHistory] = useState<ChatBotHistoryItem[]>([]);
+  const [announcement, setAnnouncement] = useState("");
   const [streamingStatus, setStreamingStatus] = useState<StreamingStatus>({
     text: "",
     active: false,
@@ -97,6 +98,18 @@ export default function Chat(props: { sessionId?: string }) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messageHistory, running]);
+
+  // Announce when ABE finishes responding (accessibility)
+  useEffect(() => {
+    if (!running && messageHistory.length > 0) {
+      const lastMsg = messageHistory[messageHistory.length - 1];
+      if (lastMsg.type === ChatBotMessageType.AI) {
+        setAnnouncement("ABE has responded");
+        const timer = setTimeout(() => setAnnouncement(""), 1000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [running, messageHistory]);
 
   // Track scroll position for scroll-to-bottom button
   useEffect(() => {
@@ -232,6 +245,7 @@ export default function Chat(props: { sessionId?: string }) {
             ))}
           </Stack>
         </Box>
+        <span className="sr-only" aria-live="assertive">{announcement}</span>
 
         {/* Empty state */}
         {isEmpty && (

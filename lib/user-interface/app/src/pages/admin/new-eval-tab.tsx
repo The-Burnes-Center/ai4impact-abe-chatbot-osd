@@ -327,6 +327,7 @@ export default function NewEvalTab({ onComplete }: RunEvalTabProps) {
             accept=".json,.csv"
             onChange={handleFileUpload}
             style={{ display: "none" }}
+            aria-label="Choose evaluation file"
           />
           <Stack direction="row" spacing={2} alignItems="center">
             <Button
@@ -351,7 +352,7 @@ export default function NewEvalTab({ onComplete }: RunEvalTabProps) {
         <Paper sx={{ p: 2 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
             <Typography variant="subtitle1">Past Uploads</Typography>
-            <IconButton onClick={loadPastFiles} size="small">
+            <IconButton onClick={loadPastFiles} size="small" aria-label="Refresh past files">
               <RefreshIcon />
             </IconButton>
           </Stack>
@@ -381,7 +382,10 @@ export default function NewEvalTab({ onComplete }: RunEvalTabProps) {
                       hover
                       selected={selectedFile?.Key === file.Key}
                       onClick={() => setSelectedFile(selectedFile?.Key === file.Key ? null : file)}
+                      onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedFile(selectedFile?.Key === file.Key ? null : file); } }}
+                      tabIndex={0}
                       sx={{ cursor: "pointer" }}
+                      aria-selected={selectedFile?.Key === file.Key}
                     >
                       <TableCell padding="checkbox">
                         <Radio checked={selectedFile?.Key === file.Key} size="small" />

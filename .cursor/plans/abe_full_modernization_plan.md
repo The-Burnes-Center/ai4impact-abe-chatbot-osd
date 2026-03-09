@@ -1264,13 +1264,24 @@ This prevents admin-only code from loading for regular users.
 - Remove manual retry logic in [sessions-client.ts](lib/user-interface/app/src/common/api-client/sessions-client.ts)
 - Add `AbortController` to all fetch calls for cleanup on unmount
 
-### 5.6 Accessibility (a11y) Fixes
+### 5.6 Accessibility (a11y) Fixes — COMPLETED 2026-03-09
 
-- Replace all `<div onClick>` with `<button>` in landing pages ([landing-page.tsx](lib/user-interface/app/src/pages/landing-page.tsx))
-- Add `aria-label` to chat textarea, source dropdowns, feedback buttons
-- Add skip-to-content navigation link in `GlobalHeader`
-- Fix color contrast on landing page gradient backgrounds
-- Remove the MutationObserver ARIA hack in [llm-evaluation-page.tsx](lib/user-interface/app/src/pages/admin/llm-evaluation-page.tsx)
+**Done**: Full WCAG 2.1 AA compliance pass across all 13 routes and ~30 component files.
+
+- **Color contrast**: Darkened `textTertiary` in light mode (`#8A919E` → `#6B7280`, 5.0:1) and lightened in dark mode (`#6B7A8D` → `#8D97A8`, 5.2:1); darkened login legal text (`#747474` → `#666666`)
+- **Focus indicators**: Fixed `outline: "none"` on `#main-content` to preserve skip-link focus ring; added `box-shadow` focus indicator to login inputs
+- **Keyboard accessibility**: Added `tabIndex={0}`, `onKeyDown` (Enter/Space), and ARIA attributes to 5 clickable `TableRow`/`Box` elements in metrics, eval, and test-cases pages; added `role="button"` and keyboard handlers to test-cases upload dropzone
+- **IconButton labels**: Added `aria-label` to all icon-only buttons across 6 admin files (refresh, edit, delete, remove-file)
+- **File input labels**: Added `aria-label` to all 6 hidden `<input type="file">` elements
+- **Dialog accessibility**: Added `aria-labelledby` with matching `id` to all 11 `Dialog` components across 6 files
+- **Unique page titles**: Created `useDocumentTitle` hook; added unique titles to all 12 page routes (format: "Title | ABE")
+- **Table accessibility**: Added `aria-label` to all data tables; added `aria-label` to row-selection checkboxes in sessions and documents
+- **Accordion/expandable ARIA**: Added `aria-controls`/`id` pairs to navigation panel, all metrics expandable rows; added `aria-haspopup`/`aria-expanded` to dropdown trigger
+- **Chat live region**: Added visually-hidden `aria-live="assertive"` announcement when ABE finishes responding; added `role="status"` to `PageLoader`
+- **Skip link**: Added skip-to-chat link on `landing-page-start.tsx`
+- **State seal alt text**: Changed from `alt=""` to `alt="Massachusetts state seal"`
+- **Citation Popper keyboard access**: Added `onFocus`/`onBlur` handlers to citation badges
+- **Snackbar announcements**: Added `role="status"` to Snackbar content props
 
 ### 5.7 Dependency Cleanup
 
@@ -1559,7 +1570,7 @@ graph TD
 - **Phase 2** (GenAI + Data Fixes): ~~2-3 weeks, 1 engineer with GenAI expertise~~ **COMPLETE** -- All items deployed. Issue #1 (Contract + Trade Index via generic scalable system), Issue #2 (hyperlinks + inline citations), Issue #5 (eval pipeline + quality monitoring platform + thumbs-up pipeline), chunking, prompt caching, model upgrades, RAG grounding, anti-sycophancy, streaming fixes, max_tokens fix, sources redesign.
 - **Phase 3** (CDK Hardening): ~~2-3 weeks, 1 infrastructure engineer~~ **COMPLETE -- deployed 2026-02-18, 2026-02-20** -- CDK Nag, Construct refactor, DynamoDB/S3/Lambda hardening, env parameterization, WAF + CloudFront modernization, API Gateway access logging + throttling, monitoring construct with alarms + dashboard + SNS alerts.
 - **Phase 4** (Backend + Analytics): ~~2-3 weeks, 1-2 engineers~~ **MOSTLY COMPLETE -- deployed 2026-02-21, 2026-03-02, 2026-03-06** -- Issue #3 (enhanced analytics with FAQ tracking, MUI dashboard, Haiku classification, agency enrichment), Issue #8 (sync timestamp), shared Python Lambda layer, session race fix, and metrics scan reductions are deployed. Remaining: 4.8 Pydantic/Zod validation.
-- **Phase 5** (Frontend + Admin): ~~3-4 weeks, 1-2 frontend engineers~~ **PARTIALLY COMPLETE** -- 5.9 (Help consolidation) and 5.13 (Streaming UX indicators) deployed. Issue #9 (SuperAdmin) cancelled (SSO). Remaining: 5.1 WebSocket abstraction, 5.2 TypeScript strict, 5.3-5.4 Error Boundaries + code splitting, 5.5 React Query, 5.6 a11y, 5.7 dependency cleanup, 5.8 production hardening, 5.10 mobile responsiveness.
+- **Phase 5** (Frontend + Admin): ~~3-4 weeks, 1-2 frontend engineers~~ **PARTIALLY COMPLETE** -- 5.6 (WCAG 2.1 AA a11y), 5.9 (Help consolidation), and 5.13 (Streaming UX indicators) deployed. Issue #9 (SuperAdmin) cancelled (SSO). Remaining: 5.1 WebSocket abstraction, 5.2 TypeScript strict, 5.3-5.4 Error Boundaries + code splitting, 5.5 React Query, 5.7 dependency cleanup, 5.8 production hardening, 5.10 mobile responsiveness.
 - **Phase 6** (Operations): 2-4 weeks, 1 engineer
 - **Phase 7** (Plug-and-Play): TBD after scoping call -- includes Issue #4
 

@@ -9,6 +9,7 @@ import {
   CircularProgress,
 } from "@mui/material";
 import { useState, useEffect, useContext } from "react";
+import { useDocumentTitle } from "../../common/hooks/use-document-title";
 import DocumentsTab from "./documents-tab";
 import DataIndexesTab from "./data-indexes-tab";
 import { ApiClient } from "../../common/api-client/api-client";
@@ -18,6 +19,7 @@ import AdminPageLayout from "../../components/admin-page-layout";
 import StatusChip, { type StatusVariant } from "./status-chip";
 
 export default function DataPage() {
+  useDocumentTitle("Data Management");
   const [activeTab, setActiveTab] = useState(0);
   const appContext = useContext(AppContext);
   const apiClient = new ApiClient(appContext);

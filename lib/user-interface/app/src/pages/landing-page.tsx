@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { v4 as uuidv4 } from "uuid";
 import styled, { keyframes } from "styled-components";
+import { useDocumentTitle } from "../common/hooks/use-document-title";
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(12px); }
@@ -131,6 +132,7 @@ const SubText = styled.button`
 `;
 
 export default function LandingPage() {
+  useDocumentTitle("Home");
   const navigate = useNavigate();
 
   const handleSkip = () => navigate(`/chatbot/playground/${uuidv4()}`);

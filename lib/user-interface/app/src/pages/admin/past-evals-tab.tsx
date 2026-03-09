@@ -182,7 +182,7 @@ export default function PastEvalsTab() {
     <Stack spacing={2}>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Typography variant="h6">Evaluation History</Typography>
-        <IconButton onClick={() => getEvaluations({ pageIndex: currentPageIndex })}>
+        <IconButton onClick={() => getEvaluations({ pageIndex: currentPageIndex })} aria-label="Refresh evaluations">
           <RefreshIcon />
         </IconButton>
       </Stack>
@@ -201,7 +201,7 @@ export default function PastEvalsTab() {
         </Box>
       ) : (
         <TableContainer component={Paper}>
-          <Table size="small">
+          <Table size="small" aria-label="Evaluation history">
             <TableHead>
               <TableRow>
                 {columnDefinitions.map((col) => (

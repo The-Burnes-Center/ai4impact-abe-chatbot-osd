@@ -30,6 +30,7 @@ import { Utils } from "../../common/utils";
 import { getColumnDefinition, METRIC_DESCRIPTIONS } from "./columns";
 import { useNotifications } from "../../components/notif-manager";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import { useDocumentTitle } from "../../common/hooks/use-document-title";
 
 function scoreColor(pct: number): "success" | "warning" | "error" {
   if (pct >= 75) return "success";
@@ -77,6 +78,7 @@ function escapeCSVValue(val: any): string {
 }
 
 function DetailedEvaluationPage() {
+  useDocumentTitle("Evaluation Details");
   const { evaluationId } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();

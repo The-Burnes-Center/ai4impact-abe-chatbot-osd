@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { v4 as uuidv4 } from "uuid";
 import styled, { keyframes } from "styled-components";
+import { useDocumentTitle } from "../common/hooks/use-document-title";
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(12px); }
@@ -44,6 +45,42 @@ const Circle = styled.div`
     bottom: -52%;
     right: -44%;
     z-index: 0;
+  }
+`;
+
+const HeaderBar = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  width: 100%;
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 20px 24px 0 0;
+  z-index: 3;
+`;
+
+const SkipButton = styled.button`
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  font-weight: 600;
+  animation: ${fadeIn} 0.75s ease-out;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-family: inherit;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.5);
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.8);
+    outline-offset: 2px;
   }
 `;
 
@@ -101,10 +138,12 @@ const StartButton = styled.button`
 `;
 
 export default function LandingPageStart() {
+  useDocumentTitle("Get Started");
   const navigate = useNavigate();
 
   const handleStart = () => navigate(`/chatbot/playground/${uuidv4()}`);
   const handleBack = () => navigate("/about");
+  const handleSkip = () => navigate(`/chatbot/playground/${uuidv4()}`);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -117,6 +156,11 @@ export default function LandingPageStart() {
 
   return (
     <PageContainer role="main">
+      <HeaderBar>
+        <SkipButton onClick={handleSkip} aria-label="Skip introduction and go to chat">
+          Skip to Chat &rarr;
+        </SkipButton>
+      </HeaderBar>
       <TextContent>
         The more specific your questions, the better I can help you!
       </TextContent>

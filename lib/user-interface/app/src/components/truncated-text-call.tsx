@@ -38,8 +38,9 @@ export function TruncatedTextCell({ text, maxLength = 50 }) {
         onClose={() => setShowModal(false)}
         maxWidth="md"
         fullWidth
+        aria-labelledby="full-text-dialog-title"
       >
-        <DialogTitle>Full Text</DialogTitle>
+        <DialogTitle id="full-text-dialog-title">Full Text</DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
             {text}

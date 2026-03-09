@@ -150,8 +150,9 @@ export default function Sessions(props: SessionsProps) {
         onClose={() => setShowModalDelete(false)}
         maxWidth="sm"
         fullWidth
+        aria-labelledby="delete-session-dialog-title"
       >
-        <DialogTitle>
+        <DialogTitle id="delete-session-dialog-title">
           {"Delete session" + (selectedItems.size > 1 ? "s" : "")}
         </DialogTitle>
         <DialogContent>
@@ -265,6 +266,7 @@ export default function Sessions(props: SessionsProps) {
                       <Checkbox
                         checked={selectedItems.has(session.session_id)}
                         onChange={() => handleSelectItem(session.session_id)}
+                        aria-label={`Select session ${session.title || session.session_id}`}
                       />
                     </TableCell>
                     <TableCell>

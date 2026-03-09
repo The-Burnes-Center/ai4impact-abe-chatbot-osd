@@ -359,7 +359,7 @@ export default function IndexCard({
             <Stack direction="row" alignItems="center" spacing={0.5}>
               <Typography variant="subtitle1">{title}</Typography>
               <Tooltip title="Edit title & description">
-                <IconButton size="small" onClick={startEditing}>
+                <IconButton size="small" onClick={startEditing} aria-label="Edit index title and description">
                   <EditIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
@@ -441,6 +441,7 @@ export default function IndexCard({
             onChange={handleFileChange}
             style={{ display: "none" }}
             accept=".xlsx"
+            aria-label="Choose .xlsx file to upload"
           />
           <Stack direction="row" alignItems="center" spacing={2}>
             <Button
@@ -553,8 +554,9 @@ export default function IndexCard({
       <Dialog
         open={showDeleteConfirm}
         onClose={deleting ? undefined : () => setShowDeleteConfirm(false)}
+        aria-labelledby="delete-index-dialog-title"
       >
-        <DialogTitle>Delete Index</DialogTitle>
+        <DialogTitle id="delete-index-dialog-title">Delete Index</DialogTitle>
         <DialogContent>
           <DialogContentText>
             Are you sure you want to delete &ldquo;{title}&rdquo;? This will

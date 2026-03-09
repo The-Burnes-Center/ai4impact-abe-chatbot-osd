@@ -102,6 +102,8 @@ function CitationBadge({ source, maxScore }: { source: SourceItem; maxScore: num
         className={styles.citationBadge}
         onMouseEnter={(e) => setAnchorEl(e.currentTarget)}
         onMouseLeave={() => setAnchorEl(null)}
+        onFocus={(e) => setAnchorEl(e.currentTarget)}
+        onBlur={() => setAnchorEl(null)}
         onClick={handleClick}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleClick(e as any); }}
         role="button"
@@ -418,6 +420,7 @@ export default function ChatMessage(props: ChatMessageProps) {
         onClose={() => setShowTestLibrarySnackbar(false)}
         message="Help us improve — save this as a good example?"
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        ContentProps={{ role: "status", "aria-live": "polite" as const }}
         action={
           <>
             <Button

@@ -259,6 +259,7 @@ export default function NavigationPanel() {
                     onClick={() => setAdminOpen(!adminOpen)}
                     sx={{ mx: 1, borderRadius: 1 }}
                     aria-expanded={adminOpen}
+                    aria-controls="admin-nav-section"
                   >
                     <ListItemText
                       primary="Admin"
@@ -272,7 +273,7 @@ export default function NavigationPanel() {
                     />
                     {adminOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
                   </ListItemButton>
-                  <Collapse in={adminOpen} timeout={200} unmountOnExit>
+                  <Collapse in={adminOpen} timeout={200} unmountOnExit id="admin-nav-section">
                     <List dense disablePadding>
                       {adminLinks.map((link) => (
                         <ListItemButton

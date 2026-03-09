@@ -16,6 +16,7 @@ import ExpandMore from "@mui/icons-material/ExpandMore";
 import ExpandLess from "@mui/icons-material/ExpandLess";
 import { Link as RouterLink } from "react-router-dom";
 import { CHATBOT_NAME } from "../../common/constants";
+import { useDocumentTitle } from "../../common/hooks/use-document-title";
 
 const prompts = [
   { title: "Spell out acronyms", details: "Avoid using abbreviations. For example, instead of 'RFP,' use 'Request for Proposal'." },
@@ -205,6 +206,7 @@ function SupportTab() {
 }
 
 export default function HelpPage() {
+  useDocumentTitle("Help");
   const [tabIndex, setTabIndex] = useState(0);
 
   return (

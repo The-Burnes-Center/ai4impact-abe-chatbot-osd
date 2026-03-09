@@ -229,8 +229,12 @@ export default function DataFileUpload(props: FileUploadTabProps) {
             onChange={handleFileChange}
             style={{ display: "none" }}
             accept={Array.from(fileExtensions).join(",")}
+            aria-label="Choose test case files"
           />
           <Box
+            role="button"
+            tabIndex={0}
+            aria-label="Upload files - click or drag and drop"
             sx={{
               border: "2px dashed",
               borderColor: "grey.400",
@@ -238,12 +242,13 @@ export default function DataFileUpload(props: FileUploadTabProps) {
               p: 4,
               textAlign: "center",
               cursor: "pointer",
-              "&:hover": {
+              "&:hover, &:focus-visible": {
                 borderColor: "primary.main",
                 bgcolor: "action.hover",
               },
             }}
             onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInputRef.current?.click(); } }}
           >
             <CloudUploadIcon
               sx={{ fontSize: 48, color: "grey.500", mb: 1 }}
@@ -283,7 +288,7 @@ export default function DataFileUpload(props: FileUploadTabProps) {
                       {fileErrors[i]}
                     </Typography>
                   )}
-                  <IconButton size="small" onClick={() => removeFile(i)}>
+                  <IconButton size="small" onClick={() => removeFile(i)} aria-label={`Remove file ${file.name}`}>
                     <CloseIcon fontSize="small" />
                   </IconButton>
                 </Stack>

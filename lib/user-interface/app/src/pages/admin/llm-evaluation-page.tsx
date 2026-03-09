@@ -6,10 +6,12 @@ import PastEvalsTab from "./past-evals-tab";
 import TestLibraryTab from "./test-library-tab";
 import { useState, useEffect } from "react";
 import AdminPageLayout from "../../components/admin-page-layout";
+import { useDocumentTitle } from "../../common/hooks/use-document-title";
 
 const TAB_IDS = ["dashboard", "run", "history", "library"];
 
 export default function LlmEvaluationPage() {
+  useDocumentTitle("LLM Evaluation");
   const [activeTab, setActiveTab] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();

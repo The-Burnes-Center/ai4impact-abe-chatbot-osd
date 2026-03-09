@@ -176,8 +176,9 @@ export default function FeedbackTab(props: FeedbackTabProps) {
       <Dialog
         open={showModalDelete}
         onClose={() => setShowModalDelete(false)}
+        aria-labelledby="delete-feedback-dialog-title"
       >
-        <DialogTitle>
+        <DialogTitle id="delete-feedback-dialog-title">
           {"Delete feedback" + (selectedItems.length > 1 ? "s" : "")}
         </DialogTitle>
         <DialogContent>
@@ -312,7 +313,7 @@ export default function FeedbackTab(props: FeedbackTabProps) {
           </Box>
         ) : (
           <TableContainer component={Paper}>
-            <Table size="small">
+            <Table size="small" aria-label="User feedback">
               <TableHead>
                 <TableRow>
                   {columnDefinitions.map((col) => (

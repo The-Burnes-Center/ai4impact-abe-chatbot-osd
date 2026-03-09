@@ -23,6 +23,8 @@ const LandingPageStart = React.lazy(() => import("./pages/landing-page-start"));
 function PageLoader() {
   return (
     <Box
+      role="status"
+      aria-live="polite"
       sx={{
         display: "flex",
         justifyContent: "center",
