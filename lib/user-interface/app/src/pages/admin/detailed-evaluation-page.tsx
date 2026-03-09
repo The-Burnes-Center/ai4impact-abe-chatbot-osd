@@ -38,10 +38,10 @@ function scoreColor(pct: number): "success" | "warning" | "error" {
   return "error";
 }
 
-function scoreBg(pct: number) {
-  if (pct >= 75) return "#e8f5e9";
-  if (pct >= 50) return "#fff8e1";
-  return "#ffebee";
+function scoreBgKey(pct: number) {
+  if (pct >= 75) return "success.light";
+  if (pct >= 50) return "warning.light";
+  return "error.light";
 }
 
 function SummaryCard({ title, pct, description }: { title: string; pct: number; description: string }) {
@@ -52,7 +52,7 @@ function SummaryCard({ title, pct, description }: { title: string; pct: number; 
       arrow
       enterDelay={200}
     >
-      <Paper sx={{ p: 2, bgcolor: scoreBg(pct), textAlign: "center", cursor: "help" }}>
+      <Paper sx={{ p: 2, bgcolor: scoreBgKey(pct), textAlign: "center", cursor: "help" }}>
         <Stack direction="row" justifyContent="center" alignItems="center" spacing={0.5}>
           <Typography variant="subtitle2" color="text.secondary">
             {title}
@@ -362,9 +362,10 @@ function DetailedEvaluationPage() {
                   maxHeight: 400,
                   overflow: "auto",
                   whiteSpace: "pre-wrap",
-                  border: "1px solid #eee",
+                  border: "1px solid",
+                  borderColor: "divider",
                   p: 1.5,
-                  bgcolor: "#f9f9f9",
+                  bgcolor: "action.hover",
                   borderRadius: 1,
                 }}
               >

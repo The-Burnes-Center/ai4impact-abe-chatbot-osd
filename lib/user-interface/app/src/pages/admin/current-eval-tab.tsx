@@ -33,10 +33,10 @@ function scoreColor(pct: number) {
   return "error";
 }
 
-function scoreBg(pct: number) {
-  if (pct >= 75) return "#e8f5e9";
-  if (pct >= 50) return "#fff8e1";
-  return "#ffebee";
+function scoreBgKey(pct: number) {
+  if (pct >= 75) return "success.light";
+  if (pct >= 50) return "warning.light";
+  return "error.light";
 }
 
 function ScoreCard({
@@ -51,7 +51,7 @@ function ScoreCard({
   description: string;
 }) {
   return (
-    <Paper sx={{ p: 2.5, bgcolor: scoreBg(pct), height: "100%" }}>
+    <Paper sx={{ p: 2.5, bgcolor: scoreBgKey(pct), height: "100%" }}>
       <Tooltip
         title={<Typography variant="body2" sx={{ p: 0.5 }}>{description}</Typography>}
         placement="top"
