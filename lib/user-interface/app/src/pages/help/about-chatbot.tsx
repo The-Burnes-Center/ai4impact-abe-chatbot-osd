@@ -5,7 +5,7 @@ import Box from "@mui/material/Box";
 
 export default function AboutChatbot() {
   return (
-    <Box role="main">
+    <Box>
       <Typography variant="h2" component="h1" gutterBottom>
         About ABE
       </Typography>

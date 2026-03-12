@@ -209,6 +209,7 @@ export default function Chat(props: { sessionId?: string }) {
 
   return (
     <div className={styles.chat_container} style={{ position: "relative" }}>
+      <Typography variant="h1" className="sr-only">ABE Chat</Typography>
       {/* Scroll-to-bottom button */}
       {showScrollButton && (
         <div className={styles.scrollToBottom}>

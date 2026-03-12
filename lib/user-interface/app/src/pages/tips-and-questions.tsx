@@ -62,7 +62,7 @@ export default function TipsAndQuestions() {
   };
 
   return (
-    <Box role="main">
+    <Box>
       <Breadcrumbs sx={{ mb: 2 }} aria-label="breadcrumb">
         <MuiLink component={RouterLink} to="/" underline="hover" color="inherit" sx={{ fontSize: "0.8125rem" }}>
           {CHATBOT_NAME}

@@ -56,29 +56,14 @@ interface SourceItem {
   page: number | null;
   s3Key: string | null;
   sourceType: "knowledgeBase" | "excelIndex";
+  cited?: boolean;
 }
 
-type RelevanceLevel = "high" | "medium" | "low";
-
-function getRelevanceLevel(score: number): RelevanceLevel {
-  if (score >= 0.75) return "high";
-  if (score >= 0.6) return "medium";
-  return "low";
-}
-
-const RELEVANCE_CONFIG: Record<RelevanceLevel, { label: string; className: string }> = {
-  high: { label: "High relevance", className: "relevanceHigh" },
-  medium: { label: "Relevant", className: "relevanceMedium" },
-  low: { label: "Partial match", className: "relevanceLow" },
-};
-
-function RelevanceIndicator({ score }: { score: number }) {
-  const level = getRelevanceLevel(score);
-  const config = RELEVANCE_CONFIG[level];
+function CitedIndicator() {
   return (
-    <span className={`${styles.relevancePill} ${styles[config.className]}`}>
+    <span className={`${styles.relevancePill} ${styles.relevanceCited}`}>
       <span className={styles.relevanceDot} />
-      {config.label}
+      Cited in response
     </span>
   );
 }
@@ -124,10 +109,8 @@ function CitationBadge({ source, onCitationClick }: { source: SourceItem; onCita
                 </Typography>
               </div>
               <div className={styles.citationCardMeta}>
-                {source.score != null && (
-                  <RelevanceIndicator score={source.score} />
-                )}
-                {source.page != null && (
+                {source.cited && <CitedIndicator />}
+                {source.page != null && source.cited && (
                   <span className={styles.metaDivider}>·</span>
                 )}
                 {source.page != null && (
@@ -250,6 +233,7 @@ interface MergedCard {
   chunkIndices: number[];
   excerpt: string | null;
   score: number | null;
+  cited: boolean;
   page: number | null;
   uri: string | null;
 }
@@ -287,12 +271,14 @@ function groupSources(sources: SourceItem[]): SourceGroup[] {
         if (i.score == null) return best;
         return best == null || i.score > best ? i.score : best;
       }, null);
+      const isCited = items.some((i) => i.cited === true);
       const excerpts = items.map((i) => i.excerpt).filter((e): e is string => !!e);
       const merged = excerpts.length > 1 ? excerpts.join(" ... ") : excerpts[0] ?? null;
       cards.push({
         chunkIndices: indices,
         excerpt: merged,
         score: bestScore,
+        cited: isCited,
         page: items[0].page,
         uri: items[0].uri,
       });
@@ -680,12 +666,10 @@ export default function ChatMessage(props: ChatMessageProps) {
                                 </span>
                               )}
                               <div className={styles.sourceCardInfo}>
-                                {card.score != null && (
-                                  <RelevanceIndicator score={card.score} />
-                                )}
+                                {card.cited && <CitedIndicator />}
                                 {card.page != null && (
                                   <>
-                                    {card.score != null && <span className={styles.metaDivider}>·</span>}
+                                    {card.cited && <span className={styles.metaDivider}>·</span>}
                                     <Typography variant="caption" sx={{ fontSize: "0.6875rem", color: "text.secondary" }}>
                                       Page {card.page}
                                     </Typography>

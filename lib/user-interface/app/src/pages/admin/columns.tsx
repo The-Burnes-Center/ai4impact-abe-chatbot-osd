@@ -298,8 +298,13 @@ export function getColumnDefinition(
       id: "problem",
       header: "Problem",
       cell: (item) => (
-        <Button onClick={() => onProblemClick(item)} variant="text" size="small">
-          {item.Problem}
+        <Button
+          onClick={() => onProblemClick(item)}
+          variant="text"
+          size="small"
+          aria-label={item.Problem || `View feedback ${item.FeedbackID || ""}`}
+        >
+          {item.Problem || "View"}
         </Button>
       ),
     },

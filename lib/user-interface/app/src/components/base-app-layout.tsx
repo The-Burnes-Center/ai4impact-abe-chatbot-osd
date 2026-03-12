@@ -95,7 +95,6 @@ export default function BaseAppLayout({ children, info }: BaseAppLayoutProps) {
           <Box
             component="main"
             id="main-content"
-            role="main"
             tabIndex={-1}
             sx={{
               flexGrow: 1,

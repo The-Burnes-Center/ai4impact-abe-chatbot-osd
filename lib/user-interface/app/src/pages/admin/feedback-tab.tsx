@@ -206,7 +206,7 @@ export default function FeedbackTab(props: FeedbackTabProps) {
           gap={1}
         >
           <Box>
-            <Typography variant="h6">Feedback</Typography>
+            <Typography variant="h6" component="h2">Feedback</Typography>
             <Typography variant="body2" color="text.secondary">
               Please expect a delay for your changes to be reflected. Press the
               refresh button to see the latest changes.
@@ -236,8 +236,9 @@ export default function FeedbackTab(props: FeedbackTabProps) {
               InputLabelProps={{ shrink: true }}
             />
             <FormControl size="small" sx={{ minWidth: 120 }}>
-              <InputLabel>Category</InputLabel>
+              <InputLabel id="feedback-category-label">Category</InputLabel>
               <Select
+                labelId="feedback-category-label"
                 value={selectedOption.value}
                 label="Category"
                 onChange={(e) => {

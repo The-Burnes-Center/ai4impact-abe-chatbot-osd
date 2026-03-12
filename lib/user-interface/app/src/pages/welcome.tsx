@@ -13,7 +13,7 @@ export default function Welcome() {
   const navigate = useNavigate();
 
   return (
-    <Box role="main">
+    <Box>
       <Stack spacing={3} sx={{ maxWidth: 800, mx: "auto", py: 4 }}>
         <Box sx={{ textAlign: "center", mb: 2 }}>
           <Avatar

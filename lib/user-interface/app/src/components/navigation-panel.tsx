@@ -1,6 +1,7 @@
 import { useContext, useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import List from "@mui/material/List";
+import ListItem from "@mui/material/ListItem";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
@@ -207,46 +208,51 @@ export default function NavigationPanel() {
             {/* Session list */}
             <List dense disablePadding>
               {sessions.length === 0 && (
-                <Typography
-                  variant="caption"
-                  sx={{ px: 3, py: 1.5, display: "block", color: "text.secondary" }}
-                >
-                  No sessions yet. Start a new one!
-                </Typography>
+                <ListItem disablePadding>
+                  <Typography
+                    variant="caption"
+                    sx={{ px: 3, py: 1.5, display: "block", color: "text.secondary" }}
+                  >
+                    No sessions yet. Start a new one!
+                  </Typography>
+                </ListItem>
               )}
               {visibleSessions.map((session) => (
-                <Tooltip
-                  key={session.session_id}
-                  title={session.title}
-                  placement="right"
-                  enterDelay={200}
-                >
-                  <ListItemButton
-                    selected={location.pathname === `/chatbot/playground/${session.session_id}`}
-                    onClick={() => navigate(`/chatbot/playground/${session.session_id}`)}
-                    sx={{ pl: 2.5, mx: 0.5, borderRadius: 1 }}
+                <ListItem key={session.session_id} disablePadding>
+                  <Tooltip
+                    title={session.title}
+                    placement="right"
+                    enterDelay={200}
                   >
-                    <ListItemText
-                      primary={session.title}
-                      primaryTypographyProps={{
-                        noWrap: true,
-                        fontSize: "0.8125rem",
-                      }}
-                    />
-                  </ListItemButton>
-                </Tooltip>
+                    <ListItemButton
+                      selected={location.pathname === `/chatbot/playground/${session.session_id}`}
+                      onClick={() => navigate(`/chatbot/playground/${session.session_id}`)}
+                      sx={{ pl: 2.5, mx: 0.5, borderRadius: 1 }}
+                    >
+                      <ListItemText
+                        primary={session.title}
+                        primaryTypographyProps={{
+                          noWrap: true,
+                          fontSize: "0.8125rem",
+                        }}
+                      />
+                    </ListItemButton>
+                  </Tooltip>
+                </ListItem>
               ))}
               {hasMore && (
-                <Box sx={{ px: 1, pt: 0.5 }}>
-                  <Button
-                    size="small"
-                    fullWidth
-                    onClick={() => navigate("/chatbot/sessions")}
-                    sx={{ fontSize: "0.75rem", color: "text.secondary" }}
-                  >
-                    View all ({sessions.length})
-                  </Button>
-                </Box>
+                <ListItem disablePadding>
+                  <Box sx={{ px: 1, pt: 0.5, width: "100%" }}>
+                    <Button
+                      size="small"
+                      fullWidth
+                      onClick={() => navigate("/chatbot/sessions")}
+                      sx={{ fontSize: "0.75rem", color: "text.secondary" }}
+                    >
+                      View all ({sessions.length})
+                    </Button>
+                  </Box>
+                </ListItem>
               )}
             </List>
 
@@ -255,44 +261,49 @@ export default function NavigationPanel() {
               <>
                 <Divider sx={{ my: 0.5, mx: 2 }} />
                 <List dense disablePadding>
-                  <ListItemButton
-                    onClick={() => setAdminOpen(!adminOpen)}
-                    sx={{ mx: 1, borderRadius: 1 }}
-                    aria-expanded={adminOpen}
-                    aria-controls="admin-nav-section"
-                  >
-                    <ListItemText
-                      primary="Admin"
-                      primaryTypographyProps={{
-                        fontWeight: 600,
-                        fontSize: "0.75rem",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.5px",
-                        color: "text.secondary",
-                      }}
-                    />
-                    {adminOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
-                  </ListItemButton>
-                  <Collapse in={adminOpen} timeout={200} unmountOnExit id="admin-nav-section">
-                    <List dense disablePadding>
-                      {adminLinks.map((link) => (
-                        <ListItemButton
-                          key={link.href}
-                          selected={location.pathname === link.href}
-                          onClick={() => navigate(link.href)}
-                          sx={{ pl: 2 }}
-                        >
-                          <ListItemIcon sx={{ minWidth: 32, color: "text.secondary" }}>
-                            {link.icon}
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={link.text}
-                            primaryTypographyProps={{ fontSize: "0.8125rem" }}
-                          />
-                        </ListItemButton>
-                      ))}
-                    </List>
-                  </Collapse>
+                  <ListItem disablePadding>
+                    <ListItemButton
+                      onClick={() => setAdminOpen(!adminOpen)}
+                      sx={{ mx: 1, borderRadius: 1 }}
+                      aria-expanded={adminOpen}
+                      aria-controls="admin-nav-section"
+                    >
+                      <ListItemText
+                        primary="Admin"
+                        primaryTypographyProps={{
+                          fontWeight: 600,
+                          fontSize: "0.75rem",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.5px",
+                          color: "text.secondary",
+                        }}
+                      />
+                      {adminOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+                    </ListItemButton>
+                  </ListItem>
+                  <ListItem disablePadding sx={{ display: "block" }}>
+                    <Collapse in={adminOpen} timeout={200} unmountOnExit id="admin-nav-section">
+                      <List dense disablePadding>
+                        {adminLinks.map((link) => (
+                          <ListItem key={link.href} disablePadding>
+                            <ListItemButton
+                              selected={location.pathname === link.href}
+                              onClick={() => navigate(link.href)}
+                              sx={{ pl: 2 }}
+                            >
+                              <ListItemIcon sx={{ minWidth: 32, color: "text.secondary" }}>
+                                {link.icon}
+                              </ListItemIcon>
+                              <ListItemText
+                                primary={link.text}
+                                primaryTypographyProps={{ fontSize: "0.8125rem" }}
+                              />
+                            </ListItemButton>
+                          </ListItem>
+                        ))}
+                      </List>
+                    </Collapse>
+                  </ListItem>
                 </List>
               </>
             )}

@@ -165,8 +165,10 @@ function StatusCard({ title, detail, chipVariant, chipLabel }: StatusCardProps) 
         <Box sx={{ minWidth: 0 }}>
           <Typography
             variant="subtitle2"
+            component="span"
             color="text.secondary"
             noWrap
+            sx={{ display: "block" }}
           >
             {title}
           </Typography>

@@ -18,7 +18,6 @@ export default function NotFound() {
         textAlign: "center",
         py: 6,
       }}
-      role="main"
     >
       <Typography
         variant="h1"
