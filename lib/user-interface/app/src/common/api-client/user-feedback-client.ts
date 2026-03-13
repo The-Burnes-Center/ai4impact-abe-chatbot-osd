@@ -1,132 +1,153 @@
-import { Utils } from "../utils"
+import { Utils } from "../utils";
 import { AppConfig } from "../types";
+import { FeedbackSubmission } from "../../components/chatbot/types";
 
 export class UserFeedbackClient {
-
-
   private readonly API;
+
   constructor(protected _appConfig: AppConfig) {
-    /** The CDK script adds an extra slash at the end so this just removes it */
     this.API = _appConfig.httpEndpoint.slice(0, -1);
   }
 
-  // Takes in a piece of feedback (which has a prompt, completion, session ID, and the actual feedback (1 or 0))
-  async sendUserFeedback(feedbackData) {
-
-    console.log(feedbackData);
+  private async request(path: string, init: RequestInit = {}) {
     const auth = await Utils.authenticate();
-    const response = await fetch(this.API + '/user-feedback', {
-      method: 'POST',
+    const response = await fetch(this.API + path, {
+      ...init,
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': auth,
+        "Content-Type": "application/json",
+        Authorization: auth,
+        ...(init.headers || {}),
       },
-      body: JSON.stringify({ feedbackData })
     });
-    /** TODO: add error handling for when it does not go through successfully.
-     * I neglected to do so because this is not critical functionality
-     */
-    console.log(response);
-  }
 
-  /** This is similar to getUserFeedback below, but initiates a CSV download */
-  async downloadFeedback(topic: string, startTime?: string, endTime?: string) {
-    const auth = await Utils.authenticate();
-
-    /** This fetch call will get a presigned URL for downloading from S3 */
-    const response = await fetch(this.API + '/user-feedback/download-feedback', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': auth
-      },
-      body: JSON.stringify({ topic, startTime, endTime })
-    });
-    const result = await response.json();
-
-    /** Now that we have the presigned URL, we can initiate a download */
-    fetch(result.download_url, {
-      method: 'GET',
-      headers: {
-        'Content-Disposition': 'attachment',
+    let body: any = null;
+    const text = await response.text();
+    if (text) {
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = text;
       }
-
-    }).then(response => response.blob())
-      .then(blob => {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = "data.csv";
-        document.body.appendChild(a); // we need to append the element to the dom -> otherwise it will not work in firefox
-        a.click();
-        a.remove();  //afterwards we remove the element again
-      });
-
-  }
-
-  async getUserFeedback(topic: string, startTime?: string, endTime?: string, nextPageToken?: string) {
-
-    const auth = await Utils.authenticate();
-    let params = new URLSearchParams({ topic, startTime, endTime, nextPageToken });
-
-    /** If the parameters are undefined, we don't want those being passed to the API, so 
-     * this will delete any undefined parameters if needed. Admittedly, the API should handle this
-     * sitation but it sadly does not.
-    */
-    let keysForDel = [];
-    params.forEach((value, key) => {
-      if (value === undefined || value == "undefined") {
-        keysForDel.push(key);
-      }
-    });
-    keysForDel.forEach(key => {
-      params.delete(key);
-    });
-
-    const response = await fetch(this.API + '/user-feedback?' + params.toString(), {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': auth,
-      },
-    });
-    const result = await response.json();
-    return result;
-  }
-
-  async submitToTestLibrary(data: {
-    prompt: string;
-    completion: string;
-    sources: string;
-    sessionId: string;
-    userId: string;
-    displayName: string;
-  }) {
-    const auth = await Utils.authenticate();
-    const response = await fetch(this.API + '/test-library-from-feedback', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': auth,
-      },
-      body: JSON.stringify(data),
-    });
-    if (!response.ok) {
-      throw new Error('Failed to submit to test library');
     }
-    return response.json();
+
+    if (!response.ok) {
+      const message =
+        typeof body === "string"
+          ? body
+          : body?.error || body?.message || "Request failed";
+      throw new Error(message);
+    }
+
+    return body;
   }
 
-  async deleteFeedback(topic: string, createdAt: string) {
-    const auth = await Utils.authenticate();
-    let params = new URLSearchParams({ topic, createdAt });
-    await fetch(this.API + '/user-feedback?' + params.toString(), {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': auth
-      },
+  async submitFeedback(payload: FeedbackSubmission) {
+    return this.request("/feedback", {
+      method: "POST",
+      body: JSON.stringify(payload),
     });
+  }
 
+  async appendFeedbackFollowUp(feedbackId: string, payload: Partial<FeedbackSubmission>) {
+    return this.request(`/feedback/${feedbackId}/follow-up`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getAdminFeedback(filters: Record<string, string | undefined> = {}) {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) {
+        params.set(key, value);
+      }
+    });
+    return this.request(`/admin/feedback${params.toString() ? `?${params.toString()}` : ""}`, {
+      method: "GET",
+    });
+  }
+
+  async getAdminFeedbackDetail(feedbackId: string) {
+    return this.request(`/admin/feedback/${feedbackId}`, { method: "GET" });
+  }
+
+  async analyzeFeedback(feedbackId: string) {
+    return this.request(`/admin/feedback/${feedbackId}/analyze`, { method: "POST" });
+  }
+
+  async setFeedbackDisposition(
+    feedbackId: string,
+    payload: {
+      reviewStatus: string;
+      disposition: string;
+      owner?: string;
+      resolutionNote?: string;
+      adminNotes?: string;
+    }
+  ) {
+    return this.request(`/admin/feedback/${feedbackId}/disposition`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async promoteToCandidate(feedbackId: string) {
+    return this.request(`/admin/feedback/${feedbackId}/promote-to-candidate`, {
+      method: "POST",
+    });
+  }
+
+  async getPrompts() {
+    return this.request("/admin/prompts", { method: "GET" });
+  }
+
+  async getPrompt(versionId: string) {
+    return this.request(`/admin/prompts/${versionId}`, { method: "GET" });
+  }
+
+  async createPrompt(payload: {
+    title: string;
+    notes?: string;
+    template?: string;
+    parentVersionId?: string;
+    linkedFeedbackIds?: string[];
+    aiSummary?: string;
+  }) {
+    return this.request("/admin/prompts", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updatePrompt(
+    versionId: string,
+    payload: {
+      title?: string;
+      notes?: string;
+      template?: string;
+      linkedFeedbackIds?: string[];
+    }
+  ) {
+    return this.request(`/admin/prompts/${versionId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async publishPrompt(versionId: string) {
+    return this.request(`/admin/prompts/${versionId}/publish`, {
+      method: "POST",
+    });
+  }
+
+  async aiSuggestPrompt(versionId: string, payload: { feedbackIds?: string[]; note?: string }) {
+    return this.request(`/admin/prompts/${versionId}/ai-suggest`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getMonitoring() {
+    return this.request("/admin/monitoring", { method: "GET" });
   }
 }

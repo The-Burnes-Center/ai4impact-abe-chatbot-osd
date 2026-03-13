@@ -129,7 +129,14 @@ export class SessionsClient {
     output.forEach(function (value) {
       let metadata = {}
       if (value.metadata) {
-        metadata = { "Sources": JSON.parse(value.metadata) }
+        try {
+          const parsed = typeof value.metadata === "string"
+            ? JSON.parse(value.metadata)
+            : value.metadata;
+          metadata = Array.isArray(parsed) ? { Sources: parsed } : (parsed || {});
+        } catch {
+          metadata = {};
+        }
       }
       history.push({
         type: ChatBotMessageType.Human,

@@ -6,6 +6,10 @@ import * as sqs from 'aws-cdk-lib/aws-sqs';
 export class TableStack extends Construct {
   public readonly historyTable: Table;
   public readonly feedbackTable: Table;
+  public readonly feedbackRecordsTable: Table;
+  public readonly responseTraceTable: Table;
+  public readonly promptRegistryTable: Table;
+  public readonly monitoringCasesTable: Table;
   public readonly evalResultsTable: Table;
   public readonly evalSummaryTable: Table;
   public readonly analyticsTable: Table;
@@ -60,6 +64,93 @@ export class TableStack extends Construct {
     });
 
     this.feedbackTable = userFeedbackTable;
+
+    const feedbackRecordsTable = new Table(scope, 'FeedbackRecordsTable', {
+      partitionKey: { name: 'FeedbackId', type: AttributeType.STRING },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    feedbackRecordsTable.addGlobalSecondaryIndex({
+      indexName: 'RecordTypeCreatedAtIndex',
+      partitionKey: { name: 'RecordType', type: AttributeType.STRING },
+      sortKey: { name: 'CreatedAt', type: AttributeType.STRING },
+      projectionType: ProjectionType.ALL,
+    });
+
+    feedbackRecordsTable.addGlobalSecondaryIndex({
+      indexName: 'ReviewStatusIndex',
+      partitionKey: { name: 'ReviewStatus', type: AttributeType.STRING },
+      sortKey: { name: 'CreatedAt', type: AttributeType.STRING },
+      projectionType: ProjectionType.ALL,
+    });
+
+    feedbackRecordsTable.addGlobalSecondaryIndex({
+      indexName: 'DispositionIndex',
+      partitionKey: { name: 'Disposition', type: AttributeType.STRING },
+      sortKey: { name: 'CreatedAt', type: AttributeType.STRING },
+      projectionType: ProjectionType.ALL,
+    });
+
+    feedbackRecordsTable.addGlobalSecondaryIndex({
+      indexName: 'ClusterIndex',
+      partitionKey: { name: 'ClusterId', type: AttributeType.STRING },
+      sortKey: { name: 'CreatedAt', type: AttributeType.STRING },
+      projectionType: ProjectionType.ALL,
+    });
+
+    feedbackRecordsTable.addGlobalSecondaryIndex({
+      indexName: 'MessageIdIndex',
+      partitionKey: { name: 'MessageId', type: AttributeType.STRING },
+      sortKey: { name: 'CreatedAt', type: AttributeType.STRING },
+      projectionType: ProjectionType.ALL,
+    });
+
+    this.feedbackRecordsTable = feedbackRecordsTable;
+
+    const responseTraceTable = new Table(scope, 'ResponseTraceTable', {
+      partitionKey: { name: 'MessageId', type: AttributeType.STRING },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    responseTraceTable.addGlobalSecondaryIndex({
+      indexName: 'SessionCreatedAtIndex',
+      partitionKey: { name: 'SessionId', type: AttributeType.STRING },
+      sortKey: { name: 'CreatedAt', type: AttributeType.STRING },
+      projectionType: ProjectionType.ALL,
+    });
+
+    this.responseTraceTable = responseTraceTable;
+
+    const promptRegistryTable = new Table(scope, 'PromptRegistryTable', {
+      partitionKey: { name: 'PromptFamily', type: AttributeType.STRING },
+      sortKey: { name: 'VersionId', type: AttributeType.STRING },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    this.promptRegistryTable = promptRegistryTable;
+
+    const monitoringCasesTable = new Table(scope, 'MonitoringCasesTable', {
+      partitionKey: { name: 'SetName', type: AttributeType.STRING },
+      sortKey: { name: 'CaseId', type: AttributeType.STRING },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    monitoringCasesTable.addGlobalSecondaryIndex({
+      indexName: 'SourceFeedbackIndex',
+      partitionKey: { name: 'SourceFeedbackId', type: AttributeType.STRING },
+      sortKey: { name: 'CreatedAt', type: AttributeType.STRING },
+      projectionType: ProjectionType.ALL,
+    });
+
+    this.monitoringCasesTable = monitoringCasesTable;
 
     const evalSummariesTable = new Table(scope, 'EvaluationSummariesTable', {
       partitionKey: { name: 'PartitionKey', type: AttributeType.STRING },

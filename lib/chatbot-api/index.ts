@@ -85,6 +85,10 @@ export class ChatBotApi extends Construct {
         wsApiEndpoint: websocketBackend.wsAPIStage.url,
         sessionTable: tables.historyTable,        
         feedbackTable: tables.feedbackTable,
+        feedbackRecordsTable: tables.feedbackRecordsTable,
+        responseTraceTable: tables.responseTraceTable,
+        promptRegistryTable: tables.promptRegistryTable,
+        monitoringCasesTable: tables.monitoringCasesTable,
         feedbackBucket: buckets.feedbackBucket,
         knowledgeBucket: buckets.knowledgeBucket,
         knowledgeBase: knowledgeBase.knowledgeBase,
@@ -164,6 +168,79 @@ export class ChatBotApi extends Construct {
       integration: feedbackAPIDownloadIntegration,
       authorizer: httpAuthorizer,
     })
+
+    restBackend.restAPI.addRoutes({
+      path: "/feedback",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: feedbackAPIIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/feedback/{feedbackId}/follow-up",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: feedbackAPIIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/feedback",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: feedbackAPIIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/feedback/{feedbackId}",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: feedbackAPIIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/feedback/{feedbackId}/analyze",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: feedbackAPIIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/feedback/{feedbackId}/disposition",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: feedbackAPIIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/feedback/{feedbackId}/promote-to-candidate",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: feedbackAPIIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/prompts",
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST],
+      integration: feedbackAPIIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/prompts/{versionId}",
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.PUT],
+      integration: feedbackAPIIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/prompts/{versionId}/publish",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: feedbackAPIIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/prompts/{versionId}/ai-suggest",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: feedbackAPIIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/monitoring",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: feedbackAPIIntegration,
+      authorizer: httpAuthorizer,
+    });
 
     const s3GetAPIIntegration = new HttpLambdaIntegration('S3GetAPIIntegration', lambdaFunctions.getS3Function);
     restBackend.restAPI.addRoutes({
@@ -307,6 +384,10 @@ export class ChatBotApi extends Construct {
       tables: [
         tables.historyTable,
         tables.feedbackTable,
+        tables.feedbackRecordsTable,
+        tables.responseTraceTable,
+        tables.promptRegistryTable,
+        tables.monitoringCasesTable,
         tables.evalSummaryTable,
         tables.evalResultsTable,
         tables.analyticsTable,

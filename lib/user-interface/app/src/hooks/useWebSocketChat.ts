@@ -64,7 +64,7 @@ export function useWebSocketChat() {
 
       let receivedData = "";
       let incomingMetadata = false;
-      let sources: Record<string, any> = {};
+      let responseMetadata: Record<string, any> = {};
       const firstMessage = opts.messageHistory.length < 3;
       let lastActivity = Date.now();
 
@@ -156,10 +156,21 @@ export function useWebSocketChat() {
               }
               return item;
             });
-            sources = { Sources: sourceData };
-            opts.onSources(sources);
+            responseMetadata = { Sources: sourceData };
+            opts.onSources(responseMetadata);
           } catch {
-            // ignore malformed source JSON
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                responseMetadata = { Sources: parsed };
+              } else if (parsed && typeof parsed === "object") {
+                const parsedSources = Array.isArray(parsed.Sources) ? parsed.Sources : [];
+                responseMetadata = { ...parsed, Sources: parsedSources };
+              }
+              opts.onSources(responseMetadata);
+            } catch {
+              // ignore malformed metadata JSON
+            }
           }
         }
       });

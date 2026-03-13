@@ -15,6 +15,10 @@ interface LambdaFunctionStackProps {
   readonly wsApiEndpoint: string;
   readonly sessionTable: Table;
   readonly feedbackTable: Table;
+  readonly feedbackRecordsTable: Table;
+  readonly responseTraceTable: Table;
+  readonly promptRegistryTable: Table;
+  readonly monitoringCasesTable: Table;
   readonly feedbackBucket: s3.Bucket;
   readonly knowledgeBucket: s3.Bucket;
   readonly knowledgeBase: bedrock.CfnKnowledgeBase;
@@ -113,6 +117,9 @@ export class LambdaFunctionStack extends Construct {
             'GUARDRAIL_VERSION': process.env.GUARDRAIL_VERSION || '1',
             'PRIMARY_MODEL_ID': process.env.PRIMARY_MODEL_ID || 'us.anthropic.claude-sonnet-4-20250514-v1:0',
             'FAST_MODEL_ID': process.env.FAST_MODEL_ID || 'us.anthropic.claude-3-5-haiku-20241022-v1:0',
+            'PROMPT_REGISTRY_TABLE': props.promptRegistryTable.tableName,
+            'RESPONSE_TRACE_TABLE': props.responseTraceTable.tableName,
+            'PROMPT_FAMILY': 'ABE_CHAT',
           },
           timeout: cdk.Duration.seconds(300),
         });
@@ -143,6 +150,22 @@ export class LambdaFunctionStack extends Construct {
           resources: [this.sessionFunction.functionArn]
         }));
 
+        websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: [
+            'dynamodb:GetItem',
+            'dynamodb:PutItem',
+            'dynamodb:UpdateItem',
+            'dynamodb:Query',
+          ],
+          resources: [
+            props.promptRegistryTable.tableArn,
+            props.promptRegistryTable.tableArn + "/index/*",
+            props.responseTraceTable.tableArn,
+            props.responseTraceTable.tableArn + "/index/*",
+          ]
+        }));
+
         // The chat Lambda generates pre-signed S3 URLs for source links.
         // Pre-signed URLs require the signing IAM role to have s3:GetObject.
         websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
@@ -164,6 +187,12 @@ export class LambdaFunctionStack extends Construct {
       environment: {
         "FEEDBACK_TABLE": props.feedbackTable.tableName,
         "FEEDBACK_S3_DOWNLOAD": props.feedbackBucket.bucketName,
+        "FEEDBACK_RECORDS_TABLE": props.feedbackRecordsTable.tableName,
+        "RESPONSE_TRACE_TABLE": props.responseTraceTable.tableName,
+        "PROMPT_REGISTRY_TABLE": props.promptRegistryTable.tableName,
+        "MONITORING_CASES_TABLE": props.monitoringCasesTable.tableName,
+        "PROMPT_FAMILY": "ABE_CHAT",
+        "FEEDBACK_ANALYSIS_MODEL_ID": process.env.FAST_MODEL_ID || "us.anthropic.claude-3-5-haiku-20241022-v1:0",
       },
       timeout: cdk.Duration.seconds(30),
     });
@@ -178,7 +207,18 @@ export class LambdaFunctionStack extends Construct {
         'dynamodb:Query',
         'dynamodb:Scan'
       ],
-      resources: [props.feedbackTable.tableArn, props.feedbackTable.tableArn + "/index/*"]
+      resources: [
+        props.feedbackTable.tableArn,
+        props.feedbackTable.tableArn + "/index/*",
+        props.feedbackRecordsTable.tableArn,
+        props.feedbackRecordsTable.tableArn + "/index/*",
+        props.responseTraceTable.tableArn,
+        props.responseTraceTable.tableArn + "/index/*",
+        props.promptRegistryTable.tableArn,
+        props.promptRegistryTable.tableArn + "/index/*",
+        props.monitoringCasesTable.tableArn,
+        props.monitoringCasesTable.tableArn + "/index/*",
+      ]
     }));
 
     feedbackAPIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
@@ -189,6 +229,15 @@ export class LambdaFunctionStack extends Construct {
         's3:ListBucket',
       ],
       resources: [props.feedbackBucket.bucketArn,props.feedbackBucket.bucketArn+"/*"]
+    }));
+
+    feedbackAPIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['bedrock:InvokeModel'],
+      resources: [
+        `arn:aws:bedrock:*::foundation-model/anthropic.*`,
+        `arn:aws:bedrock:*:${cdk.Stack.of(this).account}:inference-profile/*`,
+      ]
     }));
 
     this.feedbackFunction = feedbackAPIHandlerFunction;
@@ -741,7 +790,8 @@ this.stepFunctionsStack = new StepFunctionsStack(scope, 'StepFunctionsStack', {
   evalResutlsTable: props.evalResutlsTable,
   evalTestCasesBucket: props.evalTestCasesBucket,
   evalResultsBucket: props.evalResultsBucket,
-  wsEndpoint: props.wsApiEndpoint
+  wsEndpoint: props.wsApiEndpoint,
+  promptRegistryTable: props.promptRegistryTable,
 });
 
 // Step Functions execution permissions granted in index.ts where the state machine is accessible

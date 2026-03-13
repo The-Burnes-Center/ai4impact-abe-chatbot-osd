@@ -2,6 +2,20 @@ export interface ChatInputState {
   value: string;  
 }
 
+export interface MessageTraceMetadata {
+  messageId?: string;
+  sessionId?: string;
+  promptVersionId?: string;
+  promptTemplateHash?: string;
+  turnIndex?: number;
+}
+
+export interface ChatMessageMetadata {
+  Sources?: any[];
+  Trace?: MessageTraceMetadata;
+  [key: string]: any;
+}
+
 export enum ChatBotMessageType {
   AI = "ai",
   Human = "human",
@@ -10,26 +24,17 @@ export enum ChatBotMessageType {
 export interface ChatBotHistoryItem {
   type: ChatBotMessageType;
   content: string;
-  metadata: Record<
-    string,
-    | string
-    | boolean
-    | number
-    | null
-    | undefined    
-    | string[]
-    | string[][]
-  >;
+  metadata: ChatMessageMetadata;
   timestamp?: number;
 }
 
-export interface FeedbackData {
-  sessionId: string;  
-  feedback: number;
-  prompt: string;
-  completion: string;    
-  topic: string,
-  problem: string,
-  comment: string,
-  sources: string     
+export interface FeedbackSubmission {
+  messageId: string;
+  feedbackKind: "helpful" | "not_helpful";
+  issueTags: string[];
+  userComment?: string;
+  expectedAnswer?: string;
+  wrongSnippet?: string;
+  sourceAssessment?: string;
+  regenerateRequested?: boolean;
 }

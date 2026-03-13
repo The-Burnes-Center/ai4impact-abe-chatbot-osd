@@ -8,15 +8,9 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Tooltip from "@mui/material/Tooltip";
 import Chip from "@mui/material/Chip";
-import Dialog from "@mui/material/Dialog";
-import DialogTitle from "@mui/material/DialogTitle";
-import DialogContent from "@mui/material/DialogContent";
-import DialogActions from "@mui/material/DialogActions";
+import Drawer from "@mui/material/Drawer";
+import Divider from "@mui/material/Divider";
 import TextField from "@mui/material/TextField";
-import Select from "@mui/material/Select";
-import FormControl from "@mui/material/FormControl";
-import InputLabel from "@mui/material/InputLabel";
-import MuiMenuItem from "@mui/material/MenuItem";
 import Avatar from "@mui/material/Avatar";
 import CircularProgress from "@mui/material/CircularProgress";
 import Popper from "@mui/material/Popper";
@@ -32,20 +26,19 @@ import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import Collapse from "@mui/material/Collapse";
-import Snackbar from "@mui/material/Snackbar";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import styles from "../../styles/chat.module.scss";
 import {
   ChatBotHistoryItem,
   ChatBotMessageType,
+  FeedbackSubmission,
 } from "./types";
 import { StreamingStatus } from "../../hooks/useWebSocketChat";
 
 import "../../styles/app.scss";
 import { useNotifications } from "../notif-manager";
 import { Utils } from "../../common/utils";
-import { feedbackCategories, feedbackTypes } from "../../common/constants";
 
 interface SourceItem {
   chunkIndex: number | null;
@@ -292,24 +285,30 @@ export interface ChatMessageProps {
   message: ChatBotHistoryItem;
   isLastAiMessage?: boolean;
   streamingStatus?: StreamingStatus;
-  onThumbsUp: () => void;
-  onThumbsDown: (feedbackTopic: string, feedbackType: string, feedbackMessage: string) => void;
-  onAddToTestLibrary?: () => void;
+  onThumbsUp: () => Promise<void> | void;
+  onSubmitFeedback: (
+    payload: Omit<FeedbackSubmission, "messageId" | "feedbackKind">
+  ) => Promise<void> | void;
   onOpenSource?: (s3Key: string) => void;
 }
 
 export default function ChatMessage(props: ChatMessageProps) {
   const [selectedIcon, setSelectedIcon] = useState<1 | 0 | null>(null);
   const { addNotification, removeNotification } = useNotifications();
-  const [modalVisible, setModalVisible] = useState(false);
-  const [selectedTopic, setSelectedTopic] = React.useState("");
-  const [selectedFeedbackType, setSelectedFeedbackType] = React.useState("");
-  const [value, setValue] = useState("");
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackStep, setFeedbackStep] = useState(0);
+  const [selectedIssues, setSelectedIssues] = useState<string[]>([]);
+  const [userComment, setUserComment] = useState("");
+  const [expectedAnswer, setExpectedAnswer] = useState("");
+  const [wrongSnippet, setWrongSnippet] = useState("");
+  const [sourceAssessment, setSourceAssessment] = useState("");
+  const [regenerateRequested, setRegenerateRequested] = useState(false);
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [copied, setCopied] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
-  const [showTestLibrarySnackbar, setShowTestLibrarySnackbar] = useState(false);
   const [highlightedChunk, setHighlightedChunk] = useState<number | null>(null);
   const sourcesListRef = useRef<HTMLDivElement>(null);
+  const canSubmitFeedback = Boolean(props.message.metadata?.Trace?.messageId);
 
   const formattedTime = props.message.timestamp
     ? new Date(props.message.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
@@ -355,126 +354,239 @@ export default function ChatMessage(props: ChatMessageProps) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const resetFeedback = () => {
+    setFeedbackStep(0);
+    setSelectedIssues([]);
+    setUserComment("");
+    setExpectedAnswer("");
+    setWrongSnippet("");
+    setSourceAssessment("");
+    setRegenerateRequested(false);
+    setSubmittingFeedback(false);
+  };
+
+  const toggleIssue = (issue: string) => {
+    setSelectedIssues((current) =>
+      current.includes(issue)
+        ? current.filter((entry) => entry !== issue)
+        : [...current, issue]
+    );
+  };
+
+  const issueOptions = [
+    { id: "incorrect", label: "Incorrect" },
+    { id: "missing", label: "Missing info" },
+    { id: "irrelevant", label: "Off target" },
+    { id: "unclear", label: "Unclear" },
+    { id: "bad_source", label: "Bad source" },
+    { id: "formatting", label: "Formatting" },
+    { id: "other", label: "Other" },
+  ];
+
+  const needsComment =
+    selectedIssues.includes("irrelevant") ||
+    selectedIssues.includes("unclear") ||
+    selectedIssues.includes("formatting") ||
+    selectedIssues.includes("other");
+
+  const handleHelpfulClick = async () => {
+    if (!canSubmitFeedback) {
+      const id = addNotification("error", "Feedback is only available on new responses.");
+      Utils.delay(3000).then(() => removeNotification(id));
+      return;
+    }
+    try {
+      await props.onThumbsUp();
+      const id = addNotification("success", "Helpful feedback saved.");
+      Utils.delay(3000).then(() => removeNotification(id));
+      setSelectedIcon(1);
+    } catch (error: any) {
+      const id = addNotification("error", error?.message || "Could not save feedback.");
+      Utils.delay(3000).then(() => removeNotification(id));
+    }
+  };
+
+  const handleNegativeSubmit = async () => {
+    if (!canSubmitFeedback) {
+      const id = addNotification("error", "Feedback is only available on new responses.");
+      Utils.delay(3000).then(() => removeNotification(id));
+      return;
+    }
+    if (selectedIssues.length === 0) {
+      const id = addNotification("error", "Select at least one issue.");
+      Utils.delay(3000).then(() => removeNotification(id));
+      return;
+    }
+    setSubmittingFeedback(true);
+    try {
+      await props.onSubmitFeedback({
+        issueTags: selectedIssues,
+        userComment: userComment.trim(),
+        expectedAnswer: expectedAnswer.trim(),
+        wrongSnippet: wrongSnippet.trim(),
+        sourceAssessment: sourceAssessment.trim(),
+        regenerateRequested,
+      });
+      setFeedbackOpen(false);
+      resetFeedback();
+      setSelectedIcon(0);
+      const id = addNotification(
+        "success",
+        regenerateRequested ? "Feedback saved. ABE is trying again with your clarification." : "Feedback saved."
+      );
+      Utils.delay(3000).then(() => removeNotification(id));
+    } catch (error: any) {
+      const id = addNotification("error", error?.message || "Could not submit feedback.");
+      Utils.delay(3000).then(() => removeNotification(id));
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
+
   return (
     <div>
-      {/* Feedback dialog */}
-      <Dialog
-        open={modalVisible}
-        onClose={() => setModalVisible(false)}
-        maxWidth="sm"
-        fullWidth
-        aria-labelledby="feedback-dialog-title"
-      >
-        <DialogTitle id="feedback-dialog-title">Provide Feedback</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel id="feedback-topic-label">Topic</InputLabel>
-              <Select
-                labelId="feedback-topic-label"
-                value={selectedTopic}
-                label="Topic"
-                onChange={(e) => setSelectedTopic(e.target.value)}
+      <Drawer anchor="bottom" open={feedbackOpen} onClose={() => { setFeedbackOpen(false); resetFeedback(); }}>
+        <Box sx={{ maxWidth: 900, mx: "auto", width: "100%", p: 3 }}>
+          <Stack spacing={2.5}>
+            <Box>
+              <Typography variant="h6" fontWeight={700}>Tell us what went wrong</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Step {feedbackStep + 1} of 3. This feedback links to the exact response, prompt version, and sources that produced the answer.
+              </Typography>
+            </Box>
+            {feedbackStep === 0 && (
+              <Stack spacing={2}>
+                <Typography variant="body2">Choose one or more issues.</Typography>
+                <Stack direction="row" gap={1} flexWrap="wrap">
+                  {issueOptions.map((issue) => (
+                    <Chip
+                      key={issue.id}
+                      label={issue.label}
+                      color={selectedIssues.includes(issue.id) ? "primary" : "default"}
+                      variant={selectedIssues.includes(issue.id) ? "filled" : "outlined"}
+                      onClick={() => toggleIssue(issue.id)}
+                    />
+                  ))}
+                </Stack>
+              </Stack>
+            )}
+            {feedbackStep === 1 && (
+              <Stack spacing={2}>
+                {selectedIssues.includes("incorrect") && (
+                  <TextField
+                    label="What part was incorrect?"
+                    value={wrongSnippet}
+                    onChange={(event) => setWrongSnippet(event.target.value)}
+                    fullWidth
+                    multiline
+                    minRows={2}
+                  />
+                )}
+                {selectedIssues.includes("missing") && (
+                  <TextField
+                    label="What answer or fact did you expect?"
+                    value={expectedAnswer}
+                    onChange={(event) => setExpectedAnswer(event.target.value)}
+                    fullWidth
+                    multiline
+                    minRows={2}
+                  />
+                )}
+                {selectedIssues.includes("bad_source") && (
+                  <TextField
+                    label="What was wrong with the source?"
+                    value={sourceAssessment}
+                    onChange={(event) => setSourceAssessment(event.target.value)}
+                    fullWidth
+                    multiline
+                    minRows={2}
+                    placeholder="Missing, irrelevant, outdated, contradictory..."
+                  />
+                )}
+                {needsComment && (
+                  <TextField
+                    label="Tell us more"
+                    value={userComment}
+                    onChange={(event) => setUserComment(event.target.value)}
+                    fullWidth
+                    multiline
+                    minRows={3}
+                  />
+                )}
+                {!needsComment &&
+                  !selectedIssues.includes("incorrect") &&
+                  !selectedIssues.includes("missing") &&
+                  !selectedIssues.includes("bad_source") && (
+                    <TextField
+                      label="Additional context"
+                      value={userComment}
+                      onChange={(event) => setUserComment(event.target.value)}
+                      fullWidth
+                      multiline
+                      minRows={3}
+                    />
+                  )}
+              </Stack>
+            )}
+            {feedbackStep === 2 && (
+              <Stack spacing={2}>
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>Issue summary</Typography>
+                  <Stack direction="row" gap={1} flexWrap="wrap" sx={{ mb: 1.5 }}>
+                    {selectedIssues.map((issue) => {
+                      const label = issueOptions.find((option) => option.id === issue)?.label || issue;
+                      return <Chip key={issue} label={label} size="small" />;
+                    })}
+                  </Stack>
+                  {wrongSnippet && <Typography variant="body2"><strong>Incorrect:</strong> {wrongSnippet}</Typography>}
+                  {expectedAnswer && <Typography variant="body2"><strong>Expected:</strong> {expectedAnswer}</Typography>}
+                  {sourceAssessment && <Typography variant="body2"><strong>Source issue:</strong> {sourceAssessment}</Typography>}
+                  {userComment && <Typography variant="body2"><strong>Details:</strong> {userComment}</Typography>}
+                </Paper>
+                <Chip
+                  label={regenerateRequested ? "Retry requested" : "Try again with my clarification"}
+                  color={regenerateRequested ? "primary" : "default"}
+                  variant={regenerateRequested ? "filled" : "outlined"}
+                  onClick={() => setRegenerateRequested((value) => !value)}
+                />
+                <Typography variant="body2" color="text.secondary">
+                  If enabled, ABE will immediately answer the previous question again using the clarification you provided here.
+                </Typography>
+              </Stack>
+            )}
+            <Divider />
+            <Stack direction="row" justifyContent="space-between" gap={1}>
+              <Button
+                onClick={() => {
+                  if (feedbackStep === 0) {
+                    setFeedbackOpen(false);
+                    resetFeedback();
+                  } else {
+                    setFeedbackStep((step) => Math.max(0, step - 1));
+                  }
+                }}
               >
-                {feedbackCategories.map((cat) => (
-                  <MuiMenuItem key={cat.value} value={cat.value} disabled={cat.disabled}>
-                    {cat.label}
-                  </MuiMenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth size="small">
-              <InputLabel id="feedback-problem-label">Problem</InputLabel>
-              <Select
-                labelId="feedback-problem-label"
-                value={selectedFeedbackType}
-                label="Problem"
-                onChange={(e) => setSelectedFeedbackType(e.target.value)}
-              >
-                {feedbackTypes.map((ft) => (
-                  <MuiMenuItem key={ft.value} value={ft.value} disabled={ft.disabled}>
-                    {ft.label}
-                  </MuiMenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <TextField
-              label="Please enter feedback here"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              fullWidth
-              size="small"
-              multiline
-              minRows={2}
-            />
+                {feedbackStep === 0 ? "Cancel" : "Back"}
+              </Button>
+              <Stack direction="row" gap={1}>
+                {feedbackStep < 2 ? (
+                  <Button
+                    variant="contained"
+                    onClick={() => setFeedbackStep((step) => Math.min(2, step + 1))}
+                    disabled={feedbackStep === 0 && selectedIssues.length === 0}
+                  >
+                    Continue
+                  </Button>
+                ) : (
+                  <Button variant="contained" onClick={handleNegativeSubmit} disabled={submittingFeedback}>
+                    {submittingFeedback ? "Submitting..." : "Submit feedback"}
+                  </Button>
+                )}
+              </Stack>
+            </Stack>
           </Stack>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button
-            onClick={() => {
-              setModalVisible(false);
-              setValue("");
-              setSelectedTopic("");
-              setSelectedFeedbackType("");
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              if (!selectedTopic || !selectedFeedbackType || value.trim() === "") {
-                const id = addNotification("error", "Please fill out all fields.");
-                Utils.delay(3000).then(() => removeNotification(id));
-                return;
-              }
-              setModalVisible(false);
-              setValue("");
-              const id = addNotification("success", "Your feedback has been submitted.");
-              Utils.delay(3000).then(() => removeNotification(id));
-              props.onThumbsDown(selectedTopic, selectedFeedbackType, value.trim());
-              setSelectedIcon(0);
-              setSelectedTopic("");
-              setSelectedFeedbackType("");
-            }}
-          >
-            Submit
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Save-as-good-example prompt */}
-      <Snackbar
-        open={showTestLibrarySnackbar}
-        autoHideDuration={10000}
-        onClose={() => setShowTestLibrarySnackbar(false)}
-        message="Help us improve — save this as a good example?"
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-        ContentProps={{ role: "status", "aria-live": "polite" as const }}
-        action={
-          <>
-            <Button
-              size="small"
-              onClick={() => setShowTestLibrarySnackbar(false)}
-              sx={{ color: "text.secondary" }}
-            >
-              Dismiss
-            </Button>
-            <Button
-              size="small"
-              variant="contained"
-              onClick={() => {
-                setShowTestLibrarySnackbar(false);
-                props.onAddToTestLibrary?.();
-                const id = addNotification("success", "Saved! Thanks for helping improve ABE.");
-                Utils.delay(3000).then(() => removeNotification(id));
-              }}
-            >
-              Save
-            </Button>
-          </>
-        }
-      />
+        </Box>
+      </Drawer>
 
       {/* AI Message */}
       {props.message?.type === ChatBotMessageType.AI && (
@@ -554,17 +666,10 @@ export default function ChatMessage(props: ChatMessageProps) {
                   {(selectedIcon === 1 || selectedIcon === null) && (
                     <IconButton
                       size="small"
-                      onClick={() => {
-                        props.onThumbsUp();
-                        const id = addNotification("success", "Thank you for your valuable feedback!");
-                        Utils.delay(3000).then(() => removeNotification(id));
-                        setSelectedIcon(1);
-                        if (props.onAddToTestLibrary) {
-                          setShowTestLibrarySnackbar(true);
-                        }
-                      }}
+                      onClick={handleHelpfulClick}
                       aria-label="Mark response as helpful"
                       sx={{ borderRadius: 1.5, px: 1, gap: 0.5 }}
+                      disabled={!canSubmitFeedback}
                     >
                       {selectedIcon === 1 ? (
                         <ThumbUpIcon sx={{ fontSize: 16 }} color="primary" />
@@ -579,9 +684,10 @@ export default function ChatMessage(props: ChatMessageProps) {
                   {(selectedIcon === 0 || selectedIcon === null) && (
                     <IconButton
                       size="small"
-                      onClick={() => setModalVisible(true)}
+                      onClick={() => setFeedbackOpen(true)}
                       aria-label="Mark response as not helpful and provide feedback"
                       sx={{ borderRadius: 1.5, px: 1, gap: 0.5 }}
+                      disabled={!canSubmitFeedback}
                     >
                       {selectedIcon === 0 ? (
                         <ThumbDownIcon sx={{ fontSize: 16 }} color="primary" />

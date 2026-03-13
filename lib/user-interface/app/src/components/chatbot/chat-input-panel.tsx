@@ -43,6 +43,8 @@ export interface ChatInputPanelProps {
   streamingStatus: StreamingStatus;
   setStreamingStatus: Dispatch<SetStateAction<StreamingStatus>>;
   onStop?: () => void;
+  queuedPrompt?: string | null;
+  onQueuedPromptHandled?: () => void;
 }
 
 export default function ChatInputPanel(props: ChatInputPanelProps) {
@@ -66,7 +68,7 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
     }
   }, [transcript]);
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = async (overrideMessage?: string) => {
     if (props.running) return;
 
     let username: string | undefined;
@@ -85,12 +87,14 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
     }
     if (!username) return;
 
-    const messageToSend = state.value.trim();
+    const messageToSend = (overrideMessage ?? state.value).trim();
     if (messageToSend.length === 0) {
       addNotification("error", "Please do not submit blank text!");
       return;
     }
-    setState({ value: "" });
+    if (!overrideMessage) {
+      setState({ value: "" });
+    }
 
     props.setRunning(true);
     props.setStreamingStatus({ text: "", active: false });
@@ -174,6 +178,13 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
     });
   };
 
+  useEffect(() => {
+    if (props.queuedPrompt && !props.running && !props.session.loading) {
+      handleSendMessage(props.queuedPrompt);
+      props.onQueuedPromptHandled?.();
+    }
+  }, [props.queuedPrompt, props.running, props.session.loading]);
+
   const isSendDisabled =
     props.running ||
     state.value.trim().length === 0 ||
@@ -256,7 +267,7 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
                 <span>
                   <Button
                     disabled={isSendDisabled}
-                    onClick={handleSendMessage}
+                    onClick={() => handleSendMessage()}
                     variant="contained"
                     aria-label="Send message"
                     sx={{

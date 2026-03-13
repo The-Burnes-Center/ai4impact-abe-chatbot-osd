@@ -25,6 +25,7 @@ interface StepFunctionsStackProps {
     readonly evalResutlsTable : Table;
     readonly evalTestCasesBucket : s3.Bucket;
     readonly evalResultsBucket : s3.Bucket;
+    readonly promptRegistryTable : Table;
     readonly wsEndpoint?: string;
 }
 
@@ -120,6 +121,8 @@ export class StepFunctionsStack extends Construct {
                 'KB_ID': props.knowledgeBase.attrKnowledgeBaseId,
                 'METADATA_RETRIEVAL_FUNCTION': process.env.METADATA_RETRIEVAL_FUNCTION || '',
                 'PRIMARY_MODEL_ID': process.env.PRIMARY_MODEL_ID || 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+                'PROMPT_REGISTRY_TABLE': props.promptRegistryTable.tableName,
+                'PROMPT_FAMILY': 'ABE_CHAT',
             },
             timeout: cdk.Duration.seconds(60),
         });
@@ -140,6 +143,19 @@ export class StepFunctionsStack extends Construct {
               'bedrock:Retrieve'
             ],
             resources: [props.knowledgeBase.attrKnowledgeBaseArn]
+        }));
+        generateResponseFunction.addToRolePolicy(new iam.PolicyStatement({
+            effect: iam.Effect.ALLOW,
+            actions: [
+              'dynamodb:GetItem',
+              'dynamodb:PutItem',
+              'dynamodb:Query',
+              'dynamodb:UpdateItem',
+            ],
+            resources: [
+              props.promptRegistryTable.tableArn,
+              props.promptRegistryTable.tableArn + "/index/*",
+            ]
         }));
         this.generateResponseFunction = generateResponseFunction;
 

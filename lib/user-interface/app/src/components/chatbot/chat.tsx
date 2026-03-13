@@ -2,7 +2,7 @@ import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   ChatBotHistoryItem,
   ChatBotMessageType,
-  FeedbackData,
+  FeedbackSubmission,
 } from "./types";
 import { Auth } from "aws-amplify";
 import Stack from "@mui/material/Stack";
@@ -44,6 +44,7 @@ export default function Chat(props: { sessionId?: string }) {
     text: "",
     active: false,
   });
+  const [queuedPrompt, setQueuedPrompt] = useState<string | null>(null);
 
   useEffect(() => {
     if (!appContext) return;
@@ -132,55 +133,24 @@ export default function Chat(props: { sessionId?: string }) {
     }
   };
 
-  const handleFeedback = (
-    feedbackType: 1 | 0,
-    idx: number,
-    message: ChatBotHistoryItem,
-    feedbackTopic?: string,
-    feedbackProblem?: string,
-    feedbackMessage?: string
-  ) => {
-    if (props.sessionId) {
-      const prompt = messageHistory[idx - 1].content;
-      const completion = message.content;
-      const feedbackData = {
-        sessionId: props.sessionId,
-        feedback: feedbackType,
-        prompt: prompt,
-        completion: completion,
-        topic: feedbackTopic,
-        problem: feedbackProblem,
-        comment: feedbackMessage,
-        sources: JSON.stringify(message.metadata.Sources),
-      };
-      addUserFeedback(feedbackData);
-    }
-  };
-
-  const addUserFeedback = async (feedbackData: FeedbackData) => {
+  const submitFeedback = async (payload: FeedbackSubmission) => {
     if (!appContext) return;
     const apiClient = new ApiClient(appContext);
-    await apiClient.userFeedback.sendUserFeedback(feedbackData);
+    return apiClient.userFeedback.submitFeedback(payload);
   };
 
-  const handleAddToTestLibrary = async (idx: number, message: ChatBotHistoryItem) => {
-    if (!appContext || !props.sessionId) return;
-    try {
-      const user = await Auth.currentAuthenticatedUser();
-      const prompt = messageHistory[idx - 1]?.content ?? "";
-      const completion = message.content;
-      const apiClient = new ApiClient(appContext);
-      await apiClient.userFeedback.submitToTestLibrary({
-        prompt,
-        completion,
-        sources: JSON.stringify(message.metadata.Sources),
-        sessionId: props.sessionId,
-        userId: user.username ?? "",
-        displayName: user.attributes?.name ?? user.username ?? "",
-      });
-    } catch (e) {
-      addNotification("error", "Could not save example. Please try again.");
+  const buildRetryPrompt = (idx: number, payload: FeedbackSubmission) => {
+    const originalQuestion = messageHistory[idx - 1]?.content ?? "";
+    const contextParts = [
+      payload.userComment?.trim(),
+      payload.expectedAnswer?.trim() ? `Expected answer: ${payload.expectedAnswer?.trim()}` : "",
+      payload.wrongSnippet?.trim() ? `Incorrect part: ${payload.wrongSnippet?.trim()}` : "",
+      payload.sourceAssessment?.trim() ? `Source issue: ${payload.sourceAssessment?.trim()}` : "",
+    ].filter(Boolean);
+    if (contextParts.length === 0) {
+      return "";
     }
+    return `Please answer my previous question again.\n\nOriginal question: ${originalQuestion}\n\nWhat went wrong: ${contextParts.join("\n")}`;
   };
 
   const handleOpenSource = useCallback(async (s3Key: string) => {
@@ -249,22 +219,36 @@ export default function Chat(props: { sessionId?: string }) {
                 message={message}
                 isLastAiMessage={running && idx === lastAiIdx}
                 streamingStatus={running && idx === lastAiIdx ? streamingStatus : undefined}
-                onThumbsUp={() => handleFeedback(1, idx, message)}
-                onThumbsDown={(
-                  feedbackTopic: string,
-                  feedbackType: string,
-                  feedbackMessage: string
-                ) =>
-                  handleFeedback(
-                    0,
-                    idx,
-                    message,
-                    feedbackTopic,
-                    feedbackType,
-                    feedbackMessage
-                  )
-                }
-                onAddToTestLibrary={() => handleAddToTestLibrary(idx, message)}
+                onThumbsUp={async () => {
+                  const messageId = message.metadata?.Trace?.messageId;
+                  if (!messageId) {
+                    addNotification("error", "Feedback is only available on new responses.");
+                    return;
+                  }
+                  await submitFeedback({
+                    messageId,
+                    feedbackKind: "helpful",
+                    issueTags: [],
+                  });
+                }}
+                onSubmitFeedback={async (feedbackPayload) => {
+                  const messageId = message.metadata?.Trace?.messageId;
+                  if (!messageId) {
+                    throw new Error("Feedback is only available on new responses.");
+                  }
+                  const payload: FeedbackSubmission = {
+                    ...feedbackPayload,
+                    messageId,
+                    feedbackKind: "not_helpful",
+                  };
+                  await submitFeedback(payload);
+                  if (payload.regenerateRequested) {
+                    const retryPrompt = buildRetryPrompt(idx, payload);
+                    if (retryPrompt) {
+                      setQueuedPrompt(retryPrompt);
+                    }
+                  }
+                }}
                 onOpenSource={handleOpenSource}
               />
             ))}
@@ -374,6 +358,8 @@ export default function Chat(props: { sessionId?: string }) {
           streamingStatus={streamingStatus}
           setStreamingStatus={setStreamingStatus}
           onStop={abort}
+          queuedPrompt={queuedPrompt}
+          onQueuedPromptHandled={() => setQueuedPrompt(null)}
         />
       </div>
     </div>
