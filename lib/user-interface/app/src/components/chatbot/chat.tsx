@@ -96,7 +96,7 @@ export default function Chat(props: { sessionId?: string }) {
 
     const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
     if (isNearBottom || running) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     }
   }, [messageHistory, running]);
 
@@ -126,7 +126,10 @@ export default function Chat(props: { sessionId?: string }) {
   }, []);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scrollContainerRef.current;
+    if (el) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
   };
 
   const handleFeedback = (
