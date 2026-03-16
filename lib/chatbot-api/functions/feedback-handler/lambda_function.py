@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import re
 import uuid
@@ -63,6 +64,23 @@ def validation_error(field: str, message: str):
 
 def truncate(value: str, limit: int) -> str:
     return value[:limit] if len(value) > limit else value
+
+
+def _sanitize_value(value: Any) -> Any:
+    """Return a DynamoDB-safe value (no NaN/Inf, no None for required types)."""
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return 0.0
+        return value
+    if isinstance(value, dict):
+        return {str(k): _sanitize_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_value(v) for v in value]
+    if isinstance(value, (int, bool, str)):
+        return value
+    return str(value)
 
 
 def utc_now_iso() -> str:
@@ -430,13 +448,17 @@ def create_feedback(event: dict[str, Any]):
     source_titles = source_titles_from_trace(trace)
     created_at = utc_now_iso()
 
+    session_id = trace.get("SessionId") or payload.get("sessionId") or ""
+    prompt_version_id = trace.get("PromptVersionId") or ""
+    user_prompt_preview = (trace.get("UserPrompt") or "")[:220]
+    answer_preview = (trace.get("FinalAnswer") or "")[:280]
     record = {
         "FeedbackId": feedback_id,
         "RecordType": "FEEDBACK",
         "MessageId": message_id,
-        "SessionId": trace.get("SessionId", payload.get("sessionId", "")),
+        "SessionId": str(session_id),
         "FeedbackKind": feedback_kind,
-        "IssueTags": issue_tags,
+        "IssueTags": list(issue_tags),
         "UserComment": truncate(str(payload.get("userComment", "")).strip(), MAX_COMMENT_LENGTH),
         "ExpectedAnswer": truncate(str(payload.get("expectedAnswer", "")).strip(), MAX_TEXT_LENGTH),
         "WrongSnippet": truncate(str(payload.get("wrongSnippet", "")).strip(), MAX_TEXT_LENGTH),
@@ -445,12 +467,12 @@ def create_feedback(event: dict[str, Any]):
         "ReviewStatus": "new",
         "Disposition": "pending",
         "ClusterId": "",
-        "PromptVersionId": trace.get("PromptVersionId", ""),
-        "SourceTitles": source_titles,
+        "PromptVersionId": str(prompt_version_id),
+        "SourceTitles": [str(t) for t in source_titles],
         "CreatedAt": created_at,
         "UpdatedAt": created_at,
-        "UserPromptPreview": str(trace.get("UserPrompt", ""))[:220],
-        "AnswerPreview": str(trace.get("FinalAnswer", ""))[:280],
+        "UserPromptPreview": str(user_prompt_preview),
+        "AnswerPreview": str(answer_preview),
         "AdminNotes": "",
         "Owner": "",
         "ResolutionNote": "",
@@ -466,9 +488,10 @@ def create_feedback(event: dict[str, Any]):
         record["ClusterId"] = "positive:helpful"
 
     try:
-        feedback_records_table.put_item(Item=record)
-    except Exception:
-        logger.exception("Failed to write feedback record %s", feedback_id)
+        safe_record = _sanitize_value(record)
+        feedback_records_table.put_item(Item=safe_record)
+    except Exception as e:
+        logger.exception("Failed to write feedback record %s: %s", feedback_id, e)
         return json_response(502, {"error": "upstream_error", "message": "Your feedback could not be saved right now. Please try again in a moment."})
 
     return json_response(
