@@ -5,6 +5,7 @@ import re
 import uuid
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 import boto3
@@ -67,13 +68,15 @@ def truncate(value: str, limit: int) -> str:
 
 
 def _sanitize_value(value: Any) -> Any:
-    """Return a DynamoDB-safe value (no NaN/Inf, no None for required types)."""
+    """Return a DynamoDB-safe value (no NaN/Inf, no float; use Decimal for numbers)."""
     if value is None:
         return ""
+    if isinstance(value, Decimal):
+        return value
     if isinstance(value, float):
         if math.isnan(value) or math.isinf(value):
-            return 0.0
-        return value
+            return Decimal("0")
+        return Decimal(str(value))
     if isinstance(value, dict):
         return {str(k): _sanitize_value(v) for k, v in value.items()}
     if isinstance(value, list):
@@ -529,7 +532,7 @@ def append_feedback_follow_up(event: dict[str, Any], feedback_id: str):
     item["ClusterId"] = item["Analysis"].get("similarityKey", item.get("ClusterId", ""))
     item["ReviewStatus"] = "analyzed"
     item["UpdatedAt"] = utc_now_iso()
-    feedback_records_table.put_item(Item=item)
+    feedback_records_table.put_item(Item=_sanitize_value(item))
 
     return json_response(
         200,
@@ -640,7 +643,7 @@ def rerun_analysis(feedback_id: str):
     item["ClusterId"] = item["Analysis"].get("similarityKey", item.get("ClusterId", ""))
     item["ReviewStatus"] = "analyzed"
     item["UpdatedAt"] = utc_now_iso()
-    feedback_records_table.put_item(Item=item)
+    feedback_records_table.put_item(Item=_sanitize_value(item))
     return json_response(200, {"feedbackId": feedback_id, "analysis": item["Analysis"]})
 
 
