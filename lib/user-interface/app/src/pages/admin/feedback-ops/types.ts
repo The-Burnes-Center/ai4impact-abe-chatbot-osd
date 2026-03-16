@@ -200,6 +200,36 @@ export const REVIEW_STATUSES = [
   "dismissed",
 ] as const;
 
+export const LABELS: Record<string, string> = {
+  // Dispositions (actions)
+  "pending": "Pending",
+  "prompt update": "Fix prompt",
+  "KB/source fix": "Fix document",
+  "retrieval/config issue": "Fix search",
+  "product/UX bug": "System bug",
+
+  // Root causes (issue types)
+  "retrieval_gap": "Missing info",
+  "grounding_error": "Wrong answer",
+  "prompt_issue": "Response style",
+  "answer_quality": "Low quality",
+  "product_bug": "System bug",
+  "needs_human_review": "Needs review",
+  "positive_signal": "Positive",
+  "unknown": "Unknown",
+
+  // Review statuses
+  "new": "New",
+  "analyzed": "Analyzed",
+  "in_review": "In review",
+  "actioned": "Done",
+  "dismissed": "Dismissed",
+};
+
+export function label(key: string): string {
+  return LABELS[key] || key.replace(/_/g, " ");
+}
+
 export function formatDate(value?: string): string {
   if (!value) return "N/A";
   try {

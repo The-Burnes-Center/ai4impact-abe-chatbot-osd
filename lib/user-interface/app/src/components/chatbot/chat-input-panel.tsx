@@ -56,6 +56,7 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
   });
   const { addNotification } = useNotifications();
   const messageHistoryRef = useRef<ChatBotHistoryItem[]>([]);
+  const handleSendRef = useRef<(msg?: string) => Promise<void>>();
   const { send } = useWebSocketChat();
 
   useEffect(() => {
@@ -177,10 +178,11 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
       },
     });
   };
+  handleSendRef.current = handleSendMessage;
 
   useEffect(() => {
     if (props.queuedPrompt && !props.running && !props.session.loading) {
-      handleSendMessage(props.queuedPrompt);
+      handleSendRef.current?.(props.queuedPrompt);
       props.onQueuedPromptHandled?.();
     }
   }, [props.queuedPrompt, props.running, props.session.loading]);

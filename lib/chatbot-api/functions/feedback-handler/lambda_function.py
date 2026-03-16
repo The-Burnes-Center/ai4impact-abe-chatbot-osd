@@ -414,7 +414,11 @@ def create_feedback(event: dict[str, Any]):
     if not message_id:
         return validation_error("messageId", "messageId is required")
 
-    trace = get_response_trace(message_id)
+    try:
+        trace = get_response_trace(message_id)
+    except Exception:
+        logger.exception("Failed to read response trace for %s", message_id)
+        return json_response(502, {"error": "upstream_error", "message": "Could not look up the original response. Please try again."})
     if not trace:
         return json_response(404, {"error": "not_found", "message": "Response trace not found"})
 
@@ -461,7 +465,12 @@ def create_feedback(event: dict[str, Any]):
         record["Analysis"] = analyze_feedback_record(record, trace)
         record["ClusterId"] = "positive:helpful"
 
-    feedback_records_table.put_item(Item=record)
+    try:
+        feedback_records_table.put_item(Item=record)
+    except Exception:
+        logger.exception("Failed to write feedback record %s", feedback_id)
+        return json_response(502, {"error": "upstream_error", "message": "Your feedback could not be saved right now. Please try again in a moment."})
+
     return json_response(
         201,
         {
@@ -796,6 +805,17 @@ def publish_prompt(version_id: str):
     return json_response(200, {"liveVersionId": version_id, "prompt": serialize_prompt_item(item)})
 
 
+def delete_prompt(version_id: str):
+    item = get_prompt_table_item(version_id)
+    if not item or item.get("ItemType") != "PromptVersion":
+        return json_response(404, {"error": "not_found", "message": "Prompt version not found"})
+    if item.get("Status") == "published" and get_live_prompt_version_id() == version_id:
+        return json_response(400, {"error": "validation_error", "message": "Cannot delete the live prompt. Publish a different version first."})
+    prompt_registry_table.delete_item(Key={"PromptFamily": PROMPT_FAMILY, "VersionId": version_id})
+    write_audit_log("prompt_deleted", "prompt", version_id, {"title": item.get("Title", "")})
+    return json_response(200, {"deleted": True, "versionId": version_id})
+
+
 def ai_suggest_prompt(event: dict[str, Any], version_id: str):
     item = get_prompt_table_item(version_id)
     if not item or item.get("ItemType") != "PromptVersion":
@@ -1052,6 +1072,8 @@ def lambda_handler(event, context):
             return get_prompt(path_parts[2])
         if method == "PUT" and len(path_parts) == 3 and path_parts[:2] == ["admin", "prompts"]:
             return update_prompt(event, path_parts[2])
+        if method == "DELETE" and len(path_parts) == 3 and path_parts[:2] == ["admin", "prompts"]:
+            return delete_prompt(path_parts[2])
         if method == "POST" and len(path_parts) == 4 and path_parts[:2] == ["admin", "prompts"] and path_parts[3] == "publish":
             return publish_prompt(path_parts[2])
         if method == "POST" and len(path_parts) == 4 and path_parts[:2] == ["admin", "prompts"] and path_parts[3] == "ai-suggest":

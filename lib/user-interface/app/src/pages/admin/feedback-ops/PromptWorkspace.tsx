@@ -22,6 +22,7 @@ import {
 import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 import PublishIcon from "@mui/icons-material/Publish";
 import AddIcon from "@mui/icons-material/Add";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EditNoteOutlinedIcon from "@mui/icons-material/EditNoteOutlined";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import HistoryIcon from "@mui/icons-material/History";
@@ -95,6 +96,9 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
   const [draft, setDraft] = useState({ title: "", notes: "", template: "" });
   const [actionLoading, setActionLoading] = useState(false);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showAiDialog, setShowAiDialog] = useState(false);
+  const [aiNote, setAiNote] = useState("");
   const [viewMode, setViewMode] = useState<"edit" | "preview" | "diff">("edit");
 
   const currentPrompt = useMemo(
@@ -184,18 +188,36 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
     if (!apiClient || !selectedPromptId) return;
     try {
       setActionLoading(true);
+      setShowAiDialog(false);
       const feedbackIds = selectedFeedbackIds.length > 0
         ? selectedFeedbackIds
         : [];
       const result = await apiClient.userFeedback.aiSuggestPrompt(
         selectedPromptId,
-        { feedbackIds }
+        { feedbackIds, note: aiNote.trim() }
       );
       await onRefresh();
       setSelectedPromptId(result.prompt.versionId);
+      setAiNote("");
       addNotification("success", "AI created a draft prompt.");
     } catch (error: any) {
       addNotification("error", error?.message || "AI prompt suggestion failed.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!apiClient || !selectedPromptId) return;
+    try {
+      setActionLoading(true);
+      setShowDeleteDialog(false);
+      await apiClient.userFeedback.deletePrompt(selectedPromptId);
+      setSelectedPromptId("");
+      await onRefresh();
+      addNotification("success", "Draft deleted.");
+    } catch (error: any) {
+      addNotification("error", error?.message || "Could not delete prompt.");
     } finally {
       setActionLoading(false);
     }
@@ -280,7 +302,7 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
                   <Button
                     size="small"
                     startIcon={<AutoFixHighIcon />}
-                    onClick={handleAiSuggest}
+                    onClick={() => setShowAiDialog(true)}
                     disabled={!selectedPromptId || actionLoading}
                   >
                     AI Draft
@@ -291,6 +313,15 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
                     disabled={!selectedPromptId || isLive || actionLoading}
                   >
                     Save Draft
+                  </Button>
+                  <Button
+                    size="small"
+                    color="error"
+                    startIcon={<DeleteOutlineIcon />}
+                    onClick={() => setShowDeleteDialog(true)}
+                    disabled={!selectedPromptId || isLive || actionLoading}
+                  >
+                    Delete
                   </Button>
                   <Button
                     size="small"
@@ -482,6 +513,54 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
           <Button onClick={() => setShowPublishDialog(false)}>Cancel</Button>
           <Button variant="contained" onClick={handlePublish} disabled={actionLoading}>
             Publish
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={showDeleteDialog} onClose={() => setShowDeleteDialog(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete draft?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            <strong>{currentPrompt?.title || selectedPromptId}</strong> will be permanently removed. This cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowDeleteDialog(false)}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleDelete} disabled={actionLoading}>
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* AI Draft context dialog */}
+      <Dialog open={showAiDialog} onClose={() => { setShowAiDialog(false); setAiNote(""); }} maxWidth="sm" fullWidth>
+        <DialogTitle>Generate AI Draft</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            The AI will rewrite the current prompt based on feedback patterns.
+            Optionally describe what you want it to focus on.
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            minRows={3}
+            maxRows={6}
+            label="What should this prompt improve? (optional)"
+            placeholder="e.g. Improve accuracy for contract questions, be more concise, cite sources better..."
+            value={aiNote}
+            onChange={(e) => setAiNote(e.target.value)}
+          />
+          {selectedFeedbackIds.length > 0 && (
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+              {selectedFeedbackIds.length} feedback item(s) will be used as context.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setShowAiDialog(false); setAiNote(""); }}>Cancel</Button>
+          <Button variant="contained" onClick={handleAiSuggest} disabled={actionLoading} startIcon={<AutoFixHighIcon />}>
+            Generate Draft
           </Button>
         </DialogActions>
       </Dialog>

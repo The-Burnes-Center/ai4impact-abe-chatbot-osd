@@ -243,12 +243,21 @@ export default function Chat(props: { sessionId?: string }) {
                     messageId,
                     feedbackKind: "not_helpful",
                   };
-                  await submitFeedback(payload);
+                  let feedbackSaved = false;
+                  try {
+                    await submitFeedback(payload);
+                    feedbackSaved = true;
+                  } catch (err) {
+                    addNotification("error", (err as Error)?.message || "Feedback could not be saved, but we'll still retry.");
+                  }
                   if (payload.regenerateRequested) {
                     const retryPrompt = buildRetryPrompt(idx, payload);
                     if (retryPrompt) {
                       setQueuedPrompt(retryPrompt);
                     }
+                  }
+                  if (!feedbackSaved) {
+                    throw new Error("Feedback could not be saved.");
                   }
                 }}
                 onOpenSource={handleOpenSource}

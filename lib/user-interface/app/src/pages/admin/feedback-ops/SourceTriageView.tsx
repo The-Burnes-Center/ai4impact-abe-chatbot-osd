@@ -27,10 +27,10 @@ function EmptySources() {
     <Paper variant="outlined" sx={{ p: 6, textAlign: "center" }}>
       <SourceOutlinedIcon sx={{ fontSize: 48, color: "text.disabled", mb: 2 }} />
       <Typography variant="h6" color="text.secondary" gutterBottom>
-        No source data yet
+        No document issues yet
       </Typography>
       <Typography variant="body2" color="text.secondary">
-        Sources that appear in negative feedback will be listed here, ranked by frequency, to help you prioritize KB improvements.
+        Documents mentioned in negative feedback will appear here, ranked by frequency, to help you prioritize improvements.
       </Typography>
     </Paper>
   );
@@ -45,8 +45,8 @@ export default function SourceTriageView({ sources, loading }: SourceTriageViewP
       <Table size="small">
         <TableHead>
           <TableRow>
-            <TableCell sx={{ fontWeight: 600 }}>Source Document</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 600 }}>Negative Feedback</TableCell>
+            <TableCell sx={{ fontWeight: 600 }}>Document</TableCell>
+            <TableCell align="right" sx={{ fontWeight: 600 }}>Reports</TableCell>
             <TableCell sx={{ fontWeight: 600 }}>Top Issues</TableCell>
             <TableCell sx={{ fontWeight: 600 }}>Prompt Versions</TableCell>
             <TableCell sx={{ fontWeight: 600 }}>Last Reported</TableCell>

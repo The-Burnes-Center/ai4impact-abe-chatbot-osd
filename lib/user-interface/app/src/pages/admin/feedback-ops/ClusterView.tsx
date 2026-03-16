@@ -10,7 +10,7 @@ import {
   Typography,
 } from "@mui/material";
 import BubbleChartOutlinedIcon from "@mui/icons-material/BubbleChartOutlined";
-import { ClusterSummary, formatDate } from "./types";
+import { ClusterSummary, formatDate, label } from "./types";
 
 interface ClusterViewProps {
   clusters: ClusterSummary[];
@@ -35,10 +35,10 @@ function EmptyClusters() {
     <Paper variant="outlined" sx={{ p: 6, textAlign: "center" }}>
       <BubbleChartOutlinedIcon sx={{ fontSize: 48, color: "text.disabled", mb: 2 }} />
       <Typography variant="h6" color="text.secondary" gutterBottom>
-        No clusters yet
+        No patterns yet
       </Typography>
       <Typography variant="body2" color="text.secondary">
-        Clusters are formed as negative feedback is analyzed. They group similar issues to help you prioritize.
+        Patterns form as feedback is analyzed. They group similar issues to help you prioritize.
       </Typography>
     </Paper>
   );
@@ -76,7 +76,7 @@ export default function ClusterView({ clusters, loading, onCreateDraftFromCluste
             <Stack spacing={1.5} sx={{ flex: 1 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={1}>
                 <Typography variant="subtitle1" fontWeight={700}>
-                  {(cluster.rootCause || "Unclassified").replace("_", " ")}
+                  {label(cluster.rootCause || "Unclassified")}
                 </Typography>
                 <Chip
                   size="small"
@@ -100,7 +100,7 @@ export default function ClusterView({ clusters, loading, onCreateDraftFromCluste
               <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={0.5}>
                 <Chip
                   size="small"
-                  label={cluster.recommendedAction || "pending"}
+                  label={label(cluster.recommendedAction || "pending")}
                   variant="outlined"
                   color={
                     cluster.recommendedAction === "prompt update"

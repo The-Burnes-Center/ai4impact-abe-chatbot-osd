@@ -40,6 +40,7 @@ import {
   DISPOSITIONS,
   REVIEW_STATUSES,
   formatDate,
+  label,
 } from "./types";
 import { ApiClient } from "../../../common/api-client/api-client";
 import { useNotifications } from "../../../components/notif-manager";
@@ -60,12 +61,12 @@ interface InboxViewProps {
 }
 
 const ROOT_CAUSE_CHIPS: Record<string, { label: string; color: "error" | "warning" | "info" | "default" }> = {
-  retrieval_gap: { label: "Retrieval Gap", color: "warning" },
-  grounding_error: { label: "Grounding Error", color: "error" },
-  prompt_issue: { label: "Prompt Issue", color: "info" },
-  answer_quality: { label: "Answer Quality", color: "warning" },
-  product_bug: { label: "Product Bug", color: "error" },
-  needs_human_review: { label: "Needs Review", color: "default" },
+  retrieval_gap: { label: "Missing info", color: "warning" },
+  grounding_error: { label: "Wrong answer", color: "error" },
+  prompt_issue: { label: "Response style", color: "info" },
+  answer_quality: { label: "Low quality", color: "warning" },
+  product_bug: { label: "System bug", color: "error" },
+  needs_human_review: { label: "Needs review", color: "default" },
 };
 
 function InboxSkeleton() {
@@ -253,29 +254,29 @@ export default function InboxView(props: InboxViewProps) {
           <TextField
             select
             size="small"
-            label="Review status"
+            label="Status"
             value={filters.reviewStatus}
             onChange={(e) => updateFilter("reviewStatus", e.target.value)}
             sx={{ minWidth: 150 }}
-            InputProps={{ "aria-label": "Filter by review status" } as any}
+            InputProps={{ "aria-label": "Filter by status" } as any}
           >
             <MenuItem value="">All</MenuItem>
             {REVIEW_STATUSES.map((s) => (
-              <MenuItem key={s} value={s}>{s.replace("_", " ")}</MenuItem>
+              <MenuItem key={s} value={s}>{label(s)}</MenuItem>
             ))}
           </TextField>
           <TextField
             select
             size="small"
-            label="Disposition"
+            label="Action"
             value={filters.disposition}
             onChange={(e) => updateFilter("disposition", e.target.value)}
             sx={{ minWidth: 170 }}
-            InputProps={{ "aria-label": "Filter by disposition" } as any}
+            InputProps={{ "aria-label": "Filter by action" } as any}
           >
             <MenuItem value="">All</MenuItem>
             {DISPOSITIONS.map((d) => (
-              <MenuItem key={d} value={d}>{d}</MenuItem>
+              <MenuItem key={d} value={d}>{label(d)}</MenuItem>
             ))}
           </TextField>
           <TextField
@@ -339,10 +340,10 @@ export default function InboxView(props: InboxViewProps) {
                 value={bulkDisposition}
                 onChange={(e) => setBulkDisposition(e.target.value)}
                 sx={{ minWidth: 180 }}
-                aria-label="Bulk disposition"
+                aria-label="Bulk action"
               >
                 {DISPOSITIONS.filter((d) => d !== "pending").map((d) => (
-                  <MenuItem key={d} value={d}>{d}</MenuItem>
+                  <MenuItem key={d} value={d}>{label(d)}</MenuItem>
                 ))}
               </Select>
               <Select
@@ -350,10 +351,10 @@ export default function InboxView(props: InboxViewProps) {
                 value={bulkReviewStatus}
                 onChange={(e) => setBulkReviewStatus(e.target.value)}
                 sx={{ minWidth: 150 }}
-                aria-label="Bulk review status"
+                aria-label="Bulk status"
               >
                 {(["in_review", "actioned", "dismissed"] as const).map((s) => (
-                  <MenuItem key={s} value={s}>{s.replace("_", " ")}</MenuItem>
+                  <MenuItem key={s} value={s}>{label(s)}</MenuItem>
                 ))}
               </Select>
               <Button
@@ -513,7 +514,7 @@ export default function InboxView(props: InboxViewProps) {
                     <Typography variant="h6">Feedback Detail</Typography>
                     <Chip
                       size="small"
-                      label={selectedFeedback.feedback?.ReviewStatus?.replace("_", " ") || "new"}
+                      label={label(selectedFeedback.feedback?.ReviewStatus || "new")}
                       color={
                         selectedFeedback.feedback?.ReviewStatus === "actioned"
                           ? "success"
@@ -624,7 +625,7 @@ export default function InboxView(props: InboxViewProps) {
                     <Grid item xs={12} md={6}>
                       <Paper variant="outlined" sx={{ p: 2, height: "100%" }}>
                         <Typography variant="subtitle2" gutterBottom color="text.secondary">
-                          AI Diagnosis
+                          AI Analysis
                         </Typography>
                         <Typography variant="body2" sx={{ mb: 1.5 }}>
                           {selectedFeedback.feedback?.Analysis?.summary || "No analysis available."}
@@ -636,12 +637,12 @@ export default function InboxView(props: InboxViewProps) {
                             return chipInfo ? (
                               <Chip size="small" label={chipInfo.label} color={chipInfo.color} />
                             ) : (
-                              <Chip size="small" label={rc || "unknown"} />
+                              <Chip size="small" label={label(rc) || "unknown"} />
                             );
                           })()}
                           <Chip
                             size="small"
-                            label={`Action: ${selectedFeedback.feedback?.Analysis?.recommendedAction || "pending"}`}
+                            label={label(selectedFeedback.feedback?.Analysis?.recommendedAction || "pending")}
                             variant="outlined"
                           />
                           {selectedFeedback.feedback?.Analysis?.confidence != null && (
@@ -659,7 +660,7 @@ export default function InboxView(props: InboxViewProps) {
                           select
                           fullWidth
                           size="small"
-                          label="Disposition"
+                          label="Action"
                           value={selectedFeedback.feedback?.Disposition || "pending"}
                           onChange={(e) =>
                             onSelectFeedback({
@@ -672,14 +673,14 @@ export default function InboxView(props: InboxViewProps) {
                           }
                         >
                           {DISPOSITIONS.map((d) => (
-                            <MenuItem key={d} value={d}>{d}</MenuItem>
+                            <MenuItem key={d} value={d}>{label(d)}</MenuItem>
                           ))}
                         </TextField>
                         <TextField
                           select
                           fullWidth
                           size="small"
-                          label="Review status"
+                          label="Status"
                           sx={{ mt: 1.5 }}
                           value={selectedFeedback.feedback?.ReviewStatus || "in_review"}
                           onChange={(e) =>
@@ -693,7 +694,7 @@ export default function InboxView(props: InboxViewProps) {
                           }
                         >
                           {REVIEW_STATUSES.map((s) => (
-                            <MenuItem key={s} value={s}>{s.replace("_", " ")}</MenuItem>
+                            <MenuItem key={s} value={s}>{label(s)}</MenuItem>
                           ))}
                         </TextField>
                         <TextField
@@ -734,10 +735,10 @@ export default function InboxView(props: InboxViewProps) {
                             Save review
                           </Button>
                           <Button size="small" onClick={handleReanalyze} disabled={actionLoading}>
-                            Re-analyze
+                            Run AI analysis
                           </Button>
                           <Button size="small" onClick={handlePromoteCandidate} disabled={actionLoading}>
-                            Promote to candidate
+                            Add to watchlist
                           </Button>
                         </Stack>
                       </Paper>

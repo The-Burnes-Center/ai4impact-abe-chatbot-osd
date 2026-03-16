@@ -33,12 +33,13 @@ import {
   InboxFilters,
   ActivityLogEntry,
   formatDate,
+  label,
 } from "./types";
 
 type TabValue = "inbox" | "clusters" | "prompts" | "monitoring" | "sources";
 
 export default function FeedbackOpsPage() {
-  useDocumentTitle("Feedback Ops");
+  useDocumentTitle("Feedback Manager");
   const { feedbackId } = useParams();
   const appContext = useContext(AppContext);
   const { addNotification } = useNotifications();
@@ -144,19 +145,19 @@ export default function FeedbackOpsPage() {
 
   return (
     <AdminPageLayout
-      title="Feedback Ops"
-      description="Triaging, clustering, prompt improvement, and monitoring for ABE."
-      breadcrumbLabel="Feedback Ops"
+      title="Feedback Manager"
+      description="Review user feedback, spot trends, and improve ABE's responses."
+      breadcrumbLabel="Feedback Manager"
     >
       <Stack spacing={2.5}>
         {/* Header */}
         <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" gap={1}>
           <Box>
             <Typography variant="h5" fontWeight={700}>
-              Feedback Ops
+              Feedback Manager
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Move from raw complaints to prompt, source, retrieval, and product actions.
+              Review user feedback, spot trends, and improve ABE's responses.
             </Typography>
           </Box>
           <Stack direction="row" gap={1} alignItems="center">
@@ -183,7 +184,7 @@ export default function FeedbackOpsPage() {
           <Grid container spacing={2}>
             <Grid item xs={6} sm={3}>
               <Paper variant="outlined" sx={{ p: 1.5, borderLeft: "3px solid #1976d2" }}>
-                <Typography variant="caption" color="text.secondary" fontWeight={600}>Live Prompt</Typography>
+                <Typography variant="caption" color="text.secondary" fontWeight={600}>Current Prompt</Typography>
                 <Typography variant="body2" fontWeight={700} noWrap>
                   {monitoring.health.livePromptVersionId}
                 </Typography>
@@ -191,13 +192,13 @@ export default function FeedbackOpsPage() {
             </Grid>
             <Grid item xs={6} sm={3}>
               <Paper variant="outlined" sx={{ p: 1.5, borderLeft: "3px solid #2e7d32" }}>
-                <Typography variant="caption" color="text.secondary" fontWeight={600}>Total Feedback</Typography>
+                <Typography variant="caption" color="text.secondary" fontWeight={600}>Total Reports</Typography>
                 <Typography variant="h6" fontWeight={700}>{monitoring.health.totalFeedback}</Typography>
               </Paper>
             </Grid>
             <Grid item xs={6} sm={3}>
               <Paper variant="outlined" sx={{ p: 1.5, borderLeft: `3px solid ${monitoring.health.pendingTriage > 10 ? "#d32f2f" : "#ed6c02"}` }}>
-                <Typography variant="caption" color="text.secondary" fontWeight={600}>Pending Triage</Typography>
+                <Typography variant="caption" color="text.secondary" fontWeight={600}>Needs Review</Typography>
                 <Typography variant="h6" fontWeight={700} color={monitoring.health.pendingTriage > 10 ? "error" : "text.primary"}>
                   {monitoring.health.pendingTriage}
                 </Typography>
@@ -205,7 +206,7 @@ export default function FeedbackOpsPage() {
             </Grid>
             <Grid item xs={6} sm={3}>
               <Paper variant="outlined" sx={{ p: 1.5, borderLeft: `3px solid ${monitoring.health.negativeRate > 0.5 ? "#d32f2f" : "#9e9e9e"}` }}>
-                <Typography variant="caption" color="text.secondary" fontWeight={600}>Negative Rate</Typography>
+                <Typography variant="caption" color="text.secondary" fontWeight={600}>Negative %</Typography>
                 <Typography variant="h6" fontWeight={700}>
                   {Math.round(monitoring.health.negativeRate * 100)}%
                 </Typography>
@@ -233,7 +234,7 @@ export default function FeedbackOpsPage() {
                     <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap", minWidth: 130 }}>
                       {formatDate(entry.createdAt)}
                     </Typography>
-                    <Chip size="small" label={entry.action.replace("_", " ")} sx={{ height: 20, fontSize: "0.65rem" }} />
+                    <Chip size="small" label={label(entry.action)} sx={{ height: 20, fontSize: "0.65rem" }} />
                     <Typography variant="caption">
                       {entry.entityType} <strong>{entry.entityId.slice(0, 12)}</strong>
                       {entry.actor && ` by ${entry.actor}`}
@@ -258,7 +259,7 @@ export default function FeedbackOpsPage() {
               value="inbox"
               label={
                 <Stack direction="row" gap={0.75} alignItems="center">
-                  Inbox
+                  Feedback
                   {pendingCount > 0 && (
                     <Chip
                       size="small"
@@ -270,10 +271,10 @@ export default function FeedbackOpsPage() {
                 </Stack>
               }
             />
-            <Tab value="clusters" label="Clusters" />
-            <Tab value="prompts" label="Prompt Workspace" />
-            <Tab value="monitoring" label="Monitoring" />
-            <Tab value="sources" label="Source Triage" />
+            <Tab value="clusters" label="Patterns" />
+            <Tab value="prompts" label="Prompts" />
+            <Tab value="monitoring" label="Dashboard" />
+            <Tab value="sources" label="Documents" />
           </Tabs>
         </Paper>
 

@@ -15,7 +15,7 @@ import {
 import MonitorHeartOutlinedIcon from "@mui/icons-material/MonitorHeartOutlined";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
-import { MonitoringData, formatDate } from "./types";
+import { MonitoringData, formatDate, label } from "./types";
 
 interface MonitoringViewProps {
   monitoring: MonitoringData | null;
@@ -152,14 +152,14 @@ export default function MonitoringView({ monitoring, loading }: MonitoringViewPr
       <Grid container spacing={2}>
         <Grid item xs={6} md={3}>
           <StatCard
-            label="Total feedback"
+            label="Total reports"
             value={overview.totalFeedback}
             color="#1976d2"
           />
         </Grid>
         <Grid item xs={6} md={3}>
           <StatCard
-            label="Core monitoring"
+            label="Watchlist"
             value={monitoring.coreMonitoringSet.count}
             subtitle="Admin curated"
             color="#2e7d32"
@@ -167,7 +167,7 @@ export default function MonitoringView({ monitoring, loading }: MonitoringViewPr
         </Grid>
         <Grid item xs={6} md={3}>
           <StatCard
-            label="Candidates"
+            label="Suggested watches"
             value={monitoring.candidateSet.count}
             subtitle="From feedback"
             color="#ed6c02"
@@ -175,9 +175,9 @@ export default function MonitoringView({ monitoring, loading }: MonitoringViewPr
         </Grid>
         <Grid item xs={6} md={3}>
           <StatCard
-            label="Pending triage"
+            label="Needs review"
             value={overview.dispositionCounts["pending"] || 0}
-            subtitle="Awaiting review"
+            subtitle="Awaiting action"
             color="#9e9e9e"
           />
         </Grid>
@@ -188,16 +188,16 @@ export default function MonitoringView({ monitoring, loading }: MonitoringViewPr
         <Grid item xs={12} md={6}>
           <Paper variant="outlined" sx={{ p: 2 }}>
             <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-              Disposition Mix
+              Actions Summary
             </Typography>
             <Stack direction="row" gap={0.5} sx={{ mb: 2, borderRadius: 1, overflow: "hidden" }}>
-              {Object.entries(overview.dispositionCounts).map(([label, count]) => (
+              {Object.entries(overview.dispositionCounts).map(([key, count]) => (
                 <BarSegment
-                  key={label}
+                  key={key}
                   value={count}
                   total={totalDisposition}
-                  color={DISPOSITION_COLORS[label] || "#9e9e9e"}
-                  label={label}
+                  color={DISPOSITION_COLORS[key] || "#9e9e9e"}
+                  label={label(key)}
                 />
               ))}
             </Stack>
@@ -205,8 +205,8 @@ export default function MonitoringView({ monitoring, loading }: MonitoringViewPr
               <TableBody>
                 {Object.entries(overview.dispositionCounts)
                   .sort(([, a], [, b]) => b - a)
-                  .map(([label, count]) => (
-                    <TableRow key={label}>
+                  .map(([key, count]) => (
+                    <TableRow key={key}>
                       <TableCell sx={{ py: 0.5 }}>
                         <Stack direction="row" gap={1} alignItems="center">
                           <Box
@@ -214,11 +214,11 @@ export default function MonitoringView({ monitoring, loading }: MonitoringViewPr
                               width: 10,
                               height: 10,
                               borderRadius: "50%",
-                              bgcolor: DISPOSITION_COLORS[label] || "#9e9e9e",
+                              bgcolor: DISPOSITION_COLORS[key] || "#9e9e9e",
                               flexShrink: 0,
                             }}
                           />
-                          {label}
+                          {label(key)}
                         </Stack>
                       </TableCell>
                       <TableCell align="right" sx={{ py: 0.5, fontWeight: 600 }}>
@@ -233,16 +233,16 @@ export default function MonitoringView({ monitoring, loading }: MonitoringViewPr
         <Grid item xs={12} md={6}>
           <Paper variant="outlined" sx={{ p: 2 }}>
             <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-              Root Cause Mix
+              Issue Breakdown
             </Typography>
             <Stack direction="row" gap={0.5} sx={{ mb: 2, borderRadius: 1, overflow: "hidden" }}>
-              {Object.entries(overview.rootCauseCounts).map(([label, count]) => (
+              {Object.entries(overview.rootCauseCounts).map(([key, count]) => (
                 <BarSegment
-                  key={label}
+                  key={key}
                   value={count}
                   total={totalRootCause}
-                  color={ROOT_CAUSE_COLORS[label] || "#9e9e9e"}
-                  label={label}
+                  color={ROOT_CAUSE_COLORS[key] || "#9e9e9e"}
+                  label={label(key)}
                 />
               ))}
             </Stack>
@@ -250,8 +250,8 @@ export default function MonitoringView({ monitoring, loading }: MonitoringViewPr
               <TableBody>
                 {Object.entries(overview.rootCauseCounts)
                   .sort(([, a], [, b]) => b - a)
-                  .map(([label, count]) => (
-                    <TableRow key={label}>
+                  .map(([key, count]) => (
+                    <TableRow key={key}>
                       <TableCell sx={{ py: 0.5 }}>
                         <Stack direction="row" gap={1} alignItems="center">
                           <Box
@@ -259,11 +259,11 @@ export default function MonitoringView({ monitoring, loading }: MonitoringViewPr
                               width: 10,
                               height: 10,
                               borderRadius: "50%",
-                              bgcolor: ROOT_CAUSE_COLORS[label] || "#9e9e9e",
+                              bgcolor: ROOT_CAUSE_COLORS[key] || "#9e9e9e",
                               flexShrink: 0,
                             }}
                           />
-                          {label.replace("_", " ")}
+                          {label(key)}
                         </Stack>
                       </TableCell>
                       <TableCell align="right" sx={{ py: 0.5, fontWeight: 600 }}>

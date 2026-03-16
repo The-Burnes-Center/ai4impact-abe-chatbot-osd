@@ -34,7 +34,11 @@ export class UserFeedbackClient {
       const message =
         typeof body === "string"
           ? body
-          : body?.error || body?.message || "Request failed";
+          : body?.message ||
+            (typeof body?.error === "string" && body.error !== "internal_error"
+              ? body.error
+              : null) ||
+            "Something went wrong. Please try again.";
       throw new Error(message);
     }
 
@@ -132,6 +136,10 @@ export class UserFeedbackClient {
       method: "PUT",
       body: JSON.stringify(payload),
     });
+  }
+
+  async deletePrompt(versionId: string) {
+    return this.request(`/admin/prompts/${versionId}`, { method: "DELETE" });
   }
 
   async publishPrompt(versionId: string) {

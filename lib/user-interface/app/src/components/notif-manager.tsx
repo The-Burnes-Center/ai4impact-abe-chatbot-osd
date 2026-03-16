@@ -1,35 +1,47 @@
 import * as React from "react";
-import { createContext, useState, useContext } from "react";
-import { v4 as uuidv4 } from 'uuid';  // Import the UUID function
+import { createContext, useState, useContext, useCallback, useRef } from "react";
+import { v4 as uuidv4 } from 'uuid';
 
-// Create a context for the notification manager
+const AUTO_HIDE_MS: Record<string, number> = {
+  success: 4000,
+  info: 5000,
+  error: 8000,
+};
+
 export const NotificationContext = createContext({
-  notifications: [],
-  addNotification: (type, content) => {String},
-  removeNotification: (id) => {}
+  notifications: [] as any[],
+  addNotification: (_type: string, _content: string) => "" as string,
+  removeNotification: (_id: string) => {},
 });
 
-export const NotificationProvider = ({ children }) => {
-  const [notifications, setNotifications] = useState([]);
+export const NotificationProvider = ({ children }: { children: React.ReactNode }) => {
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  const addNotification = (type, content) : String => {
-    const id = uuidv4();  // Generate a UUID for each new notification
+  const removeNotification = useCallback((id: string) => {
+    clearTimeout(timersRef.current[id]);
+    delete timersRef.current[id];
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  }, []);
+
+  const addNotification = useCallback((type: string, content: string): string => {
+    const id = uuidv4();
 
     setNotifications(prev => [...prev, {
-      id: id,
-      type: type,
-      content: content,
-      date: new Date().getTime(),
+      id,
+      type,
+      content,
+      date: Date.now(),
       dismissible: true,
       dismissLabel: "Hide notification",
-      onDismiss: () => removeNotification(id)
+      onDismiss: () => removeNotification(id),
     }]);
-    return id;
-  };
 
-  const removeNotification = (id) => {
-    setNotifications(prev => prev.filter(notif => notif.id !== id));
-  };
+    const delay = AUTO_HIDE_MS[type] ?? AUTO_HIDE_MS.info;
+    timersRef.current[id] = setTimeout(() => removeNotification(id), delay);
+
+    return id;
+  }, [removeNotification]);
 
   return (
     <NotificationContext.Provider value={{ notifications, addNotification, removeNotification }}>

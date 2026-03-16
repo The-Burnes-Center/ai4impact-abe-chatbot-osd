@@ -219,7 +219,7 @@ export class ChatBotApi extends Construct {
     });
     restBackend.restAPI.addRoutes({
       path: "/admin/prompts/{versionId}",
-      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.PUT],
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.PUT, apigwv2.HttpMethod.DELETE],
       integration: feedbackAPIIntegration,
       authorizer: httpAuthorizer,
     });

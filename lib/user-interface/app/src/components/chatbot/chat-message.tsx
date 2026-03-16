@@ -38,7 +38,6 @@ import { StreamingStatus } from "../../hooks/useWebSocketChat";
 
 import "../../styles/app.scss";
 import { useNotifications } from "../notif-manager";
-import { Utils } from "../../common/utils";
 
 interface SourceItem {
   chunkIndex: number | null;
@@ -294,9 +293,8 @@ export interface ChatMessageProps {
 
 export default function ChatMessage(props: ChatMessageProps) {
   const [selectedIcon, setSelectedIcon] = useState<1 | 0 | null>(null);
-  const { addNotification, removeNotification } = useNotifications();
+  const { addNotification } = useNotifications();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const [feedbackStep, setFeedbackStep] = useState(0);
   const [selectedIssues, setSelectedIssues] = useState<string[]>([]);
   const [userComment, setUserComment] = useState("");
   const [expectedAnswer, setExpectedAnswer] = useState("");
@@ -355,7 +353,6 @@ export default function ChatMessage(props: ChatMessageProps) {
   };
 
   const resetFeedback = () => {
-    setFeedbackStep(0);
     setSelectedIssues([]);
     setUserComment("");
     setExpectedAnswer("");
@@ -389,32 +386,33 @@ export default function ChatMessage(props: ChatMessageProps) {
     selectedIssues.includes("formatting") ||
     selectedIssues.includes("other");
 
+  const hasContext =
+    userComment.trim().length > 0 ||
+    expectedAnswer.trim().length > 0 ||
+    wrongSnippet.trim().length > 0 ||
+    sourceAssessment.trim().length > 0;
+
   const handleHelpfulClick = async () => {
     if (!canSubmitFeedback) {
-      const id = addNotification("error", "Feedback is only available on new responses.");
-      Utils.delay(3000).then(() => removeNotification(id));
+      addNotification("error", "Feedback is only available on new responses.");
       return;
     }
     try {
       await props.onThumbsUp();
-      const id = addNotification("success", "Helpful feedback saved.");
-      Utils.delay(3000).then(() => removeNotification(id));
+      addNotification("success", "Helpful feedback saved.");
       setSelectedIcon(1);
     } catch (error: any) {
-      const id = addNotification("error", error?.message || "Could not save feedback.");
-      Utils.delay(3000).then(() => removeNotification(id));
+      addNotification("error", error?.message || "Could not save feedback.");
     }
   };
 
   const handleNegativeSubmit = async () => {
     if (!canSubmitFeedback) {
-      const id = addNotification("error", "Feedback is only available on new responses.");
-      Utils.delay(3000).then(() => removeNotification(id));
+      addNotification("error", "Feedback is only available on new responses.");
       return;
     }
     if (selectedIssues.length === 0) {
-      const id = addNotification("error", "Select at least one issue.");
-      Utils.delay(3000).then(() => removeNotification(id));
+      addNotification("error", "Select at least one issue.");
       return;
     }
     setSubmittingFeedback(true);
@@ -430,14 +428,12 @@ export default function ChatMessage(props: ChatMessageProps) {
       setFeedbackOpen(false);
       resetFeedback();
       setSelectedIcon(0);
-      const id = addNotification(
+      addNotification(
         "success",
-        regenerateRequested ? "Feedback saved. ABE is trying again with your clarification." : "Feedback saved."
+        regenerateRequested ? "Feedback saved. ABE is retrying your question." : "Feedback saved. Thank you!"
       );
-      Utils.delay(3000).then(() => removeNotification(id));
     } catch (error: any) {
-      const id = addNotification("error", error?.message || "Could not submit feedback.");
-      Utils.delay(3000).then(() => removeNotification(id));
+      addNotification("error", error?.message || "Could not submit feedback.");
     } finally {
       setSubmittingFeedback(false);
     }
@@ -445,49 +441,49 @@ export default function ChatMessage(props: ChatMessageProps) {
 
   return (
     <div>
-      <Drawer anchor="bottom" open={feedbackOpen} onClose={() => { setFeedbackOpen(false); resetFeedback(); }}>
-        <Box sx={{ maxWidth: 900, mx: "auto", width: "100%", p: 3 }}>
-          <Stack spacing={2.5}>
-            <Box>
-              <Typography variant="h6" fontWeight={700}>Tell us what went wrong</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Step {feedbackStep + 1} of 3. This feedback links to the exact response, prompt version, and sources that produced the answer.
-              </Typography>
-            </Box>
-            {feedbackStep === 0 && (
-              <Stack spacing={2}>
-                <Typography variant="body2">Choose one or more issues.</Typography>
-                <Stack direction="row" gap={1} flexWrap="wrap">
-                  {issueOptions.map((issue) => (
-                    <Chip
-                      key={issue.id}
-                      label={issue.label}
-                      color={selectedIssues.includes(issue.id) ? "primary" : "default"}
-                      variant={selectedIssues.includes(issue.id) ? "filled" : "outlined"}
-                      onClick={() => toggleIssue(issue.id)}
-                    />
-                  ))}
-                </Stack>
-              </Stack>
-            )}
-            {feedbackStep === 1 && (
-              <Stack spacing={2}>
+      <Drawer
+        anchor="bottom"
+        open={feedbackOpen}
+        onClose={() => { setFeedbackOpen(false); resetFeedback(); }}
+        PaperProps={{ sx: { maxHeight: "60vh", borderTopLeftRadius: 16, borderTopRightRadius: 16 } }}
+      >
+        <Box sx={{ maxWidth: 640, mx: "auto", width: "100%", p: 3, overflow: "auto" }}>
+          <Stack spacing={2}>
+            <Typography variant="subtitle1" fontWeight={700}>Help us improve</Typography>
+
+            <Stack direction="row" gap={0.75} flexWrap="wrap">
+              {issueOptions.map((issue) => (
+                <Chip
+                  key={issue.id}
+                  label={issue.label}
+                  size="small"
+                  color={selectedIssues.includes(issue.id) ? "primary" : "default"}
+                  variant={selectedIssues.includes(issue.id) ? "filled" : "outlined"}
+                  onClick={() => toggleIssue(issue.id)}
+                />
+              ))}
+            </Stack>
+
+            {selectedIssues.length > 0 && (
+              <Stack spacing={1.5}>
                 {selectedIssues.includes("incorrect") && (
                   <TextField
-                    label="What part was incorrect?"
+                    label="What was incorrect?"
                     value={wrongSnippet}
-                    onChange={(event) => setWrongSnippet(event.target.value)}
+                    onChange={(e) => setWrongSnippet(e.target.value)}
                     fullWidth
+                    size="small"
                     multiline
                     minRows={2}
                   />
                 )}
                 {selectedIssues.includes("missing") && (
                   <TextField
-                    label="What answer or fact did you expect?"
+                    label="What did you expect?"
                     value={expectedAnswer}
-                    onChange={(event) => setExpectedAnswer(event.target.value)}
+                    onChange={(e) => setExpectedAnswer(e.target.value)}
                     fullWidth
+                    size="small"
                     multiline
                     minRows={2}
                   />
@@ -496,93 +492,54 @@ export default function ChatMessage(props: ChatMessageProps) {
                   <TextField
                     label="What was wrong with the source?"
                     value={sourceAssessment}
-                    onChange={(event) => setSourceAssessment(event.target.value)}
+                    onChange={(e) => setSourceAssessment(e.target.value)}
                     fullWidth
+                    size="small"
                     multiline
                     minRows={2}
-                    placeholder="Missing, irrelevant, outdated, contradictory..."
+                    placeholder="Missing, outdated, contradictory..."
                   />
                 )}
-                {needsComment && (
+                {(needsComment || (!selectedIssues.includes("incorrect") && !selectedIssues.includes("missing") && !selectedIssues.includes("bad_source"))) && (
                   <TextField
-                    label="Tell us more"
+                    label="Anything else?"
                     value={userComment}
-                    onChange={(event) => setUserComment(event.target.value)}
+                    onChange={(e) => setUserComment(e.target.value)}
                     fullWidth
+                    size="small"
                     multiline
-                    minRows={3}
+                    minRows={2}
                   />
                 )}
-                {!needsComment &&
-                  !selectedIssues.includes("incorrect") &&
-                  !selectedIssues.includes("missing") &&
-                  !selectedIssues.includes("bad_source") && (
-                    <TextField
-                      label="Additional context"
-                      value={userComment}
-                      onChange={(event) => setUserComment(event.target.value)}
-                      fullWidth
-                      multiline
-                      minRows={3}
-                    />
-                  )}
-              </Stack>
-            )}
-            {feedbackStep === 2 && (
-              <Stack spacing={2}>
-                <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Typography variant="subtitle2" gutterBottom>Issue summary</Typography>
-                  <Stack direction="row" gap={1} flexWrap="wrap" sx={{ mb: 1.5 }}>
-                    {selectedIssues.map((issue) => {
-                      const label = issueOptions.find((option) => option.id === issue)?.label || issue;
-                      return <Chip key={issue} label={label} size="small" />;
-                    })}
-                  </Stack>
-                  {wrongSnippet && <Typography variant="body2"><strong>Incorrect:</strong> {wrongSnippet}</Typography>}
-                  {expectedAnswer && <Typography variant="body2"><strong>Expected:</strong> {expectedAnswer}</Typography>}
-                  {sourceAssessment && <Typography variant="body2"><strong>Source issue:</strong> {sourceAssessment}</Typography>}
-                  {userComment && <Typography variant="body2"><strong>Details:</strong> {userComment}</Typography>}
-                </Paper>
-                <Chip
-                  label={regenerateRequested ? "Retry requested" : "Try again with my clarification"}
-                  color={regenerateRequested ? "primary" : "default"}
-                  variant={regenerateRequested ? "filled" : "outlined"}
-                  onClick={() => setRegenerateRequested((value) => !value)}
-                />
-                <Typography variant="body2" color="text.secondary">
-                  If enabled, ABE will immediately answer the previous question again using the clarification you provided here.
-                </Typography>
-              </Stack>
-            )}
-            <Divider />
-            <Stack direction="row" justifyContent="space-between" gap={1}>
-              <Button
-                onClick={() => {
-                  if (feedbackStep === 0) {
-                    setFeedbackOpen(false);
-                    resetFeedback();
-                  } else {
-                    setFeedbackStep((step) => Math.max(0, step - 1));
-                  }
-                }}
-              >
-                {feedbackStep === 0 ? "Cancel" : "Back"}
-              </Button>
-              <Stack direction="row" gap={1}>
-                {feedbackStep < 2 ? (
-                  <Button
-                    variant="contained"
-                    onClick={() => setFeedbackStep((step) => Math.min(2, step + 1))}
-                    disabled={feedbackStep === 0 && selectedIssues.length === 0}
-                  >
-                    Continue
-                  </Button>
-                ) : (
-                  <Button variant="contained" onClick={handleNegativeSubmit} disabled={submittingFeedback}>
-                    {submittingFeedback ? "Submitting..." : "Submit feedback"}
-                  </Button>
+
+                {hasContext && (
+                  <Chip
+                    label={regenerateRequested ? "Will retry with your corrections" : "Also retry my question"}
+                    size="small"
+                    color={regenerateRequested ? "primary" : "default"}
+                    variant={regenerateRequested ? "filled" : "outlined"}
+                    onClick={() => setRegenerateRequested((v) => !v)}
+                    sx={{ alignSelf: "flex-start" }}
+                  />
                 )}
               </Stack>
+            )}
+
+            <Stack direction="row" justifyContent="flex-end" gap={1}>
+              <Button
+                size="small"
+                onClick={() => { setFeedbackOpen(false); resetFeedback(); }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={handleNegativeSubmit}
+                disabled={selectedIssues.length === 0 || submittingFeedback}
+              >
+                {submittingFeedback ? "Sending..." : "Send Feedback"}
+              </Button>
             </Stack>
           </Stack>
         </Box>
