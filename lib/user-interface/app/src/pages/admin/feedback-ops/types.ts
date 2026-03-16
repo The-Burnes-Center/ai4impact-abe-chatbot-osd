@@ -201,8 +201,8 @@ export const REVIEW_STATUSES = [
 ] as const;
 
 export const LABELS: Record<string, string> = {
-  // Dispositions (actions)
-  "pending": "Pending",
+  // Dispositions (what action to take)
+  "pending": "Needs review",
   "prompt update": "Fix prompt",
   "KB/source fix": "Fix document",
   "retrieval/config issue": "Fix search",
@@ -218,11 +218,11 @@ export const LABELS: Record<string, string> = {
   "positive_signal": "Positive",
   "unknown": "Unknown",
 
-  // Review statuses
+  // Review statuses (simple workflow)
   "new": "New",
-  "analyzed": "Analyzed",
-  "in_review": "In review",
-  "actioned": "Done",
+  "analyzed": "New",
+  "in_review": "Reviewing",
+  "actioned": "Resolved",
   "dismissed": "Dismissed",
 };
 

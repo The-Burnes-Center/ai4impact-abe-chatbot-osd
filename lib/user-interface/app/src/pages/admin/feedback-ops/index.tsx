@@ -4,7 +4,6 @@ import {
   Box,
   Button,
   Chip,
-  Collapse,
   Drawer,
   IconButton,
   Paper,
@@ -15,7 +14,6 @@ import {
   Typography,
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import TimelineIcon from "@mui/icons-material/Timeline";
 import CloseIcon from "@mui/icons-material/Close";
 import AdminPageLayout from "../../../components/admin-page-layout";
@@ -146,7 +144,12 @@ export default function FeedbackOpsPage() {
     setTab("prompts");
   }, []);
 
-  const pendingCount = feedbackItems.filter((i) => i.disposition === "pending").length;
+  const negativeFeedback = useMemo(
+    () => feedbackItems.filter((i) => i.feedbackKind !== "helpful"),
+    [feedbackItems]
+  );
+
+  const pendingCount = negativeFeedback.filter((i) => i.disposition === "pending").length;
 
   return (
     <AdminPageLayout
@@ -230,7 +233,7 @@ export default function FeedbackOpsPage() {
         {/* Views */}
         {tab === "queue" && (
           <InboxView
-            feedbackItems={feedbackItems}
+            feedbackItems={negativeFeedback}
             selectedFeedback={selectedFeedback}
             filters={filters}
             loading={loading}

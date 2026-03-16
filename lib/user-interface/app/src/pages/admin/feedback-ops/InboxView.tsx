@@ -28,7 +28,6 @@ import {
 import NavigateBeforeIcon from "@mui/icons-material/NavigateBefore";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import FilterAltOffIcon from "@mui/icons-material/FilterAltOff";
 import InboxOutlinedIcon from "@mui/icons-material/InboxOutlined";
 import CloseIcon from "@mui/icons-material/Close";
 import SkipNextIcon from "@mui/icons-material/SkipNext";
@@ -38,8 +37,6 @@ import {
   InboxFilters,
   MonitoringData,
   HealthSummary,
-  DISPOSITIONS,
-  REVIEW_STATUSES,
   formatDate,
   label,
 } from "./types";
@@ -98,15 +95,15 @@ function EmptyInbox() {
   );
 }
 
-function HealthCards({ health }: { health: HealthSummary }) {
+function HealthCards({ health, itemCount, pendingCount }: { health: HealthSummary; itemCount: number; pendingCount: number }) {
   return (
     <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
       <Grid item xs={6} sm={3}>
         <Paper variant="outlined" sx={{ p: 1.5, borderLeft: "3px solid", borderLeftColor: "primary.main" }}>
           <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, fontSize: "0.75rem" }}>
-            Total Reports
+            Negative Reports
           </Typography>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>{health.totalFeedback}</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>{itemCount}</Typography>
         </Paper>
       </Grid>
       <Grid item xs={6} sm={3}>
@@ -115,7 +112,7 @@ function HealthCards({ health }: { health: HealthSummary }) {
           sx={{
             p: 1.5,
             borderLeft: "3px solid",
-            borderLeftColor: health.pendingTriage > 10 ? "error.main" : "warning.main",
+            borderLeftColor: pendingCount > 10 ? "error.main" : "warning.main",
           }}
         >
           <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, fontSize: "0.75rem" }}>
@@ -124,9 +121,9 @@ function HealthCards({ health }: { health: HealthSummary }) {
           <Typography
             variant="h6"
             sx={{ fontWeight: 700 }}
-            color={health.pendingTriage > 10 ? "error.main" : "text.primary"}
+            color={pendingCount > 10 ? "error.main" : "text.primary"}
           >
-            {health.pendingTriage}
+            {pendingCount}
           </Typography>
         </Paper>
       </Grid>
@@ -180,7 +177,6 @@ export default function InboxView(props: InboxViewProps) {
 
   const navigate = useNavigate();
   const { addNotification } = useNotifications();
-  const [bulkDisposition, setBulkDisposition] = useState("prompt update");
   const [bulkReviewStatus, setBulkReviewStatus] = useState("in_review");
   const [owner, setOwner] = useState("");
   const [resolutionNote, setResolutionNote] = useState("");
@@ -277,7 +273,6 @@ export default function InboxView(props: InboxViewProps) {
       await Promise.all(
         selectedFeedbackIds.map((id) =>
           apiClient.userFeedback.setFeedbackDisposition(id, {
-            disposition: bulkDisposition,
             reviewStatus: bulkReviewStatus,
           })
         )
@@ -346,20 +341,6 @@ export default function InboxView(props: InboxViewProps) {
     }
   };
 
-  const handlePromoteCandidate = async () => {
-    if (!apiClient || !selectedFeedback?.feedback?.FeedbackId) return;
-    try {
-      setActionLoading(true);
-      await apiClient.userFeedback.promoteToCandidate(selectedFeedback.feedback.FeedbackId);
-      await onFeedbackUpdated();
-      addNotification("success", "Added to watchlist.");
-    } catch (error: any) {
-      addNotification("error", error?.message || "Could not add to watchlist.");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const toggleSelectAll = () => {
     if (selectedFeedbackIds.length === feedbackItems.length) {
       onSelectedFeedbackIdsChange([]);
@@ -384,10 +365,16 @@ export default function InboxView(props: InboxViewProps) {
       {(loading || actionLoading) && <LinearProgress sx={{ borderRadius: 1 }} />}
 
       {/* Health cards */}
-      {monitoring?.health && <HealthCards health={monitoring.health} />}
+      {monitoring?.health && (
+        <HealthCards
+          health={monitoring.health}
+          itemCount={feedbackItems.length}
+          pendingCount={feedbackItems.filter((i) => i.disposition === "pending").length}
+        />
+      )}
 
       {/* Quick filters */}
-      <Stack direction="row" gap={1} flexWrap="wrap">
+      <Stack direction="row" gap={1} flexWrap="wrap" alignItems="center">
         <Chip
           label="Needs review"
           size="small"
@@ -417,46 +404,33 @@ export default function InboxView(props: InboxViewProps) {
       </Stack>
 
       {/* Filters */}
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <Stack direction={{ xs: "column", md: "row" }} gap={1.5} flexWrap="wrap" alignItems={{ md: "flex-end" }}>
+      <Paper variant="outlined" sx={{ p: 1.5 }}>
+        <Stack direction="row" gap={1.5} flexWrap="wrap" alignItems="center">
           <TextField
             select
             size="small"
             label="Status"
             value={filters.reviewStatus}
             onChange={(e) => updateFilter("reviewStatus", e.target.value)}
-            sx={{ minWidth: 140 }}
+            sx={{ minWidth: 130 }}
             inputProps={{ "aria-label": "Filter by review status" }}
           >
-            <MenuItem value="">All statuses</MenuItem>
-            {REVIEW_STATUSES.map((s) => (
-              <MenuItem key={s} value={s}>{label(s)}</MenuItem>
-            ))}
+            <MenuItem value="">Any</MenuItem>
+            <MenuItem value="new">New</MenuItem>
+            <MenuItem value="in_review">Reviewing</MenuItem>
+            <MenuItem value="actioned">Resolved</MenuItem>
+            <MenuItem value="dismissed">Dismissed</MenuItem>
           </TextField>
           <TextField
             select
             size="small"
-            label="Action"
-            value={filters.disposition}
-            onChange={(e) => updateFilter("disposition", e.target.value)}
-            sx={{ minWidth: 160 }}
-            inputProps={{ "aria-label": "Filter by action type" }}
-          >
-            <MenuItem value="">All actions</MenuItem>
-            {DISPOSITIONS.map((d) => (
-              <MenuItem key={d} value={d}>{label(d)}</MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            select
-            size="small"
-            label="Issue"
+            label="Issue type"
             value={filters.issueTag}
             onChange={(e) => updateFilter("issueTag", e.target.value)}
-            sx={{ minWidth: 140 }}
-            inputProps={{ "aria-label": "Filter by issue tag" }}
+            sx={{ minWidth: 130 }}
+            inputProps={{ "aria-label": "Filter by issue type" }}
           >
-            <MenuItem value="">All issues</MenuItem>
+            <MenuItem value="">Any</MenuItem>
             {ISSUE_TAG_OPTIONS.map((tag) => (
               <MenuItem key={tag} value={tag}>{label(tag)}</MenuItem>
             ))}
@@ -468,10 +442,10 @@ export default function InboxView(props: InboxViewProps) {
               label="Source document"
               value={filters.sourceTitle}
               onChange={(e) => updateFilter("sourceTitle", e.target.value)}
-              sx={{ minWidth: 160 }}
+              sx={{ minWidth: 160, maxWidth: 220 }}
               inputProps={{ "aria-label": "Filter by source document" }}
             >
-              <MenuItem value="">All documents</MenuItem>
+              <MenuItem value="">Any</MenuItem>
               {knownSourceTitles.map((t) => (
                 <MenuItem key={t} value={t}>{t}</MenuItem>
               ))}
@@ -484,8 +458,7 @@ export default function InboxView(props: InboxViewProps) {
             value={filters.dateFrom}
             onChange={(e) => updateFilter("dateFrom", e.target.value)}
             InputLabelProps={{ shrink: true }}
-            helperText="MM/DD/YYYY"
-            sx={{ minWidth: 140 }}
+            sx={{ width: 150 }}
             inputProps={{ "aria-label": "Filter from date" }}
           />
           <TextField
@@ -495,18 +468,18 @@ export default function InboxView(props: InboxViewProps) {
             value={filters.dateTo}
             onChange={(e) => updateFilter("dateTo", e.target.value)}
             InputLabelProps={{ shrink: true }}
-            helperText="MM/DD/YYYY"
-            sx={{ minWidth: 140 }}
+            sx={{ width: 150 }}
             inputProps={{ "aria-label": "Filter to date" }}
           />
           <Tooltip title="Refresh">
             <IconButton
               onClick={onRefresh}
               disabled={loading}
+              size="small"
               aria-label="Refresh feedback list"
               sx={{ "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 } }}
             >
-              <RefreshIcon />
+              <RefreshIcon fontSize="small" />
             </IconButton>
           </Tooltip>
         </Stack>
@@ -515,34 +488,24 @@ export default function InboxView(props: InboxViewProps) {
         {selectedFeedbackIds.length > 0 && (
           <>
             <Divider sx={{ my: 2 }} />
-            <Stack direction={{ xs: "column", md: "row" }} gap={1.5} alignItems={{ md: "center" }}>
+            <Stack direction="row" gap={1.5} alignItems="center" flexWrap="wrap">
               <Chip
                 label={`${selectedFeedbackIds.length} selected`}
                 color="primary"
                 size="small"
                 sx={{ fontWeight: 600, fontSize: "0.75rem", height: 26 }}
               />
-              <Select
-                size="small"
-                value={bulkDisposition}
-                onChange={(e) => setBulkDisposition(e.target.value)}
-                sx={{ minWidth: 160 }}
-                aria-label="Bulk action type"
-              >
-                {DISPOSITIONS.filter((d) => d !== "pending").map((d) => (
-                  <MenuItem key={d} value={d}>{label(d)}</MenuItem>
-                ))}
-              </Select>
+              <Typography variant="body2" sx={{ fontSize: "0.8125rem" }}>Mark as:</Typography>
               <Select
                 size="small"
                 value={bulkReviewStatus}
                 onChange={(e) => setBulkReviewStatus(e.target.value)}
-                sx={{ minWidth: 140 }}
+                sx={{ minWidth: 130 }}
                 aria-label="Bulk review status"
               >
-                {(["in_review", "actioned", "dismissed"] as const).map((s) => (
-                  <MenuItem key={s} value={s}>{label(s)}</MenuItem>
-                ))}
+                <MenuItem value="in_review">Reviewing</MenuItem>
+                <MenuItem value="actioned">Resolved</MenuItem>
+                <MenuItem value="dismissed">Dismissed</MenuItem>
               </Select>
               <Button
                 variant="contained"
@@ -587,7 +550,6 @@ export default function InboxView(props: InboxViewProps) {
                 <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem" }}>Date</TableCell>
                 <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem" }}>Question</TableCell>
                 <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem" }}>Issues</TableCell>
-                <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem" }} align="center">Similar</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -637,8 +599,8 @@ export default function InboxView(props: InboxViewProps) {
                               : item.reviewStatus === "in_review" ? "info"
                                 : "warning"
                         }
-                        variant="outlined"
-                        sx={{ height: 22, fontSize: "0.75rem" }}
+                        variant={item.reviewStatus === "actioned" || item.reviewStatus === "dismissed" ? "filled" : "outlined"}
+                        sx={{ height: 24, fontSize: "0.75rem" }}
                       />
                     </TableCell>
                     <TableCell sx={{ whiteSpace: "nowrap", fontSize: "0.8125rem" }}>
@@ -659,11 +621,6 @@ export default function InboxView(props: InboxViewProps) {
                         ))}
                       </Stack>
                     </TableCell>
-                    <TableCell align="center">
-                      {(item.recurrenceCount ?? 0) > 1 && (
-                        <Chip size="small" label={item.recurrenceCount} color="warning" variant="outlined" sx={{ height: 22, fontSize: "0.75rem" }} />
-                      )}
-                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -671,7 +628,7 @@ export default function InboxView(props: InboxViewProps) {
             {totalPages > 1 && (
               <TableFooter>
                 <TableRow>
-                  <TableCell colSpan={6}>
+                  <TableCell colSpan={5}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center">
                       <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
                         {feedbackItems.length} items — Page {page + 1} of {totalPages}
@@ -733,10 +690,11 @@ export default function InboxView(props: InboxViewProps) {
                   color={
                     selectedFeedback.feedback?.ReviewStatus === "actioned" ? "success"
                       : selectedFeedback.feedback?.ReviewStatus === "dismissed" ? "default"
-                        : "info"
+                        : selectedFeedback.feedback?.ReviewStatus === "in_review" ? "info"
+                          : "warning"
                   }
-                  variant="outlined"
-                  sx={{ height: 22, fontSize: "0.75rem" }}
+                  variant={selectedFeedback.feedback?.ReviewStatus === "actioned" || selectedFeedback.feedback?.ReviewStatus === "dismissed" ? "filled" : "outlined"}
+                  sx={{ height: 24, fontSize: "0.75rem" }}
                 />
               </Stack>
               <IconButton size="small" onClick={handleCloseDetail} aria-label="Close detail panel">
@@ -879,27 +837,15 @@ export default function InboxView(props: InboxViewProps) {
                   select
                   fullWidth
                   size="small"
-                  label="Action"
-                  value={reviewDisposition}
-                  onChange={(e) => setReviewDisposition(e.target.value)}
-                  inputProps={{ "aria-label": "Select action for this feedback" }}
-                >
-                  {DISPOSITIONS.map((d) => (
-                    <MenuItem key={d} value={d}>{label(d)}</MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  select
-                  fullWidth
-                  size="small"
                   label="Status"
                   value={reviewStatus}
                   onChange={(e) => setReviewStatus(e.target.value)}
                   inputProps={{ "aria-label": "Select review status" }}
                 >
-                  {REVIEW_STATUSES.map((s) => (
-                    <MenuItem key={s} value={s}>{label(s)}</MenuItem>
-                  ))}
+                  <MenuItem value="new">New</MenuItem>
+                  <MenuItem value="in_review">Reviewing</MenuItem>
+                  <MenuItem value="actioned">Resolved</MenuItem>
+                  <MenuItem value="dismissed">Dismissed</MenuItem>
                 </TextField>
                 <TextField
                   fullWidth
@@ -1027,14 +973,6 @@ export default function InboxView(props: InboxViewProps) {
                 sx={{ fontSize: "0.8125rem" }}
               >
                 Re-analyze
-              </Button>
-              <Button
-                size="small"
-                onClick={handlePromoteCandidate}
-                disabled={actionLoading}
-                sx={{ fontSize: "0.8125rem" }}
-              >
-                Watchlist
               </Button>
             </Stack>
           </Box>

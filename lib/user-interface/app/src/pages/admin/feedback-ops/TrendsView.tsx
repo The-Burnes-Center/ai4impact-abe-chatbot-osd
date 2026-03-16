@@ -242,9 +242,13 @@ export default function TrendsView({ monitoring, loading, onCreateDraftFromClust
         </Grid>
         <Grid item xs={6} md={3}>
           <StatCard
-            title="Watchlist"
-            value={monitoring.coreMonitoringSet.count + monitoring.candidateSet.count}
-            subtitle={`${monitoring.coreMonitoringSet.count} curated, ${monitoring.candidateSet.count} suggested`}
+            title="Resolved"
+            value={
+              (overview.dispositionCounts["prompt update"] || 0) +
+              (overview.dispositionCounts["KB/source fix"] || 0) +
+              (overview.dispositionCounts["retrieval/config issue"] || 0)
+            }
+            subtitle="Action taken"
             accent="success"
           />
         </Grid>
