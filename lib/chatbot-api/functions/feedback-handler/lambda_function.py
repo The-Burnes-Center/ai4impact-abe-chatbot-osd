@@ -189,7 +189,14 @@ def parse_sources(value: Any) -> list[dict[str, Any]]:
 
 
 def source_titles_from_trace(trace: dict[str, Any]) -> list[str]:
-    return [source.get("title", "Untitled source") for source in parse_sources(trace.get("Sources")) if source.get("title")]
+    seen: set[str] = set()
+    titles: list[str] = []
+    for source in parse_sources(trace.get("Sources")):
+        title = source.get("title")
+        if title and title not in seen:
+            seen.add(title)
+            titles.append(title)
+    return titles
 
 
 def build_follow_up_questions(issue_tags: list[str]) -> list[dict[str, str]]:
@@ -666,7 +673,7 @@ def set_disposition(event: dict[str, Any], feedback_id: str):
     item["ResolutionNote"] = str(payload.get("resolutionNote", item.get("ResolutionNote", ""))).strip()
     item["AdminNotes"] = str(payload.get("adminNotes", item.get("AdminNotes", ""))).strip()
     item["UpdatedAt"] = utc_now_iso()
-    feedback_records_table.put_item(Item=item)
+    feedback_records_table.put_item(Item=_sanitize_value(item))
     write_audit_log("disposition_set", "feedback", feedback_id, {
         "disposition": disposition, "reviewStatus": review_status, "owner": item["Owner"],
     })
@@ -701,7 +708,7 @@ def promote_to_candidate(feedback_id: str):
     }
     try:
         monitoring_cases_table.put_item(
-            Item=candidate_case,
+            Item=_sanitize_value(candidate_case),
             ConditionExpression=Attr("CaseId").not_exists(),
         )
     except monitoring_cases_table.meta.client.exceptions.ConditionalCheckFailedException:
@@ -709,7 +716,7 @@ def promote_to_candidate(feedback_id: str):
 
     item["UpdatedAt"] = created_at
     item["ReviewStatus"] = "actioned"
-    feedback_records_table.put_item(Item=item)
+    feedback_records_table.put_item(Item=_sanitize_value(item))
     write_audit_log("promoted_to_candidate", "feedback", feedback_id, {"caseId": case_id})
     return json_response(200, {"case": candidate_case})
 
@@ -918,16 +925,21 @@ Rules:
 
 
 def _query_recent_feedback(limit: int = 500) -> list[dict[str, Any]]:
-    """Query recent feedback using the GSI with a cap to avoid loading the entire table."""
+    """Query recent feedback using the GSI with a cap."""
     items: list[dict[str, Any]] = []
-    response = feedback_records_table.query(
-        IndexName="RecordTypeCreatedAtIndex",
-        KeyConditionExpression=Key("RecordType").eq("FEEDBACK"),
-        ScanIndexForward=False,
-        Limit=limit,
-    )
-    items.extend(response.get("Items", []))
-    return items
+    kwargs: dict[str, Any] = {
+        "IndexName": "RecordTypeCreatedAtIndex",
+        "KeyConditionExpression": Key("RecordType").eq("FEEDBACK"),
+        "ScanIndexForward": False,
+    }
+    while len(items) < limit:
+        response = feedback_records_table.query(**kwargs)
+        items.extend(response.get("Items", []))
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        kwargs["ExclusiveStartKey"] = last_key
+    return items[:limit]
 
 
 def get_monitoring():
@@ -955,7 +967,7 @@ def get_monitoring():
         cluster_id = item.get("ClusterId")
         if cluster_id:
             cluster_groups[cluster_id].append(item)
-        for title in item.get("SourceTitles", []):
+        for title in set(item.get("SourceTitles", [])):
             source_groups[title].append(item)
         if item.get("PromptVersionId"):
             prompt_groups[item["PromptVersionId"]] += 1

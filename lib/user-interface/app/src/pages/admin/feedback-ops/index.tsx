@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   Box,
@@ -63,6 +63,7 @@ export default function FeedbackOpsPage() {
   const [promptData, setPromptData] = useState<PromptData>({ items: [], liveVersionId: null });
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
   const [showActivity, setShowActivity] = useState(false);
+  const didRetryListWhenEmptyRef = useRef(false);
 
   const apiClient = useMemo(
     () => (appContext ? new ApiClient(appContext) : null),
@@ -127,6 +128,21 @@ export default function FeedbackOpsPage() {
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
+
+  // When Feedback tab is selected with empty list but monitoring shows reports exist, load list once (fixes list not shown by default)
+  useEffect(() => {
+    if (
+      tab !== "inbox" ||
+      !apiClient ||
+      feedbackItems.length > 0 ||
+      (monitoring?.health?.totalFeedback ?? 0) <= 0 ||
+      didRetryListWhenEmptyRef.current
+    ) {
+      return;
+    }
+    didRetryListWhenEmptyRef.current = true;
+    loadFeedback();
+  }, [tab, apiClient, feedbackItems.length, monitoring?.health?.totalFeedback, loadFeedback]);
 
   useEffect(() => {
     if (feedbackId) {

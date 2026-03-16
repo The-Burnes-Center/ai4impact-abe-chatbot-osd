@@ -64,13 +64,15 @@ export default function ClusterView({ clusters, loading, onCreateDraftFromCluste
         <Grid item xs={12} md={6} lg={4} key={cluster.clusterId}>
           <Paper
             variant="outlined"
+            onClick={() => navigate(`/admin/user-feedback/${cluster.sampleFeedbackId}`)}
             sx={{
               p: 2,
               height: "100%",
               display: "flex",
               flexDirection: "column",
-              transition: "box-shadow 0.15s",
-              "&:hover": { boxShadow: 2 },
+              cursor: "pointer",
+              transition: "box-shadow 0.15s, border-color 0.15s",
+              "&:hover": { boxShadow: 3, borderColor: "primary.main" },
             }}
           >
             <Stack spacing={1.5} sx={{ flex: 1 }}>
@@ -115,16 +117,20 @@ export default function ClusterView({ clusters, loading, onCreateDraftFromCluste
                     <Button
                       size="small"
                       variant="outlined"
-                      onClick={() => onCreateDraftFromCluster(cluster)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCreateDraftFromCluster(cluster);
+                      }}
                     >
                       Draft prompt
                     </Button>
                   )}
                   <Button
                     size="small"
-                    onClick={() =>
-                      navigate(`/admin/user-feedback/${cluster.sampleFeedbackId}`)
-                    }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/admin/user-feedback/${cluster.sampleFeedbackId}`);
+                    }}
                   >
                     Open sample
                   </Button>
