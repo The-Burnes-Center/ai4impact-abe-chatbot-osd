@@ -552,7 +552,8 @@ def append_feedback_follow_up(event: dict[str, Any], feedback_id: str):
 
 
 def filter_feedback_items(items: list[dict[str, Any]], query_params: dict[str, str]) -> list[dict[str, Any]]:
-    issue_tag = slugify(query_params.get("issueTag", "")).replace("-", "_")
+    issue_tag_raw = query_params.get("issueTag", "").strip()
+    issue_tag = slugify(issue_tag_raw).replace("-", "_") if issue_tag_raw else ""
     review_status = query_params.get("reviewStatus")
     disposition = query_params.get("disposition")
     root_cause = query_params.get("rootCause")
