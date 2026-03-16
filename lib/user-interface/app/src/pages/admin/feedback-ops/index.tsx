@@ -5,26 +5,27 @@ import {
   Button,
   Chip,
   Collapse,
-  Grid,
+  Drawer,
+  IconButton,
   Paper,
   Stack,
   Tab,
   Tabs,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import TimelineIcon from "@mui/icons-material/Timeline";
+import CloseIcon from "@mui/icons-material/Close";
 import AdminPageLayout from "../../../components/admin-page-layout";
 import { useDocumentTitle } from "../../../common/hooks/use-document-title";
 import { AppContext } from "../../../common/app-context";
 import { ApiClient } from "../../../common/api-client/api-client";
 import { useNotifications } from "../../../components/notif-manager";
 import InboxView from "./InboxView";
-import ClusterView from "./ClusterView";
+import TrendsView from "./TrendsView";
 import PromptWorkspace from "./PromptWorkspace";
-import MonitoringView from "./MonitoringView";
-import SourceTriageView from "./SourceTriageView";
 import {
   FeedbackItem,
   FeedbackDetail,
@@ -36,7 +37,7 @@ import {
   label,
 } from "./types";
 
-type TabValue = "inbox" | "clusters" | "prompts" | "monitoring" | "sources";
+type TabValue = "queue" | "trends" | "prompts";
 
 export default function FeedbackOpsPage() {
   useDocumentTitle("Feedback Manager");
@@ -44,7 +45,7 @@ export default function FeedbackOpsPage() {
   const appContext = useContext(AppContext);
   const { addNotification } = useNotifications();
 
-  const [tab, setTab] = useState<TabValue>("inbox");
+  const [tab, setTab] = useState<TabValue>("queue");
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState<InboxFilters>({
     reviewStatus: "",
@@ -62,7 +63,7 @@ export default function FeedbackOpsPage() {
   const [monitoring, setMonitoring] = useState<MonitoringData | null>(null);
   const [promptData, setPromptData] = useState<PromptData>({ items: [], liveVersionId: null });
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
-  const [showActivity, setShowActivity] = useState(false);
+  const [activityDrawerOpen, setActivityDrawerOpen] = useState(false);
 
   const apiClient = useMemo(
     () => (appContext ? new ApiClient(appContext) : null),
@@ -118,7 +119,7 @@ export default function FeedbackOpsPage() {
         await loadFeedbackDetail(feedbackId);
       }
     } catch (error: any) {
-      addNotification("error", error?.message || "Failed to refresh Feedback Ops.");
+      addNotification("error", error?.message || "Failed to refresh Feedback Manager.");
     } finally {
       setLoading(false);
     }
@@ -130,7 +131,7 @@ export default function FeedbackOpsPage() {
 
   useEffect(() => {
     if (feedbackId) {
-      setTab("inbox");
+      setTab("queue");
       loadFeedbackDetail(feedbackId);
     } else {
       setSelectedFeedback(null);
@@ -141,6 +142,10 @@ export default function FeedbackOpsPage() {
     await Promise.all([loadFeedback(), loadMonitoring()]);
   }, [loadFeedback, loadMonitoring]);
 
+  const handleCreateDraftFromCluster = useCallback((cluster: { rootCause?: string; summary?: string }) => {
+    setTab("prompts");
+  }, []);
+
   const pendingCount = feedbackItems.filter((i) => i.disposition === "pending").length;
 
   return (
@@ -150,142 +155,87 @@ export default function FeedbackOpsPage() {
       breadcrumbLabel="Feedback Manager"
     >
       <Stack spacing={2.5}>
-        {/* Header */}
-        <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" gap={1}>
-          <Box>
-            <Typography variant="h5" fontWeight={700}>
-              Feedback Manager
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Review user feedback, spot trends, and improve ABE's responses.
-            </Typography>
-          </Box>
+        {/* Compact header row */}
+        <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
           <Stack direction="row" gap={1} alignItems="center">
             {promptData.liveVersionId && (
               <Chip
                 size="small"
-                label={`Live: ${promptData.liveVersionId}`}
+                label={`Live prompt: ${promptData.liveVersionId}`}
                 color="success"
                 variant="outlined"
+                sx={{ fontSize: "0.75rem", height: 26 }}
               />
             )}
+          </Stack>
+          <Stack direction="row" gap={0.5} alignItems="center">
+            {activityLog.length > 0 && (
+              <Tooltip title="View recent activity">
+                <IconButton
+                  size="small"
+                  onClick={() => setActivityDrawerOpen(true)}
+                  aria-label="View recent activity log"
+                  sx={{ "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 } }}
+                >
+                  <TimelineIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
             <Button
+              size="small"
               startIcon={<RefreshIcon />}
               onClick={refreshAll}
               disabled={loading}
+              sx={{ fontSize: "0.8125rem" }}
             >
               {loading ? "Refreshing..." : "Refresh"}
             </Button>
           </Stack>
         </Stack>
 
-        {/* Health Dashboard */}
-        {monitoring?.health && (
-          <Grid container spacing={2}>
-            <Grid item xs={6} sm={3}>
-              <Paper variant="outlined" sx={{ p: 1.5, borderLeft: "3px solid #1976d2" }}>
-                <Typography variant="caption" color="text.secondary" fontWeight={600}>Current Prompt</Typography>
-                <Typography variant="body2" fontWeight={700} noWrap>
-                  {monitoring.health.livePromptVersionId}
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={6} sm={3}>
-              <Paper variant="outlined" sx={{ p: 1.5, borderLeft: "3px solid #2e7d32" }}>
-                <Typography variant="caption" color="text.secondary" fontWeight={600}>Total Reports</Typography>
-                <Typography variant="h6" fontWeight={700}>{monitoring.health.totalFeedback}</Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={6} sm={3}>
-              <Paper variant="outlined" sx={{ p: 1.5, borderLeft: `3px solid ${monitoring.health.pendingTriage > 10 ? "#d32f2f" : "#ed6c02"}` }}>
-                <Typography variant="caption" color="text.secondary" fontWeight={600}>Needs Review</Typography>
-                <Typography variant="h6" fontWeight={700} color={monitoring.health.pendingTriage > 10 ? "error" : "text.primary"}>
-                  {monitoring.health.pendingTriage}
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={6} sm={3}>
-              <Paper variant="outlined" sx={{ p: 1.5, borderLeft: `3px solid ${monitoring.health.negativeRate > 0.5 ? "#d32f2f" : "#9e9e9e"}` }}>
-                <Typography variant="caption" color="text.secondary" fontWeight={600}>Negative %</Typography>
-                <Typography variant="h6" fontWeight={700}>
-                  {Math.round(monitoring.health.negativeRate * 100)}%
-                </Typography>
-              </Paper>
-            </Grid>
-          </Grid>
-        )}
-
-        {/* Activity Log (collapsible) */}
-        {activityLog.length > 0 && (
-          <Paper variant="outlined" sx={{ overflow: "hidden" }}>
-            <Button
-              fullWidth
-              onClick={() => setShowActivity((v) => !v)}
-              startIcon={<TimelineIcon />}
-              endIcon={<ExpandMoreIcon sx={{ transform: showActivity ? "rotate(180deg)" : "rotate(0)", transition: "0.2s" }} />}
-              sx={{ justifyContent: "space-between", px: 2, py: 1, textTransform: "none", color: "text.secondary" }}
-            >
-              Recent Activity ({activityLog.length})
-            </Button>
-            <Collapse in={showActivity}>
-              <Box sx={{ px: 2, pb: 2, maxHeight: 250, overflow: "auto" }}>
-                {activityLog.slice(0, 20).map((entry, i) => (
-                  <Stack key={i} direction="row" gap={1.5} alignItems="baseline" sx={{ py: 0.5, borderBottom: "1px solid", borderColor: "divider" }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap", minWidth: 130 }}>
-                      {formatDate(entry.createdAt)}
-                    </Typography>
-                    <Chip size="small" label={label(entry.action)} sx={{ height: 20, fontSize: "0.65rem" }} />
-                    <Typography variant="caption">
-                      {entry.entityType} <strong>{entry.entityId.slice(0, 12)}</strong>
-                      {entry.actor && ` by ${entry.actor}`}
-                    </Typography>
-                  </Stack>
-                ))}
-              </Box>
-            </Collapse>
-          </Paper>
-        )}
-
         {/* Tabs */}
-        <Paper variant="outlined">
+        <Paper variant="outlined" sx={{ borderRadius: 1 }}>
           <Tabs
             value={tab}
             onChange={(_, v) => setTab(v)}
             variant="scrollable"
             scrollButtons="auto"
-            aria-label="Feedback Ops navigation"
+            aria-label="Feedback Manager sections"
+            sx={{
+              minHeight: 44,
+              "& .MuiTab-root": { minHeight: 44, fontSize: "0.875rem", textTransform: "none" },
+            }}
           >
             <Tab
-              value="inbox"
+              value="queue"
               label={
                 <Stack direction="row" gap={0.75} alignItems="center">
-                  Feedback
+                  Review Queue
                   {pendingCount > 0 && (
                     <Chip
                       size="small"
                       label={pendingCount}
                       color="error"
-                      sx={{ height: 18, fontSize: "0.65rem" }}
+                      sx={{ height: 20, fontSize: "0.75rem", fontWeight: 600 }}
                     />
                   )}
                 </Stack>
               }
             />
-            <Tab value="clusters" label="Patterns" />
+            <Tab value="trends" label="Trends" />
             <Tab value="prompts" label="Prompts" />
-            <Tab value="monitoring" label="Dashboard" />
-            <Tab value="sources" label="Documents" />
           </Tabs>
         </Paper>
 
         {/* Views */}
-        {tab === "inbox" && (
+        {tab === "queue" && (
           <InboxView
             feedbackItems={feedbackItems}
             selectedFeedback={selectedFeedback}
             filters={filters}
             loading={loading}
             apiClient={apiClient}
+            monitoring={monitoring}
             onFiltersChange={setFilters}
             onRefresh={refreshAll}
             onSelectFeedback={setSelectedFeedback}
@@ -295,10 +245,11 @@ export default function FeedbackOpsPage() {
             onSelectedFeedbackIdsChange={setSelectedFeedbackIds}
           />
         )}
-        {tab === "clusters" && (
-          <ClusterView
-            clusters={monitoring?.clusterSummaries || []}
+        {tab === "trends" && (
+          <TrendsView
+            monitoring={monitoring}
             loading={loading}
+            onCreateDraftFromCluster={handleCreateDraftFromCluster}
           />
         )}
         {tab === "prompts" && (
@@ -313,19 +264,61 @@ export default function FeedbackOpsPage() {
             selectedFeedbackIds={selectedFeedbackIds}
           />
         )}
-        {tab === "monitoring" && (
-          <MonitoringView
-            monitoring={monitoring}
-            loading={loading}
-          />
-        )}
-        {tab === "sources" && (
-          <SourceTriageView
-            sources={monitoring?.sourceTriage || []}
-            loading={loading}
-          />
-        )}
       </Stack>
+
+      {/* Activity log drawer */}
+      <Drawer
+        anchor="right"
+        open={activityDrawerOpen}
+        onClose={() => setActivityDrawerOpen(false)}
+        PaperProps={{ sx: { width: { xs: "100%", sm: 400 }, p: 3 } }}
+      >
+        <Stack spacing={2}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography variant="h6" sx={{ fontSize: "1rem", fontWeight: 600 }}>
+              Recent Activity
+            </Typography>
+            <IconButton
+              size="small"
+              onClick={() => setActivityDrawerOpen(false)}
+              aria-label="Close activity log"
+            >
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Stack>
+          {activityLog.slice(0, 30).map((entry, i) => (
+            <Stack
+              key={i}
+              spacing={0.25}
+              sx={{
+                py: 1,
+                borderBottom: "1px solid",
+                borderColor: "divider",
+              }}
+            >
+              <Stack direction="row" gap={1} alignItems="center">
+                <Chip
+                  size="small"
+                  label={label(entry.action)}
+                  sx={{ height: 22, fontSize: "0.75rem" }}
+                />
+                <Typography variant="body2" sx={{ fontSize: "0.8125rem" }}>
+                  {entry.entityType}
+                </Typography>
+              </Stack>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                {formatDate(entry.createdAt)}
+                {entry.actor && ` by ${entry.actor}`}
+              </Typography>
+            </Stack>
+          ))}
+          {activityLog.length === 0 && (
+            <Typography variant="body2" color="text.secondary">
+              No recent activity.
+            </Typography>
+          )}
+        </Stack>
+      </Drawer>
     </AdminPageLayout>
   );
 }

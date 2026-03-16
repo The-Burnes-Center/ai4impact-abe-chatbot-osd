@@ -46,7 +46,7 @@ interface AdminLink {
 
 const adminLinkDefinitions: AdminLink[] = [
   { text: "Data", href: "/admin/data", icon: <FolderOutlinedIcon fontSize="small" /> },
-  { text: "Feedback Ops", href: "/admin/user-feedback", icon: <FeedbackOutlinedIcon fontSize="small" /> },
+  { text: "Feedback Manager", href: "/admin/user-feedback", icon: <FeedbackOutlinedIcon fontSize="small" /> },
   { text: "Analytics", href: "/admin/metrics", icon: <BarChartOutlinedIcon fontSize="small" /> },
   { text: "LLM Evaluation", href: "/admin/llm-evaluation", icon: <ScienceOutlinedIcon fontSize="small" /> },
 ];

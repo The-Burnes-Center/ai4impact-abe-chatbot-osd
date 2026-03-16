@@ -1130,5 +1130,5 @@ def lambda_handler(event, context):
     except json.JSONDecodeError:
         return json_response(400, {"error": "validation_error", "message": "Invalid JSON in request body"})
     except Exception:
-        logger.exception("Feedback ops handler failed")
+        logger.exception("Feedback Manager handler failed")
         return json_response(500, {"error": "internal_error", "message": "An unexpected error occurred. Please try again."})

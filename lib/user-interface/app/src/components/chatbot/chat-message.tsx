@@ -8,9 +8,11 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Tooltip from "@mui/material/Tooltip";
 import Chip from "@mui/material/Chip";
-import Drawer from "@mui/material/Drawer";
 import Divider from "@mui/material/Divider";
 import TextField from "@mui/material/TextField";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Switch from "@mui/material/Switch";
 import Avatar from "@mui/material/Avatar";
 import CircularProgress from "@mui/material/CircularProgress";
 import Popper from "@mui/material/Popper";
@@ -295,11 +297,9 @@ export default function ChatMessage(props: ChatMessageProps) {
   const [selectedIcon, setSelectedIcon] = useState<1 | 0 | null>(null);
   const { addNotification } = useNotifications();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackSuccess, setFeedbackSuccess] = useState(false);
   const [selectedIssues, setSelectedIssues] = useState<string[]>([]);
-  const [userComment, setUserComment] = useState("");
-  const [expectedAnswer, setExpectedAnswer] = useState("");
-  const [wrongSnippet, setWrongSnippet] = useState("");
-  const [sourceAssessment, setSourceAssessment] = useState("");
+  const [feedbackComment, setFeedbackComment] = useState("");
   const [regenerateRequested, setRegenerateRequested] = useState(false);
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -337,7 +337,6 @@ export default function ChatMessage(props: ChatMessageProps) {
   const handleCitationClick = useCallback((chunkIndex: number) => {
     if (!sourcesOpen) {
       setSourcesOpen(true);
-      // Wait for Collapse animation (200ms) + a small buffer before scrolling
       setTimeout(() => scrollToChunk(chunkIndex), 250);
     } else {
       scrollToChunk(chunkIndex);
@@ -354,10 +353,7 @@ export default function ChatMessage(props: ChatMessageProps) {
 
   const resetFeedback = () => {
     setSelectedIssues([]);
-    setUserComment("");
-    setExpectedAnswer("");
-    setWrongSnippet("");
-    setSourceAssessment("");
+    setFeedbackComment("");
     setRegenerateRequested(false);
     setSubmittingFeedback(false);
   };
@@ -380,29 +376,35 @@ export default function ChatMessage(props: ChatMessageProps) {
     { id: "other", label: "Other" },
   ];
 
-  const needsComment =
-    selectedIssues.includes("irrelevant") ||
-    selectedIssues.includes("unclear") ||
-    selectedIssues.includes("formatting") ||
-    selectedIssues.includes("other");
-
-  const hasContext =
-    userComment.trim().length > 0 ||
-    expectedAnswer.trim().length > 0 ||
-    wrongSnippet.trim().length > 0 ||
-    sourceAssessment.trim().length > 0;
-
   const handleHelpfulClick = async () => {
     if (!canSubmitFeedback) {
       addNotification("error", "Feedback is only available on new responses.");
       return;
     }
+    if (selectedIcon === 1) return;
     try {
       await props.onThumbsUp();
-      addNotification("success", "Helpful feedback saved.");
       setSelectedIcon(1);
+      setFeedbackOpen(false);
+      resetFeedback();
+      setFeedbackSuccess(true);
+      setTimeout(() => setFeedbackSuccess(false), 3000);
     } catch (error: any) {
       addNotification("error", error?.message || "Could not save feedback.");
+    }
+  };
+
+  const handleNotHelpfulClick = () => {
+    if (!canSubmitFeedback) {
+      addNotification("error", "Feedback is only available on new responses.");
+      return;
+    }
+    if (feedbackOpen) {
+      setFeedbackOpen(false);
+      resetFeedback();
+    } else {
+      setFeedbackOpen(true);
+      setFeedbackSuccess(false);
     }
   };
 
@@ -419,19 +421,17 @@ export default function ChatMessage(props: ChatMessageProps) {
     try {
       await props.onSubmitFeedback({
         issueTags: selectedIssues,
-        userComment: userComment.trim(),
-        expectedAnswer: expectedAnswer.trim(),
-        wrongSnippet: wrongSnippet.trim(),
-        sourceAssessment: sourceAssessment.trim(),
+        userComment: feedbackComment.trim(),
+        expectedAnswer: "",
+        wrongSnippet: "",
+        sourceAssessment: "",
         regenerateRequested,
       });
       setFeedbackOpen(false);
       resetFeedback();
       setSelectedIcon(0);
-      addNotification(
-        "success",
-        regenerateRequested ? "Feedback saved. ABE is retrying your question." : "Feedback saved. Thank you!"
-      );
+      setFeedbackSuccess(true);
+      setTimeout(() => setFeedbackSuccess(false), 4000);
     } catch (error: any) {
       addNotification("error", error?.message || "Could not submit feedback.");
     } finally {
@@ -441,110 +441,6 @@ export default function ChatMessage(props: ChatMessageProps) {
 
   return (
     <div>
-      <Drawer
-        anchor="bottom"
-        open={feedbackOpen}
-        onClose={() => { setFeedbackOpen(false); resetFeedback(); }}
-        PaperProps={{ sx: { maxHeight: "60vh", borderTopLeftRadius: 16, borderTopRightRadius: 16 } }}
-      >
-        <Box sx={{ maxWidth: 640, mx: "auto", width: "100%", p: 3, overflow: "auto" }}>
-          <Stack spacing={2}>
-            <Typography variant="subtitle1" fontWeight={700}>Help us improve</Typography>
-
-            <Stack direction="row" gap={0.75} flexWrap="wrap">
-              {issueOptions.map((issue) => (
-                <Chip
-                  key={issue.id}
-                  label={issue.label}
-                  size="small"
-                  color={selectedIssues.includes(issue.id) ? "primary" : "default"}
-                  variant={selectedIssues.includes(issue.id) ? "filled" : "outlined"}
-                  onClick={() => toggleIssue(issue.id)}
-                />
-              ))}
-            </Stack>
-
-            {selectedIssues.length > 0 && (
-              <Stack spacing={1.5}>
-                {selectedIssues.includes("incorrect") && (
-                  <TextField
-                    label="What was incorrect?"
-                    value={wrongSnippet}
-                    onChange={(e) => setWrongSnippet(e.target.value)}
-                    fullWidth
-                    size="small"
-                    multiline
-                    minRows={2}
-                  />
-                )}
-                {selectedIssues.includes("missing") && (
-                  <TextField
-                    label="What did you expect?"
-                    value={expectedAnswer}
-                    onChange={(e) => setExpectedAnswer(e.target.value)}
-                    fullWidth
-                    size="small"
-                    multiline
-                    minRows={2}
-                  />
-                )}
-                {selectedIssues.includes("bad_source") && (
-                  <TextField
-                    label="What was wrong with the source?"
-                    value={sourceAssessment}
-                    onChange={(e) => setSourceAssessment(e.target.value)}
-                    fullWidth
-                    size="small"
-                    multiline
-                    minRows={2}
-                    placeholder="Missing, outdated, contradictory..."
-                  />
-                )}
-                {(needsComment || (!selectedIssues.includes("incorrect") && !selectedIssues.includes("missing") && !selectedIssues.includes("bad_source"))) && (
-                  <TextField
-                    label="Anything else?"
-                    value={userComment}
-                    onChange={(e) => setUserComment(e.target.value)}
-                    fullWidth
-                    size="small"
-                    multiline
-                    minRows={2}
-                  />
-                )}
-
-                {hasContext && (
-                  <Chip
-                    label={regenerateRequested ? "Will retry with your corrections" : "Also retry my question"}
-                    size="small"
-                    color={regenerateRequested ? "primary" : "default"}
-                    variant={regenerateRequested ? "filled" : "outlined"}
-                    onClick={() => setRegenerateRequested((v) => !v)}
-                    sx={{ alignSelf: "flex-start" }}
-                  />
-                )}
-              </Stack>
-            )}
-
-            <Stack direction="row" justifyContent="flex-end" gap={1}>
-              <Button
-                size="small"
-                onClick={() => { setFeedbackOpen(false); resetFeedback(); }}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="contained"
-                size="small"
-                onClick={handleNegativeSubmit}
-                disabled={selectedIssues.length === 0 || submittingFeedback}
-              >
-                {submittingFeedback ? "Sending..." : "Send Feedback"}
-              </Button>
-            </Stack>
-          </Stack>
-        </Box>
-      </Drawer>
-
       {/* AI Message */}
       {props.message?.type === ChatBotMessageType.AI && (
         <div className={styles.aiMessage} role="article" aria-label="ABE response">
@@ -617,47 +513,163 @@ export default function ChatMessage(props: ChatMessageProps) {
                 ) : null}
               </Box>
 
-              {/* Feedback buttons */}
+              {/* Feedback buttons — both always visible so user can switch */}
               {content.length > 0 && (
-                <div className={styles.thumbsContainer}>
-                  {(selectedIcon === 1 || selectedIcon === null) && (
-                    <IconButton
-                      size="small"
-                      onClick={handleHelpfulClick}
-                      aria-label="Mark response as helpful"
-                      sx={{ borderRadius: 1.5, px: 1, gap: 0.5 }}
-                      disabled={!canSubmitFeedback}
-                    >
-                      {selectedIcon === 1 ? (
-                        <ThumbUpIcon sx={{ fontSize: 16 }} color="primary" />
-                      ) : (
-                        <ThumbUpOutlinedIcon sx={{ fontSize: 16 }} />
-                      )}
-                      <Typography variant="caption" sx={{ fontSize: "0.7rem", color: selectedIcon === 1 ? "primary.main" : "text.secondary" }}>
-                        Helpful
-                      </Typography>
-                    </IconButton>
-                  )}
-                  {(selectedIcon === 0 || selectedIcon === null) && (
-                    <IconButton
-                      size="small"
-                      onClick={() => setFeedbackOpen(true)}
-                      aria-label="Mark response as not helpful and provide feedback"
-                      sx={{ borderRadius: 1.5, px: 1, gap: 0.5 }}
-                      disabled={!canSubmitFeedback}
-                    >
-                      {selectedIcon === 0 ? (
-                        <ThumbDownIcon sx={{ fontSize: 16 }} color="primary" />
-                      ) : (
-                        <ThumbDownOutlinedIcon sx={{ fontSize: 16 }} />
-                      )}
-                      <Typography variant="caption" sx={{ fontSize: "0.7rem", color: selectedIcon === 0 ? "primary.main" : "text.secondary" }}>
-                        Not helpful
-                      </Typography>
-                    </IconButton>
-                  )}
+                <div className={styles.thumbsContainer} role="group" aria-label="Rate this response">
+                  <IconButton
+                    size="small"
+                    onClick={handleHelpfulClick}
+                    aria-label="Mark response as helpful"
+                    aria-pressed={selectedIcon === 1}
+                    sx={{
+                      borderRadius: 1.5,
+                      px: 1,
+                      gap: 0.5,
+                      "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 },
+                    }}
+                    disabled={!canSubmitFeedback}
+                  >
+                    {selectedIcon === 1 ? (
+                      <ThumbUpIcon sx={{ fontSize: 16 }} color="primary" />
+                    ) : (
+                      <ThumbUpOutlinedIcon sx={{ fontSize: 16 }} />
+                    )}
+                    <Typography variant="caption" sx={{ fontSize: "0.75rem", color: selectedIcon === 1 ? "primary.main" : "text.secondary" }}>
+                      Helpful
+                    </Typography>
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    onClick={handleNotHelpfulClick}
+                    aria-label="Mark response as not helpful and provide feedback"
+                    aria-pressed={selectedIcon === 0}
+                    aria-expanded={feedbackOpen}
+                    sx={{
+                      borderRadius: 1.5,
+                      px: 1,
+                      gap: 0.5,
+                      "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 },
+                    }}
+                    disabled={!canSubmitFeedback}
+                  >
+                    {selectedIcon === 0 || feedbackOpen ? (
+                      <ThumbDownIcon sx={{ fontSize: 16 }} color={selectedIcon === 0 ? "primary" : "action"} />
+                    ) : (
+                      <ThumbDownOutlinedIcon sx={{ fontSize: 16 }} />
+                    )}
+                    <Typography variant="caption" sx={{ fontSize: "0.75rem", color: selectedIcon === 0 ? "primary.main" : "text.secondary" }}>
+                      Not helpful
+                    </Typography>
+                  </IconButton>
                 </div>
               )}
+
+              {/* Inline success message */}
+              <Collapse in={feedbackSuccess} timeout={200}>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  gap={1}
+                  sx={{ mt: 1, py: 1, px: 1.5, borderRadius: 1, bgcolor: "success.50", border: "1px solid", borderColor: "success.200" }}
+                  role="status"
+                  aria-live="polite"
+                >
+                  <CheckCircleOutlineIcon sx={{ fontSize: 18, color: "success.main" }} />
+                  <Typography variant="body2" sx={{ fontSize: "0.8125rem", color: "success.dark" }}>
+                    {regenerateRequested ? "Thanks! ABE is retrying your question." : "Thanks for your feedback!"}
+                  </Typography>
+                </Stack>
+              </Collapse>
+
+              {/* Inline feedback form — replaces bottom drawer */}
+              <Collapse in={feedbackOpen} timeout={200}>
+                <Box
+                  sx={{
+                    mt: 1.5,
+                    pt: 1.5,
+                    borderTop: "1px solid",
+                    borderColor: "divider",
+                  }}
+                  role="form"
+                  aria-label="Feedback form"
+                >
+                  <Stack spacing={1.5}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: "0.8125rem" }}>
+                      What went wrong? <Typography component="span" variant="caption" color="text.secondary">(select all that apply)</Typography>
+                    </Typography>
+
+                    <Stack direction="row" gap={0.75} flexWrap="wrap" role="group" aria-label="Issue categories">
+                      {issueOptions.map((issue) => (
+                        <Chip
+                          key={issue.id}
+                          label={issue.label}
+                          size="small"
+                          color={selectedIssues.includes(issue.id) ? "primary" : "default"}
+                          variant={selectedIssues.includes(issue.id) ? "filled" : "outlined"}
+                          onClick={() => toggleIssue(issue.id)}
+                          aria-pressed={selectedIssues.includes(issue.id)}
+                          sx={{
+                            fontSize: "0.75rem",
+                            height: 28,
+                            "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 1 },
+                          }}
+                        />
+                      ))}
+                    </Stack>
+
+                    <TextField
+                      label="Tell us more (optional)"
+                      value={feedbackComment}
+                      onChange={(e) => setFeedbackComment(e.target.value)}
+                      fullWidth
+                      size="small"
+                      multiline
+                      minRows={2}
+                      maxRows={4}
+                      placeholder="What did you expect instead? What was wrong?"
+                      inputProps={{ "aria-describedby": "feedback-hint" }}
+                      sx={{ "& .MuiInputBase-root": { fontSize: "0.875rem" } }}
+                    />
+                    <Typography id="feedback-hint" variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                      Your feedback helps us improve ABE for everyone.
+                    </Typography>
+
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          size="small"
+                          checked={regenerateRequested}
+                          onChange={(e) => setRegenerateRequested(e.target.checked)}
+                        />
+                      }
+                      label={
+                        <Typography variant="body2" sx={{ fontSize: "0.8125rem" }}>
+                          Also retry my question
+                        </Typography>
+                      }
+                    />
+
+                    <Stack direction="row" justifyContent="flex-end" gap={1}>
+                      <Button
+                        size="small"
+                        onClick={() => { setFeedbackOpen(false); resetFeedback(); }}
+                        sx={{ fontSize: "0.8125rem" }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="contained"
+                        size="small"
+                        onClick={handleNegativeSubmit}
+                        disabled={selectedIssues.length === 0 || submittingFeedback}
+                        sx={{ fontSize: "0.8125rem" }}
+                      >
+                        {submittingFeedback ? "Sending..." : "Send feedback"}
+                      </Button>
+                    </Stack>
+                  </Stack>
+                </Box>
+              </Collapse>
             </Paper>
 
             {/* Collapsible sources */}
@@ -733,7 +745,7 @@ export default function ChatMessage(props: ChatMessageProps) {
                                 {card.page != null && (
                                   <>
                                     {card.cited && <span className={styles.metaDivider}>·</span>}
-                                    <Typography variant="caption" sx={{ fontSize: "0.6875rem", color: "text.secondary" }}>
+                                    <Typography variant="caption" sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
                                       Page {card.page}
                                     </Typography>
                                   </>
@@ -774,7 +786,7 @@ export default function ChatMessage(props: ChatMessageProps) {
         </div>
       )}
 
-      {/* Human Message — same pattern as major chatbots: right-aligned bubble, wrapped text, optional timestamp */}
+      {/* Human Message */}
       {props.message?.type === ChatBotMessageType.Human && (
         <div className={styles.humanMessage} role="article" aria-label="Your message">
           <div className={styles.humanMessageInner}>
@@ -785,7 +797,7 @@ export default function ChatMessage(props: ChatMessageProps) {
               <Typography
                 variant="caption"
                 component="span"
-                sx={{ display: "block", textAlign: "right", mt: 0.5, color: "text.secondary", fontSize: "0.6875rem" }}
+                sx={{ display: "block", textAlign: "right", mt: 0.5, color: "text.secondary", fontSize: "0.75rem" }}
               >
                 {formattedTime}
               </Typography>

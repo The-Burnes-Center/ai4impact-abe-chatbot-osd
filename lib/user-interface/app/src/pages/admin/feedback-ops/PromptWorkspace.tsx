@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Box,
   Button,
@@ -19,6 +19,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 import PublishIcon from "@mui/icons-material/Publish";
 import AddIcon from "@mui/icons-material/Add";
@@ -26,7 +27,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EditNoteOutlinedIcon from "@mui/icons-material/EditNoteOutlined";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import HistoryIcon from "@mui/icons-material/History";
-import { PromptData, PromptItem, formatDate } from "./types";
+import { PromptData, formatDate } from "./types";
 import { ApiClient } from "../../../common/api-client/api-client";
 import { useNotifications } from "../../../components/notif-manager";
 
@@ -94,12 +95,18 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
 
   const [selectedPromptId, setSelectedPromptId] = useState("");
   const [draft, setDraft] = useState({ title: "", notes: "", template: "" });
+  const [savedDraft, setSavedDraft] = useState({ title: "", notes: "", template: "" });
   const [actionLoading, setActionLoading] = useState(false);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
+  const [publishConfirmText, setPublishConfirmText] = useState("");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showAiDialog, setShowAiDialog] = useState(false);
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [pendingPromptId, setPendingPromptId] = useState("");
   const [aiNote, setAiNote] = useState("");
   const [viewMode, setViewMode] = useState<"edit" | "preview" | "diff">("edit");
+
+  const hasUnsavedChanges = draft.title !== savedDraft.title || draft.notes !== savedDraft.notes || draft.template !== savedDraft.template;
 
   const currentPrompt = useMemo(
     () => promptData.items.find((p) => p.versionId === selectedPromptId) || null,
@@ -120,11 +127,13 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
 
   useEffect(() => {
     if (currentPrompt) {
-      setDraft({
+      const d = {
         title: currentPrompt.title || "",
         notes: currentPrompt.notes || "",
         template: currentPrompt.template || "",
-      });
+      };
+      setDraft(d);
+      setSavedDraft(d);
     }
   }, [currentPrompt]);
 
@@ -136,6 +145,21 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
   const previewText = useMemo(() => renderPreview(draft.template), [draft.template]);
 
   const isLive = selectedPromptId === promptData.liveVersionId;
+
+  const handleSelectPrompt = useCallback((versionId: string) => {
+    if (hasUnsavedChanges && !isLive) {
+      setPendingPromptId(versionId);
+      setShowUnsavedDialog(true);
+    } else {
+      setSelectedPromptId(versionId);
+    }
+  }, [hasUnsavedChanges, isLive]);
+
+  const handleDiscardAndSwitch = () => {
+    setShowUnsavedDialog(false);
+    setSelectedPromptId(pendingPromptId);
+    setPendingPromptId("");
+  };
 
   const handleCreateDraft = async () => {
     if (!apiClient) return;
@@ -160,6 +184,7 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
     try {
       setActionLoading(true);
       await apiClient.userFeedback.updatePrompt(selectedPromptId, draft);
+      setSavedDraft({ ...draft });
       await onRefresh();
       addNotification("success", "Prompt draft saved.");
     } catch (error: any) {
@@ -251,7 +276,8 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
                     <ListItemButton
                       key={item.versionId}
                       selected={item.versionId === selectedPromptId}
-                      onClick={() => setSelectedPromptId(item.versionId)}
+                      onClick={() => handleSelectPrompt(item.versionId)}
+                      sx={{ "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: -2 } }}
                     >
                       <ListItemIcon sx={{ minWidth: 32 }}>
                         {isItemLive ? (
@@ -267,7 +293,7 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
                               {item.title || item.versionId}
                             </Typography>
                             {isItemLive && (
-                              <Chip size="small" label="LIVE" color="success" sx={{ height: 18, fontSize: "0.65rem" }} />
+                              <Chip size="small" label="LIVE" color="success" sx={{ height: 20, fontSize: "0.75rem" }} />
                             )}
                           </Stack>
                         }
@@ -336,13 +362,22 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
               </Stack>
 
               {selectedFeedbackIds.length > 0 && (
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block", fontSize: "0.75rem" }}>
                   {selectedFeedbackIds.length} feedback item(s) linked for AI draft
                 </Typography>
               )}
 
+              {hasUnsavedChanges && !isLive && (
+                <Stack direction="row" gap={0.75} alignItems="center" sx={{ mt: 1 }}>
+                  <WarningAmberIcon sx={{ fontSize: 16, color: "warning.main" }} />
+                  <Typography variant="caption" color="warning.dark" sx={{ fontSize: "0.75rem", fontWeight: 600 }}>
+                    You have unsaved changes
+                  </Typography>
+                </Stack>
+              )}
+
               {/* View mode tabs */}
-              <Stack direction="row" gap={1} sx={{ mt: 2, mb: 1 }}>
+              <Stack direction="row" gap={1} sx={{ mt: 2, mb: 1 }} role="tablist" aria-label="Prompt view mode">
                 {(["edit", "preview", "diff"] as const).map((mode) => (
                   <Chip
                     key={mode}
@@ -351,6 +386,12 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
                     color={viewMode === mode ? "primary" : "default"}
                     onClick={() => setViewMode(mode)}
                     size="small"
+                    role="tab"
+                    aria-selected={viewMode === mode}
+                    sx={{
+                      fontSize: "0.75rem",
+                      "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 1 },
+                    }}
                   />
                 ))}
               </Stack>
@@ -418,11 +459,13 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
                     border: "1px solid",
                     borderColor: "divider",
                     fontFamily: "monospace",
-                    fontSize: "0.75rem",
+                    fontSize: "0.8125rem",
                     whiteSpace: "pre-wrap",
                     maxHeight: 600,
                     overflow: "auto",
                   }}
+                  role="region"
+                  aria-label="Diff between live prompt and current draft"
                 >
                   {livePrompt ? (
                     diffLines.map((line, i) => (
@@ -441,10 +484,13 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
                               : line.type === "remove"
                                 ? "#cf222e"
                                 : "inherit",
+                          display: "flex",
+                          gap: "8px",
                         }}
+                        aria-label={line.type === "add" ? "Added line" : line.type === "remove" ? "Removed line" : undefined}
                       >
-                        {line.type === "add" ? "+ " : line.type === "remove" ? "- " : "  "}
-                        {line.text}
+                        <span style={{ opacity: 0.5, userSelect: "none", minWidth: "2ch", textAlign: "right" }}>{i + 1}</span>
+                        <span>{line.type === "add" ? "+ " : line.type === "remove" ? "- " : "  "}{line.text}</span>
                       </div>
                     ))
                   ) : (
@@ -464,27 +510,27 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
                   <Typography variant="subtitle2">Version Info</Typography>
                 </Stack>
                 <Stack spacing={0.5}>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
                     Version ID: {currentPrompt.versionId}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
                     Status: {currentPrompt.status}
                   </Typography>
                   {currentPrompt.parentVersionId && (
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
                       Parent: {currentPrompt.parentVersionId}
                     </Typography>
                   )}
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
                     Created: {formatDate(currentPrompt.createdAt)} by {currentPrompt.createdBy || "unknown"}
                   </Typography>
                   {currentPrompt.publishedAt && (
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
                       Published: {formatDate(currentPrompt.publishedAt)}
                     </Typography>
                   )}
                   {(currentPrompt.linkedFeedbackIds || []).length > 0 && (
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
                       Linked feedback: {currentPrompt.linkedFeedbackIds!.length} item(s)
                     </Typography>
                   )}
@@ -496,23 +542,58 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
       </Grid>
 
       {/* Publish confirmation dialog */}
-      <Dialog open={showPublishDialog} onClose={() => setShowPublishDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={showPublishDialog}
+        onClose={() => { setShowPublishDialog(false); setPublishConfirmText(""); }}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Publish prompt?</DialogTitle>
         <DialogContent>
           <Typography variant="body2" gutterBottom>
             This will make <strong>{currentPrompt?.title || selectedPromptId}</strong> the live prompt for all ABE users.
+            This action takes effect immediately.
           </Typography>
           {livePrompt && (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Current live prompt: {livePrompt.title || livePrompt.versionId}
               {livePrompt.publishedAt ? ` (published ${formatDate(livePrompt.publishedAt)})` : ""}
             </Typography>
           )}
+          <TextField
+            fullWidth
+            size="small"
+            label='Type "publish" to confirm'
+            value={publishConfirmText}
+            onChange={(e) => setPublishConfirmText(e.target.value)}
+            autoFocus
+            inputProps={{ "aria-label": "Type publish to confirm" }}
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowPublishDialog(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handlePublish} disabled={actionLoading}>
+          <Button onClick={() => { setShowPublishDialog(false); setPublishConfirmText(""); }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handlePublish}
+            disabled={actionLoading || publishConfirmText.toLowerCase() !== "publish"}
+          >
             Publish
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Unsaved changes dialog */}
+      <Dialog open={showUnsavedDialog} onClose={() => setShowUnsavedDialog(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Unsaved changes</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            You have unsaved changes to this draft. Do you want to discard them?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowUnsavedDialog(false)}>Keep editing</Button>
+          <Button variant="contained" color="warning" onClick={handleDiscardAndSwitch}>
+            Discard changes
           </Button>
         </DialogActions>
       </Dialog>
