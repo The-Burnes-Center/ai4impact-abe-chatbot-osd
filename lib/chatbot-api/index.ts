@@ -241,6 +241,12 @@ export class ChatBotApi extends Construct {
       integration: feedbackAPIIntegration,
       authorizer: httpAuthorizer,
     });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/activity-log",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: feedbackAPIIntegration,
+      authorizer: httpAuthorizer,
+    });
 
     const s3GetAPIIntegration = new HttpLambdaIntegration('S3GetAPIIntegration', lambdaFunctions.getS3Function);
     restBackend.restAPI.addRoutes({

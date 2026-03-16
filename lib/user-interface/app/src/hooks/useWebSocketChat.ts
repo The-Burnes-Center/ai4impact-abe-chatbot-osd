@@ -132,45 +132,40 @@ export function useWebSocketChat() {
           opts.onStreamChunk(receivedData);
         } else {
           try {
-            let sourceData = JSON.parse(raw);
-            sourceData = sourceData.map((item: any) => {
-              // Backward-compat: old format has {title, uri} only
-              const isLegacy = !("chunkIndex" in item);
-              if (isLegacy) {
-                const fallbackTitle = item.title || (item.uri
-                  ? item.uri.slice((item.uri as string).lastIndexOf("/") + 1)
-                  : "Unknown source");
-                return {
-                  chunkIndex: null,
-                  title: fallbackTitle,
-                  uri: item.uri ?? null,
-                  excerpt: null,
-                  score: null,
-                  page: null,
-                  s3Key: null,
-                  sourceType: "knowledgeBase",
-                };
-              }
-              if (item.title === "" && item.uri) {
-                item.title = item.uri.slice((item.uri as string).lastIndexOf("/") + 1);
-              }
-              return item;
-            });
-            responseMetadata = { Sources: sourceData };
+            const parsed = JSON.parse(raw);
+
+            if (Array.isArray(parsed)) {
+              const sourceData = parsed.map((item: any) => {
+                const isLegacy = !("chunkIndex" in item);
+                if (isLegacy) {
+                  const fallbackTitle = item.title || (item.uri
+                    ? item.uri.slice((item.uri as string).lastIndexOf("/") + 1)
+                    : "Unknown source");
+                  return {
+                    chunkIndex: null,
+                    title: fallbackTitle,
+                    uri: item.uri ?? null,
+                    excerpt: null,
+                    score: null,
+                    page: null,
+                    s3Key: null,
+                    sourceType: "knowledgeBase",
+                  };
+                }
+                if (item.title === "" && item.uri) {
+                  item.title = item.uri.slice((item.uri as string).lastIndexOf("/") + 1);
+                }
+                return item;
+              });
+              responseMetadata = { Sources: sourceData };
+            } else if (parsed && typeof parsed === "object") {
+              const sources = Array.isArray(parsed.Sources) ? parsed.Sources : [];
+              responseMetadata = { ...parsed, Sources: sources };
+            }
+
             opts.onSources(responseMetadata);
           } catch {
-            try {
-              const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed)) {
-                responseMetadata = { Sources: parsed };
-              } else if (parsed && typeof parsed === "object") {
-                const parsedSources = Array.isArray(parsed.Sources) ? parsed.Sources : [];
-                responseMetadata = { ...parsed, Sources: parsedSources };
-              }
-              opts.onSources(responseMetadata);
-            } catch {
-              // ignore malformed metadata JSON
-            }
+            // ignore malformed metadata JSON
           }
         }
       });

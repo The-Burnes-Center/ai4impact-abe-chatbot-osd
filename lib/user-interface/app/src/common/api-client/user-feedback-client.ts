@@ -150,4 +150,8 @@ export class UserFeedbackClient {
   async getMonitoring() {
     return this.request("/admin/monitoring", { method: "GET" });
   }
+
+  async getActivityLog() {
+    return this.request("/admin/activity-log", { method: "GET" });
+  }
 }

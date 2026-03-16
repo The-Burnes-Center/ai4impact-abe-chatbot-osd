@@ -184,6 +184,7 @@ export class LambdaFunctionStack extends Construct {
       code: lambda.Code.fromAsset(path.join(__dirname, 'feedback-handler')),
       handler: 'lambda_function.lambda_handler',
       layers: [pythonCommonLayer],
+      memorySize: 256,
       environment: {
         "FEEDBACK_TABLE": props.feedbackTable.tableName,
         "FEEDBACK_S3_DOWNLOAD": props.feedbackBucket.bucketName,

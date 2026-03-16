@@ -17,7 +17,7 @@ export interface FeedbackPanelProps {
   selectedFeedback: any;
 }
 
-export default function EmailPanel(props: FeedbackPanelProps) {
+export default function FeedbackPanel(props: FeedbackPanelProps) {
 
   return (
     <div>

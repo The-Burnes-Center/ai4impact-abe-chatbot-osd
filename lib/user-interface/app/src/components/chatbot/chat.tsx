@@ -141,14 +141,16 @@ export default function Chat(props: { sessionId?: string }) {
 
   const buildRetryPrompt = (idx: number, payload: FeedbackSubmission) => {
     const originalQuestion = messageHistory[idx - 1]?.content ?? "";
+    if (!originalQuestion) return "";
     const contextParts = [
       payload.userComment?.trim(),
       payload.expectedAnswer?.trim() ? `Expected answer: ${payload.expectedAnswer?.trim()}` : "",
       payload.wrongSnippet?.trim() ? `Incorrect part: ${payload.wrongSnippet?.trim()}` : "",
       payload.sourceAssessment?.trim() ? `Source issue: ${payload.sourceAssessment?.trim()}` : "",
     ].filter(Boolean);
+    const issueLabels = (payload.issueTags ?? []).join(", ");
     if (contextParts.length === 0) {
-      return "";
+      return `Please answer my previous question again.\n\nOriginal question: ${originalQuestion}\n\nIssues reported: ${issueLabels}`;
     }
     return `Please answer my previous question again.\n\nOriginal question: ${originalQuestion}\n\nWhat went wrong: ${contextParts.join("\n")}`;
   };

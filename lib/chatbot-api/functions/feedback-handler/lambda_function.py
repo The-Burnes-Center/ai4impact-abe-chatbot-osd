@@ -49,10 +49,41 @@ NEGATIVE_ROOT_CAUSES = {
     "product_bug",
     "needs_human_review",
 }
+ALLOWED_FEEDBACK_KINDS = {"helpful", "not_helpful"}
+
+MAX_TEXT_LENGTH = 2000
+MAX_TEMPLATE_LENGTH = 50000
+MAX_COMMENT_LENGTH = 5000
+ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}")
+
+
+def validation_error(field: str, message: str):
+    return json_response(400, {"error": "validation_error", "field": field, "message": message})
+
+
+def truncate(value: str, limit: int) -> str:
+    return value[:limit] if len(value) > limit else value
 
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def write_audit_log(action: str, entity_type: str, entity_id: str, details: dict[str, Any] | None = None, actor: str = "admin"):
+    """Append an audit entry to the feedback records table with RecordType=AUDIT_LOG."""
+    try:
+        feedback_records_table.put_item(Item={
+            "FeedbackId": f"audit-{uuid.uuid4()}",
+            "RecordType": "AUDIT_LOG",
+            "Action": action,
+            "EntityType": entity_type,
+            "EntityId": entity_id,
+            "Actor": actor,
+            "Details": details or {},
+            "CreatedAt": utc_now_iso(),
+        })
+    except Exception:
+        logger.warning("Failed to write audit log for %s %s", action, entity_id)
 
 
 def slugify(value: str) -> str:
@@ -381,13 +412,15 @@ def create_feedback(event: dict[str, Any]):
     payload = parse_json_body(event)
     message_id = str(payload.get("messageId", "")).strip()
     if not message_id:
-        return json_response(400, {"error": "messageId is required"})
+        return validation_error("messageId", "messageId is required")
 
     trace = get_response_trace(message_id)
     if not trace:
-        return json_response(404, {"error": "Response trace not found"})
+        return json_response(404, {"error": "not_found", "message": "Response trace not found"})
 
     feedback_kind = str(payload.get("feedbackKind", "not_helpful")).strip() or "not_helpful"
+    if feedback_kind not in ALLOWED_FEEDBACK_KINDS:
+        return validation_error("feedbackKind", f"feedbackKind must be one of: {', '.join(sorted(ALLOWED_FEEDBACK_KINDS))}")
     issue_tags = normalize_issue_tags(payload)
     feedback_id = str(uuid.uuid4())
     source_titles = source_titles_from_trace(trace)
@@ -400,10 +433,10 @@ def create_feedback(event: dict[str, Any]):
         "SessionId": trace.get("SessionId", payload.get("sessionId", "")),
         "FeedbackKind": feedback_kind,
         "IssueTags": issue_tags,
-        "UserComment": str(payload.get("userComment", "")).strip(),
-        "ExpectedAnswer": str(payload.get("expectedAnswer", "")).strip(),
-        "WrongSnippet": str(payload.get("wrongSnippet", "")).strip(),
-        "SourceAssessment": str(payload.get("sourceAssessment", "")).strip(),
+        "UserComment": truncate(str(payload.get("userComment", "")).strip(), MAX_COMMENT_LENGTH),
+        "ExpectedAnswer": truncate(str(payload.get("expectedAnswer", "")).strip(), MAX_TEXT_LENGTH),
+        "WrongSnippet": truncate(str(payload.get("wrongSnippet", "")).strip(), MAX_TEXT_LENGTH),
+        "SourceAssessment": truncate(str(payload.get("sourceAssessment", "")).strip(), MAX_TEXT_LENGTH),
         "RegenerateRequested": bool(payload.get("regenerateRequested", False)),
         "ReviewStatus": "new",
         "Disposition": "pending",
@@ -485,6 +518,10 @@ def filter_feedback_items(items: list[dict[str, Any]], query_params: dict[str, s
     source_title = query_params.get("sourceTitle", "").lower()
     date_from = query_params.get("dateFrom")
     date_to = query_params.get("dateTo")
+    if date_from and not ISO_DATE_PATTERN.match(date_from):
+        date_from = None
+    if date_to and not ISO_DATE_PATTERN.match(date_to):
+        date_to = None
 
     filtered = []
     for item in items:
@@ -595,10 +632,15 @@ def set_disposition(event: dict[str, Any], feedback_id: str):
     item["AdminNotes"] = str(payload.get("adminNotes", item.get("AdminNotes", ""))).strip()
     item["UpdatedAt"] = utc_now_iso()
     feedback_records_table.put_item(Item=item)
+    write_audit_log("disposition_set", "feedback", feedback_id, {
+        "disposition": disposition, "reviewStatus": review_status, "owner": item["Owner"],
+    })
     return json_response(200, {"feedback": item})
 
 
 def promote_to_candidate(feedback_id: str):
+    from boto3.dynamodb.conditions import Attr
+
     item = feedback_records_table.get_item(Key={"FeedbackId": feedback_id}).get("Item")
     if not item:
         return json_response(404, {"error": "Feedback not found"})
@@ -622,10 +664,18 @@ def promote_to_candidate(feedback_id: str):
         "Reason": (analysis.get("candidateMonitoringCase") or {}).get("reason", ""),
         "RootCause": analysis.get("likelyRootCause", ""),
     }
-    monitoring_cases_table.put_item(Item=candidate_case)
+    try:
+        monitoring_cases_table.put_item(
+            Item=candidate_case,
+            ConditionExpression=Attr("CaseId").not_exists(),
+        )
+    except monitoring_cases_table.meta.client.exceptions.ConditionalCheckFailedException:
+        return json_response(409, {"error": "This feedback has already been promoted to a candidate."})
+
     item["UpdatedAt"] = created_at
     item["ReviewStatus"] = "actioned"
     feedback_records_table.put_item(Item=item)
+    write_audit_log("promoted_to_candidate", "feedback", feedback_id, {"caseId": case_id})
     return json_response(200, {"case": candidate_case})
 
 
@@ -675,7 +725,9 @@ def create_prompt(event: dict[str, Any]):
         if parent:
             template = parent.get("Template", "")
     if not template:
-        return json_response(400, {"error": "template is required"})
+        return validation_error("template", "template is required")
+    if len(template) > MAX_TEMPLATE_LENGTH:
+        return validation_error("template", f"template exceeds maximum length of {MAX_TEMPLATE_LENGTH} characters")
 
     version_id = f"v-{uuid.uuid4()}"
     now = utc_now_iso()
@@ -740,6 +792,7 @@ def publish_prompt(version_id: str):
             "UpdatedAt": now,
         }
     )
+    write_audit_log("prompt_published", "prompt", version_id, {"title": item.get("Title", "")})
     return json_response(200, {"liveVersionId": version_id, "prompt": serialize_prompt_item(item)})
 
 
@@ -818,13 +871,21 @@ Rules:
     return create_prompt(draft_event)
 
 
-def get_monitoring():
-    feedback_items = query_all(
-        feedback_records_table,
+def _query_recent_feedback(limit: int = 500) -> list[dict[str, Any]]:
+    """Query recent feedback using the GSI with a cap to avoid loading the entire table."""
+    items: list[dict[str, Any]] = []
+    response = feedback_records_table.query(
         IndexName="RecordTypeCreatedAtIndex",
         KeyConditionExpression=Key("RecordType").eq("FEEDBACK"),
         ScanIndexForward=False,
+        Limit=limit,
     )
+    items.extend(response.get("Items", []))
+    return items
+
+
+def get_monitoring():
+    feedback_items = _query_recent_feedback(limit=500)
     candidate_cases = query_all(
         monitoring_cases_table,
         KeyConditionExpression=Key("SetName").eq("CandidateSet"),
@@ -836,15 +897,18 @@ def get_monitoring():
         ScanIndexForward=False,
     )
 
-    disposition_counts = Counter(item.get("Disposition", "pending") for item in feedback_items)
-    root_cause_counts = Counter((item.get("Analysis") or {}).get("likelyRootCause", "unknown") for item in feedback_items)
+    disposition_counts: Counter = Counter()
+    root_cause_counts: Counter = Counter()
     cluster_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     source_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     prompt_groups: Counter = Counter()
 
     for item in feedback_items:
-        if item.get("ClusterId"):
-            cluster_groups[item["ClusterId"]].append(item)
+        disposition_counts[item.get("Disposition", "pending")] += 1
+        root_cause_counts[(item.get("Analysis") or {}).get("likelyRootCause", "unknown")] += 1
+        cluster_id = item.get("ClusterId")
+        if cluster_id:
+            cluster_groups[cluster_id].append(item)
         for title in item.get("SourceTitles", []):
             source_groups[title].append(item)
         if item.get("PromptVersionId"):
@@ -852,7 +916,7 @@ def get_monitoring():
 
     cluster_summaries = []
     for cluster_id, cluster_items in cluster_groups.items():
-        cluster_items = sorted(cluster_items, key=lambda value: value.get("CreatedAt", ""), reverse=True)
+        cluster_items.sort(key=lambda v: v.get("CreatedAt", ""), reverse=True)
         sample = cluster_items[0]
         cluster_summaries.append(
             {
@@ -865,7 +929,7 @@ def get_monitoring():
                 "latestCreatedAt": sample.get("CreatedAt", ""),
                 "sampleFeedbackId": sample.get("FeedbackId"),
                 "samplePrompt": sample.get("UserPromptPreview", ""),
-                "sourceTitles": sorted({title for item in cluster_items for title in item.get("SourceTitles", [])})[:5],
+                "sourceTitles": sorted({title for i in cluster_items for title in i.get("SourceTitles", [])})[:5],
             }
         )
     cluster_summaries.sort(key=lambda item: item["count"], reverse=True)
@@ -878,15 +942,15 @@ def get_monitoring():
                 "sourceTitle": title,
                 "count": len(items),
                 "topIssueTags": issue_counts.most_common(3),
-                "latestCreatedAt": max(item.get("CreatedAt", "") for item in items),
+                "latestCreatedAt": max((item.get("CreatedAt", "") for item in items), default=""),
                 "promptVersions": sorted({item.get("PromptVersionId", "") for item in items if item.get("PromptVersionId")}),
             }
         )
     source_triage.sort(key=lambda item: item["count"], reverse=True)
 
     prompt_activity = [
-        {"promptVersionId": prompt_version_id, "feedbackCount": count}
-        for prompt_version_id, count in prompt_groups.most_common()
+        {"promptVersionId": vid, "feedbackCount": cnt}
+        for vid, cnt in prompt_groups.most_common()
     ]
 
     return json_response(
@@ -912,8 +976,38 @@ def get_monitoring():
             "clusterSummaries": cluster_summaries[:25],
             "sourceTriage": source_triage[:25],
             "promptActivity": prompt_activity[:20],
+            "health": {
+                "livePromptVersionId": get_live_prompt_version_id() or "none",
+                "totalFeedback": len(feedback_items),
+                "pendingTriage": disposition_counts.get("pending", 0),
+                "negativeRate": round(
+                    sum(1 for i in feedback_items if i.get("FeedbackKind") != "helpful") / max(len(feedback_items), 1),
+                    2,
+                ),
+            },
         },
     )
+
+
+def get_activity_log():
+    """Return the most recent admin audit log entries."""
+    items = query_all(
+        feedback_records_table,
+        IndexName="RecordTypeCreatedAtIndex",
+        KeyConditionExpression=Key("RecordType").eq("AUDIT_LOG"),
+        ScanIndexForward=False,
+    )
+    entries = []
+    for item in items[:50]:
+        entries.append({
+            "action": item.get("Action", ""),
+            "entityType": item.get("EntityType", ""),
+            "entityId": item.get("EntityId", ""),
+            "actor": item.get("Actor", ""),
+            "details": item.get("Details", {}),
+            "createdAt": item.get("CreatedAt", ""),
+        })
+    return json_response(200, {"entries": entries})
 
 
 def lambda_handler(event, context):
@@ -926,6 +1020,13 @@ def lambda_handler(event, context):
 
         if method == "POST" and len(path_parts) == 3 and path_parts[0] == "feedback" and path_parts[2] == "follow-up":
             return append_feedback_follow_up(event, path_parts[1])
+
+        if path_parts == ["user-feedback"] and method == "GET":
+            return list_feedback(event)
+        if path_parts == ["user-feedback"] and method in ("POST", "DELETE"):
+            return json_response(410, {"error": "Legacy endpoint removed. Use POST /feedback instead."})
+        if path_parts == ["user-feedback", "download-feedback"] and method == "POST":
+            return json_response(410, {"error": "Legacy download endpoint removed."})
 
         if not path_parts or path_parts[0] != "admin":
             return json_response(404, {"error": "Not found"})
@@ -959,9 +1060,14 @@ def lambda_handler(event, context):
         if method == "GET" and path_parts == ["admin", "monitoring"]:
             return get_monitoring()
 
+        if method == "GET" and path_parts == ["admin", "activity-log"]:
+            return get_activity_log()
+
         return json_response(404, {"error": "Not found"})
     except PermissionError as error:
-        return json_response(403, {"error": str(error)})
+        return json_response(403, {"error": "forbidden", "message": str(error)})
+    except json.JSONDecodeError:
+        return json_response(400, {"error": "validation_error", "message": "Invalid JSON in request body"})
     except Exception:
         logger.exception("Feedback ops handler failed")
-        return json_response(500, {"error": "Internal server error"})
+        return json_response(500, {"error": "internal_error", "message": "An unexpected error occurred. Please try again."})
