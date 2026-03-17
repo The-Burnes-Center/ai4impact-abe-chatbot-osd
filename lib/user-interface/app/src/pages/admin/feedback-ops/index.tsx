@@ -144,12 +144,19 @@ export default function FeedbackOpsPage() {
     setTab("prompts");
   }, []);
 
-  const negativeFeedback = useMemo(
-    () => feedbackItems.filter((i) => i.feedbackKind !== "helpful"),
-    [feedbackItems]
-  );
+  const displayItems = useMemo(() => {
+    if (filters.disposition === "helpful") {
+      return feedbackItems.filter((i) => i.feedbackKind === "helpful");
+    }
+    if (filters.disposition === "not_helpful") {
+      return feedbackItems.filter((i) => i.feedbackKind !== "helpful");
+    }
+    return feedbackItems;
+  }, [feedbackItems, filters.disposition]);
 
-  const pendingCount = negativeFeedback.filter((i) => i.disposition === "pending").length;
+  const pendingCount = feedbackItems.filter(
+    (i) => i.feedbackKind !== "helpful" && i.disposition === "pending"
+  ).length;
 
   return (
     <AdminPageLayout
@@ -233,7 +240,7 @@ export default function FeedbackOpsPage() {
         {/* Views */}
         {tab === "queue" && (
           <InboxView
-            feedbackItems={negativeFeedback}
+            feedbackItems={displayItems}
             selectedFeedback={selectedFeedback}
             filters={filters}
             loading={loading}

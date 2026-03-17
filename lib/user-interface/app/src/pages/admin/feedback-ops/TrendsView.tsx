@@ -30,49 +30,6 @@ interface TrendsViewProps {
   onCreateDraftFromCluster?: (cluster: ClusterSummary) => void;
 }
 
-function StatCard({
-  title,
-  value,
-  subtitle,
-  accent,
-}: {
-  title: string;
-  value: number | string;
-  subtitle?: string;
-  accent?: "primary" | "success" | "warning" | "error" | "default";
-}) {
-  const accentColor = {
-    primary: "primary.main",
-    success: "success.main",
-    warning: "warning.main",
-    error: "error.main",
-    default: "grey.500",
-  }[accent || "default"];
-
-  return (
-    <Paper
-      variant="outlined"
-      sx={{ p: 2.5, height: "100%", borderLeft: "3px solid", borderLeftColor: accentColor }}
-    >
-      <Typography
-        variant="caption"
-        color="text.secondary"
-        sx={{ fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, fontSize: "0.75rem" }}
-      >
-        {title}
-      </Typography>
-      <Typography variant="h4" sx={{ fontWeight: 700, mt: 0.5, fontSize: "1.75rem" }}>
-        {value}
-      </Typography>
-      {subtitle && (
-        <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
-          {subtitle}
-        </Typography>
-      )}
-    </Paper>
-  );
-}
-
 const DISPOSITION_COLORS: Record<string, string> = {
   pending: "grey.500",
   "prompt update": "primary.main",
@@ -88,7 +45,6 @@ const ROOT_CAUSE_COLORS: Record<string, string> = {
   answer_quality: "warning.dark",
   product_bug: "error.dark",
   needs_human_review: "grey.500",
-  positive_signal: "success.main",
   unknown: "grey.400",
 };
 
@@ -103,13 +59,6 @@ const ROOT_CAUSE_CHIP_COLOR: Record<string, "error" | "warning" | "info" | "defa
 function TrendsSkeleton() {
   return (
     <Stack spacing={2}>
-      <Grid container spacing={2}>
-        {[1, 2, 3, 4].map((i) => (
-          <Grid item xs={12} sm={6} md={3} key={i}>
-            <Skeleton variant="rounded" height={100} />
-          </Grid>
-        ))}
-      </Grid>
       <Skeleton variant="rounded" height={300} />
       <Skeleton variant="rounded" height={250} />
     </Stack>
@@ -222,45 +171,13 @@ export default function TrendsView({ monitoring, loading, onCreateDraftFromClust
   if (!monitoring) return <EmptyTrends />;
 
   const overview = monitoring.feedbackOverview;
-  const clusters = monitoring.clusterSummaries || [];
+  const clusters = (monitoring.clusterSummaries || []).filter(
+    (c) => c.rootCause !== "positive_signal"
+  );
   const sources = monitoring.sourceTriage || [];
 
   return (
     <Stack spacing={3}>
-      {/* Summary cards */}
-      <Grid container spacing={2}>
-        <Grid item xs={6} md={3}>
-          <StatCard title="Total reports" value={overview.totalFeedback} accent="primary" />
-        </Grid>
-        <Grid item xs={6} md={3}>
-          <StatCard
-            title="Needs review"
-            value={overview.dispositionCounts["pending"] || 0}
-            subtitle="Awaiting action"
-            accent={((overview.dispositionCounts["pending"] || 0) > 10) ? "error" : "warning"}
-          />
-        </Grid>
-        <Grid item xs={6} md={3}>
-          <StatCard
-            title="Resolved"
-            value={
-              (overview.dispositionCounts["prompt update"] || 0) +
-              (overview.dispositionCounts["KB/source fix"] || 0) +
-              (overview.dispositionCounts["retrieval/config issue"] || 0)
-            }
-            subtitle="Action taken"
-            accent="success"
-          />
-        </Grid>
-        <Grid item xs={6} md={3}>
-          <StatCard
-            title="Negative rate"
-            value={monitoring.health ? `${Math.round(monitoring.health.negativeRate * 100)}%` : "N/A"}
-            accent={monitoring.health && monitoring.health.negativeRate > 0.5 ? "error" : "default"}
-          />
-        </Grid>
-      </Grid>
-
       {/* Issue patterns */}
       {clusters.length > 0 && (
         <Box>
@@ -367,7 +284,9 @@ export default function TrendsView({ monitoring, loading, onCreateDraftFromClust
         <Grid item xs={12} md={6}>
           <BreakdownTable
             title="Issue Breakdown"
-            data={overview.rootCauseCounts}
+            data={Object.fromEntries(
+              Object.entries(overview.rootCauseCounts).filter(([k]) => k !== "positive_signal")
+            )}
             colorMap={ROOT_CAUSE_COLORS}
           />
         </Grid>
