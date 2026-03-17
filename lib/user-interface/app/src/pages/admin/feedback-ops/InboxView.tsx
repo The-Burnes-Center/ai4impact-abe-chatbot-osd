@@ -193,7 +193,13 @@ export default function InboxView(props: InboxViewProps) {
       setActionLoading(true);
       await apiClient.userFeedback.setFeedbackDisposition(
         selectedFeedback.feedback.FeedbackId,
-        { reviewStatus, owner, resolutionNote, adminNotes }
+        {
+          reviewStatus,
+          disposition: selectedFeedback.feedback.Disposition || "pending",
+          owner,
+          resolutionNote,
+          adminNotes,
+        }
       );
       await onLoadFeedbackDetail(selectedFeedback.feedback.FeedbackId);
       await onFeedbackUpdated();
