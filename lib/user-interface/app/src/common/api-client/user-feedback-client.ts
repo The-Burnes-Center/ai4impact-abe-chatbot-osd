@@ -101,6 +101,12 @@ export class UserFeedbackClient {
     });
   }
 
+  async deleteFeedback(feedbackId: string) {
+    return this.request(`/admin/feedback/${feedbackId}`, {
+      method: "DELETE",
+    });
+  }
+
   async getPrompts() {
     return this.request("/admin/prompts", { method: "GET" });
   }

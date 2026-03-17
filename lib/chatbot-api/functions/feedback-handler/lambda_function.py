@@ -681,6 +681,18 @@ def set_disposition(event: dict[str, Any], feedback_id: str):
     return json_response(200, {"feedback": item})
 
 
+def delete_feedback(feedback_id: str):
+    item = feedback_records_table.get_item(Key={"FeedbackId": feedback_id}).get("Item")
+    if not item or item.get("RecordType") != "FEEDBACK":
+        return json_response(404, {"error": "Feedback not found"})
+    feedback_records_table.delete_item(Key={"FeedbackId": feedback_id})
+    write_audit_log("feedback_deleted", "feedback", feedback_id, {
+        "feedbackKind": item.get("FeedbackKind", ""),
+        "reviewStatus": item.get("ReviewStatus", ""),
+    })
+    return json_response(200, {"deleted": True, "feedbackId": feedback_id})
+
+
 def promote_to_candidate(feedback_id: str):
     from boto3.dynamodb.conditions import Attr
 
@@ -1102,6 +1114,8 @@ def lambda_handler(event, context):
             return set_disposition(event, path_parts[2])
         if method == "POST" and len(path_parts) == 4 and path_parts[:2] == ["admin", "feedback"] and path_parts[3] == "promote-to-candidate":
             return promote_to_candidate(path_parts[2])
+        if method == "DELETE" and len(path_parts) == 3 and path_parts[:2] == ["admin", "feedback"]:
+            return delete_feedback(path_parts[2])
 
         if method == "GET" and path_parts == ["admin", "prompts"]:
             return list_prompts()

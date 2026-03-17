@@ -34,6 +34,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import SkipNextIcon from "@mui/icons-material/SkipNext";
 import ThumbUpOutlinedIcon from "@mui/icons-material/ThumbUpOutlined";
 import ThumbDownOutlinedIcon from "@mui/icons-material/ThumbDownOutlined";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import {
   FeedbackItem,
   FeedbackDetail,
@@ -122,6 +123,11 @@ export default function InboxView(props: InboxViewProps) {
     item: FeedbackItem | null;
     action: "test_library" | "fix_prompt";
   }>({ open: false, item: null, action: "test_library" });
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    feedbackId: string;
+    question: string;
+  }>({ open: false, feedbackId: "", question: "" });
 
   const pageSize = 25;
   const totalPages = Math.ceil(feedbackItems.length / pageSize);
@@ -246,6 +252,24 @@ export default function InboxView(props: InboxViewProps) {
 
   const handleQuickFixPrompt = (item: FeedbackItem) => {
     handleOpenDetail(item.feedbackId);
+  };
+
+  const handleDeleteFeedback = async () => {
+    if (!apiClient || !deleteDialog.feedbackId) return;
+    try {
+      setActionLoading(true);
+      await apiClient.userFeedback.deleteFeedback(deleteDialog.feedbackId);
+      if (selectedFeedback?.feedback?.FeedbackId === deleteDialog.feedbackId) {
+        handleCloseDetail();
+      }
+      await onFeedbackUpdated();
+      addNotification("success", "Feedback deleted.");
+    } catch (error: any) {
+      addNotification("error", error?.message || "Could not delete feedback.");
+    } finally {
+      setActionLoading(false);
+      setDeleteDialog({ open: false, feedbackId: "", question: "" });
+    }
   };
 
   const openConfirmDialog = (item: FeedbackItem, action: "test_library" | "fix_prompt", e: React.MouseEvent) => {
@@ -378,22 +402,20 @@ export default function InboxView(props: InboxViewProps) {
                       }
                     }}
                     tabIndex={0}
-                    sx={{
-                      cursor: "pointer",
-                      bgcolor: positive ? "rgba(46, 125, 50, 0.04)" : "rgba(211, 47, 47, 0.04)",
-                      "&:hover": {
-                        bgcolor: positive ? "rgba(46, 125, 50, 0.08) !important" : "rgba(211, 47, 47, 0.08) !important",
-                      },
-                    }}
+                    sx={{ cursor: "pointer" }}
                     role="row"
                     aria-selected={isActive}
                   >
                     <TableCell sx={{ px: 1.5 }}>
-                      {positive ? (
-                        <ThumbUpOutlinedIcon sx={{ fontSize: 18, color: "success.main" }} />
-                      ) : (
-                        <ThumbDownOutlinedIcon sx={{ fontSize: 18, color: "error.main" }} />
-                      )}
+                      <Tooltip title={positive ? "Positive feedback" : "Negative feedback"}>
+                        <Stack direction="row" alignItems="center" gap={0.5}>
+                          {positive ? (
+                            <ThumbUpOutlinedIcon sx={{ fontSize: 18, color: "primary.main" }} aria-label="Positive" />
+                          ) : (
+                            <ThumbDownOutlinedIcon sx={{ fontSize: 18, color: "warning.dark" }} aria-label="Negative" />
+                          )}
+                        </Stack>
+                      </Tooltip>
                     </TableCell>
                     <TableCell sx={{ whiteSpace: "nowrap", fontSize: "0.8125rem" }}>
                       {formatDate(item.createdAt)}
@@ -421,28 +443,47 @@ export default function InboxView(props: InboxViewProps) {
                       />
                     </TableCell>
                     <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                      {positive ? (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          color="success"
-                          onClick={(e) => openConfirmDialog(item, "test_library", e)}
-                          disabled={actionLoading}
-                          sx={{ fontSize: "0.75rem", textTransform: "none", whiteSpace: "nowrap" }}
-                        >
-                          Add to tests
-                        </Button>
-                      ) : (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          color="error"
-                          onClick={(e) => openConfirmDialog(item, "fix_prompt", e)}
-                          sx={{ fontSize: "0.75rem", textTransform: "none", whiteSpace: "nowrap" }}
-                        >
-                          Review
-                        </Button>
-                      )}
+                      <Stack direction="row" gap={0.5} justifyContent="flex-end" alignItems="center">
+                        {positive ? (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="primary"
+                            onClick={(e) => openConfirmDialog(item, "test_library", e)}
+                            disabled={actionLoading}
+                            sx={{ fontSize: "0.75rem", textTransform: "none", whiteSpace: "nowrap" }}
+                          >
+                            Add to tests
+                          </Button>
+                        ) : (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="warning"
+                            onClick={(e) => openConfirmDialog(item, "fix_prompt", e)}
+                            sx={{ fontSize: "0.75rem", textTransform: "none", whiteSpace: "nowrap" }}
+                          >
+                            Review
+                          </Button>
+                        )}
+                        <Tooltip title="Delete">
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteDialog({
+                                open: true,
+                                feedbackId: item.feedbackId,
+                                question: item.userPromptPreview || "this item",
+                              });
+                            }}
+                            aria-label="Delete feedback"
+                            sx={{ color: "text.secondary", "&:hover": { color: "error.main" } }}
+                          >
+                            <DeleteOutlineIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
                     </TableCell>
                   </TableRow>
                 );
@@ -527,7 +568,7 @@ export default function InboxView(props: InboxViewProps) {
           </Button>
           <Button
             variant="contained"
-            color="success"
+            color="primary"
             onClick={() => confirmDialog.item && handleAddToTestLibrary(confirmDialog.item)}
             disabled={actionLoading}
             sx={{ textTransform: "none" }}
@@ -559,9 +600,9 @@ export default function InboxView(props: InboxViewProps) {
             >
               <Stack direction="row" gap={1} alignItems="center">
                 {selectedFeedback.feedback?.FeedbackKind === "helpful" ? (
-                  <ThumbUpOutlinedIcon sx={{ fontSize: 20, color: "success.main" }} />
+                  <ThumbUpOutlinedIcon sx={{ fontSize: 20, color: "primary.main" }} aria-hidden="true" />
                 ) : (
-                  <ThumbDownOutlinedIcon sx={{ fontSize: 20, color: "error.main" }} />
+                  <ThumbDownOutlinedIcon sx={{ fontSize: 20, color: "warning.dark" }} aria-hidden="true" />
                 )}
                 <Typography variant="h6" sx={{ fontSize: "1rem", fontWeight: 600 }}>
                   Feedback Detail
@@ -731,7 +772,7 @@ export default function InboxView(props: InboxViewProps) {
                 <Button
                   variant="contained"
                   size="small"
-                  color="success"
+                  color="primary"
                   onClick={() => {
                     const item = feedbackItems.find(
                       (i) => i.feedbackId === selectedFeedback.feedback?.FeedbackId
@@ -773,17 +814,69 @@ export default function InboxView(props: InboxViewProps) {
                   </Button>
                 </>
               )}
-              <Button
-                size="small"
-                onClick={handleCloseDetail}
-                sx={{ ml: "auto", fontSize: "0.8125rem", textTransform: "none" }}
-              >
-                Close
-              </Button>
+              <Tooltip title="Delete this feedback">
+                <IconButton
+                  size="small"
+                  onClick={() => {
+                    if (selectedFeedback?.feedback?.FeedbackId) {
+                      setDeleteDialog({
+                        open: true,
+                        feedbackId: selectedFeedback.feedback.FeedbackId,
+                        question: selectedFeedback.feedback.UserPromptPreview || "this item",
+                      });
+                    }
+                  }}
+                  disabled={actionLoading}
+                  aria-label="Delete feedback"
+                  sx={{ ml: "auto", color: "text.secondary", "&:hover": { color: "error.main" } }}
+                >
+                  <DeleteOutlineIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
             </Stack>
           </Box>
         )}
       </Drawer>
+
+      {/* Delete confirmation dialog */}
+      <Dialog
+        open={deleteDialog.open}
+        onClose={() => setDeleteDialog({ open: false, feedbackId: "", question: "" })}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontSize: "1rem", fontWeight: 600 }}>
+          Delete feedback?
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ fontSize: "0.875rem" }}>
+            This will permanently remove the feedback for:
+          </Typography>
+          <Typography variant="body2" sx={{ fontWeight: 600, mt: 1, fontSize: "0.875rem" }}>
+            "{deleteDialog.question}"
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5, fontSize: "0.8125rem" }}>
+            This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setDeleteDialog({ open: false, feedbackId: "", question: "" })}
+            sx={{ textTransform: "none" }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleDeleteFeedback}
+            disabled={actionLoading}
+            sx={{ textTransform: "none" }}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }
