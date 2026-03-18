@@ -37,6 +37,87 @@ import {
 
 type TabValue = "queue" | "trends" | "prompts";
 
+function getDetailText(entry: ActivityLogEntry, key: string): string {
+  const value = entry.details?.[key];
+  return typeof value === "string" ? value : "";
+}
+
+function shortenId(value?: string): string {
+  if (!value) return "";
+  if (value.length <= 18) return value;
+  return `${value.slice(0, 8)}...${value.slice(-6)}`;
+}
+
+function describeActivity(entry: ActivityLogEntry): {
+  title: string;
+  description: string;
+  meta: string[];
+} {
+  const questionPreview = getDetailText(entry, "questionPreview");
+  const disposition = getDetailText(entry, "disposition");
+  const reviewStatus = getDetailText(entry, "reviewStatus");
+  const owner = getDetailText(entry, "owner");
+  const promptVersionId = getDetailText(entry, "promptVersionId");
+  const caseId = getDetailText(entry, "caseId");
+  const title = getDetailText(entry, "title");
+  const feedbackKind = getDetailText(entry, "feedbackKind");
+
+  switch (entry.action) {
+    case "disposition_set":
+      return {
+        title: questionPreview || `Feedback ${shortenId(entry.entityId)}`,
+        description: `Review updated to ${label(reviewStatus || "new")} with ${label(disposition || "pending")}.`,
+        meta: [owner ? `Owner: ${owner}` : "", promptVersionId ? `Prompt: ${promptVersionId}` : ""].filter(Boolean),
+      };
+    case "promoted_to_candidate":
+      return {
+        title: questionPreview || `Feedback ${shortenId(entry.entityId)}`,
+        description: "Added to the candidate test library for follow-up evaluation.",
+        meta: [caseId ? `Case: ${caseId}` : "", promptVersionId ? `Prompt: ${promptVersionId}` : ""].filter(Boolean),
+      };
+    case "feedback_deleted":
+      return {
+        title: questionPreview || `Feedback ${shortenId(entry.entityId)}`,
+        description: "Feedback was permanently deleted from the review queue.",
+        meta: [
+          feedbackKind ? `Type: ${label(feedbackKind)}` : "",
+          reviewStatus ? `Status: ${label(reviewStatus)}` : "",
+          disposition ? `Action: ${label(disposition)}` : "",
+        ].filter(Boolean),
+      };
+    case "prompt_published":
+      return {
+        title: title || `Prompt ${entry.entityId}`,
+        description: `Version ${entry.entityId} is now live.`,
+        meta: [],
+      };
+    case "prompt_deleted":
+      return {
+        title: title || `Prompt ${entry.entityId}`,
+        description: "Draft prompt deleted.",
+        meta: [],
+      };
+    case "prompt_created":
+      return {
+        title: title || `Prompt ${entry.entityId}`,
+        description: "New draft prompt created.",
+        meta: [],
+      };
+    case "prompt_updated":
+      return {
+        title: title || `Prompt ${entry.entityId}`,
+        description: "Draft prompt updated.",
+        meta: [],
+      };
+    default:
+      return {
+        title: label(entry.action),
+        description: `${label(entry.entityType)} ${shortenId(entry.entityId)}`,
+        meta: [],
+      };
+  }
+}
+
 export default function FeedbackOpsPage() {
   useDocumentTitle("Feedback Manager");
   const { feedbackId } = useParams();
@@ -46,11 +127,13 @@ export default function FeedbackOpsPage() {
   const [tab, setTab] = useState<TabValue>("queue");
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState<InboxFilters>({
+    feedbackKind: "",
     reviewStatus: "",
     disposition: "",
     issueTag: "",
     promptVersionId: "",
     sourceTitle: "",
+    rootCause: "",
     dateFrom: "",
     dateTo: "",
     search: "",
@@ -116,16 +199,56 @@ export default function FeedbackOpsPage() {
       if (feedbackId) {
         await loadFeedbackDetail(feedbackId);
       }
-    } catch (error: any) {
-      addNotification("error", error?.message || "Failed to refresh Feedback Manager.");
+    } catch (error: unknown) {
+      addNotification("error", error instanceof Error ? error.message : "Failed to refresh Feedback Manager.");
     } finally {
       setLoading(false);
     }
   }, [addNotification, feedbackId, loadFeedback, loadFeedbackDetail, loadMonitoring, loadPrompts, loadActivityLog]);
 
   useEffect(() => {
-    refreshAll();
-  }, [refreshAll]);
+    let isActive = true;
+    if (!apiClient) {
+      return undefined;
+    }
+    setLoading(true);
+    Promise.all([loadMonitoring(), loadPrompts(), loadActivityLog()])
+      .catch((error: unknown) => {
+        if (isActive) {
+          addNotification("error", error instanceof Error ? error.message : "Failed to load Feedback Manager.");
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [addNotification, apiClient, loadActivityLog, loadMonitoring, loadPrompts]);
+
+  useEffect(() => {
+    let isActive = true;
+    if (!apiClient) {
+      return undefined;
+    }
+    setLoading(true);
+    loadFeedback()
+      .catch((error: unknown) => {
+        if (isActive) {
+          addNotification("error", error instanceof Error ? error.message : "Failed to load feedback.");
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [addNotification, apiClient, loadFeedback]);
 
   useEffect(() => {
     if (feedbackId) {
@@ -137,22 +260,12 @@ export default function FeedbackOpsPage() {
   }, [feedbackId, loadFeedbackDetail]);
 
   const handleFeedbackUpdated = useCallback(async () => {
-    await Promise.all([loadFeedback(), loadMonitoring()]);
-  }, [loadFeedback, loadMonitoring]);
+    await Promise.all([loadFeedback(), loadMonitoring(), loadActivityLog()]);
+  }, [loadActivityLog, loadFeedback, loadMonitoring]);
 
-  const handleCreateDraftFromCluster = useCallback((cluster: { rootCause?: string; summary?: string }) => {
+  const handleCreateDraftFromCluster = useCallback(() => {
     setTab("prompts");
   }, []);
-
-  const displayItems = useMemo(() => {
-    if (filters.disposition === "helpful") {
-      return feedbackItems.filter((i) => i.feedbackKind === "helpful");
-    }
-    if (filters.disposition === "not_helpful") {
-      return feedbackItems.filter((i) => i.feedbackKind !== "helpful");
-    }
-    return feedbackItems;
-  }, [feedbackItems, filters.disposition]);
 
   const pendingCount = feedbackItems.filter(
     (i) => i.feedbackKind !== "helpful" && i.disposition === "pending"
@@ -240,7 +353,7 @@ export default function FeedbackOpsPage() {
         {/* Views */}
         {tab === "queue" && (
           <InboxView
-            feedbackItems={displayItems}
+            feedbackItems={feedbackItems}
             selectedFeedback={selectedFeedback}
             filters={filters}
             loading={loading}
@@ -296,32 +409,53 @@ export default function FeedbackOpsPage() {
               <CloseIcon fontSize="small" />
             </IconButton>
           </Stack>
-          {activityLog.slice(0, 30).map((entry, i) => (
-            <Stack
-              key={i}
-              spacing={0.25}
-              sx={{
-                py: 1,
-                borderBottom: "1px solid",
-                borderColor: "divider",
-              }}
-            >
-              <Stack direction="row" gap={1} alignItems="center">
-                <Chip
-                  size="small"
-                  label={label(entry.action)}
-                  sx={{ height: 22, fontSize: "0.75rem" }}
-                />
-                <Typography variant="body2" sx={{ fontSize: "0.8125rem" }}>
-                  {entry.entityType}
-                </Typography>
-              </Stack>
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
-                {formatDate(entry.createdAt)}
-                {entry.actor && ` by ${entry.actor}`}
-              </Typography>
-            </Stack>
-          ))}
+          {activityLog.slice(0, 30).map((entry, i) => {
+            const activity = describeActivity(entry);
+            return (
+              <Paper key={i} variant="outlined" sx={{ p: 1.5 }}>
+                <Stack spacing={1}>
+                  <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
+                    <Chip
+                      size="small"
+                      label={label(entry.action)}
+                      sx={{ height: 22, fontSize: "0.75rem" }}
+                    />
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={label(entry.entityType)}
+                      sx={{ height: 22, fontSize: "0.75rem" }}
+                    />
+                  </Stack>
+                  <Box>
+                    <Typography variant="body2" sx={{ fontSize: "0.875rem", fontWeight: 600 }}>
+                      {activity.title}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.8125rem", mt: 0.25 }}>
+                      {activity.description}
+                    </Typography>
+                  </Box>
+                  {activity.meta.length > 0 && (
+                    <Stack direction="row" gap={0.75} flexWrap="wrap">
+                      {activity.meta.map((item) => (
+                        <Chip
+                          key={item}
+                          size="small"
+                          variant="outlined"
+                          label={item}
+                          sx={{ height: 22, fontSize: "0.75rem" }}
+                        />
+                      ))}
+                    </Stack>
+                  )}
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                    {formatDate(entry.createdAt)}
+                    {entry.actor && ` by ${entry.actor}`}
+                  </Typography>
+                </Stack>
+              </Paper>
+            );
+          })}
           {activityLog.length === 0 && (
             <Typography variant="body2" color="text.secondary">
               No recent activity.

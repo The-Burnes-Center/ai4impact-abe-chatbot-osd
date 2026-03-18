@@ -174,11 +174,13 @@ export interface MonitoringData {
 }
 
 export interface InboxFilters {
+  feedbackKind: string;
   reviewStatus: string;
   disposition: string;
   issueTag: string;
   promptVersionId: string;
   sourceTitle: string;
+  rootCause: string;
   dateFrom: string;
   dateTo: string;
   search: string;
@@ -207,6 +209,8 @@ export const LABELS: Record<string, string> = {
   "KB/source fix": "Fix document",
   "retrieval/config issue": "Fix search",
   "product/UX bug": "System bug",
+  "helpful": "Helpful",
+  "not_helpful": "Needs attention",
 
   // Root causes (issue types)
   "retrieval_gap": "Missing info",
@@ -220,10 +224,19 @@ export const LABELS: Record<string, string> = {
 
   // Review statuses (simple workflow)
   "new": "New",
-  "analyzed": "New",
+  "analyzed": "AI analyzed",
   "in_review": "Reviewing",
   "actioned": "Resolved",
   "dismissed": "Dismissed",
+
+  // Activity log actions
+  "disposition_set": "Review updated",
+  "promoted_to_candidate": "Added to tests",
+  "feedback_deleted": "Feedback deleted",
+  "prompt_published": "Prompt published",
+  "prompt_deleted": "Prompt deleted",
+  "prompt_created": "Prompt created",
+  "prompt_updated": "Prompt updated",
 };
 
 export function label(key: string): string {

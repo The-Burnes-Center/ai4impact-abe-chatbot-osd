@@ -436,6 +436,20 @@ def summarize_feedback_item(item: dict[str, Any], cluster_counts: Counter) -> di
     }
 
 
+def build_feedback_audit_details(item: dict[str, Any], extra: dict[str, Any] | None = None) -> dict[str, Any]:
+    details = {
+        "questionPreview": item.get("UserPromptPreview", ""),
+        "feedbackKind": item.get("FeedbackKind", ""),
+        "reviewStatus": item.get("ReviewStatus", ""),
+        "disposition": item.get("Disposition", ""),
+        "rootCause": (item.get("Analysis") or {}).get("likelyRootCause", ""),
+        "promptVersionId": item.get("PromptVersionId", ""),
+    }
+    if extra:
+        details.update(extra)
+    return {key: value for key, value in details.items() if value not in ("", None, [], {})}
+
+
 def create_feedback(event: dict[str, Any]):
     payload = parse_json_body(event)
     message_id = str(payload.get("messageId", "")).strip()
@@ -552,6 +566,7 @@ def append_feedback_follow_up(event: dict[str, Any], feedback_id: str):
 
 
 def filter_feedback_items(items: list[dict[str, Any]], query_params: dict[str, str]) -> list[dict[str, Any]]:
+    feedback_kind = query_params.get("feedbackKind")
     issue_tag_raw = query_params.get("issueTag", "").strip()
     issue_tag = slugify(issue_tag_raw).replace("-", "_") if issue_tag_raw else ""
     review_status = query_params.get("reviewStatus")
@@ -561,6 +576,7 @@ def filter_feedback_items(items: list[dict[str, Any]], query_params: dict[str, s
     source_title = query_params.get("sourceTitle", "").lower()
     date_from = query_params.get("dateFrom")
     date_to = query_params.get("dateTo")
+    search_term = query_params.get("search", "").strip().lower()
     if date_from and not ISO_DATE_PATTERN.match(date_from):
         date_from = None
     if date_to and not ISO_DATE_PATTERN.match(date_to):
@@ -568,6 +584,19 @@ def filter_feedback_items(items: list[dict[str, Any]], query_params: dict[str, s
 
     filtered = []
     for item in items:
+        created_at_date = str(item.get("CreatedAt", ""))[:10]
+        search_blob = " ".join([
+            str(item.get("UserPromptPreview", "")),
+            str(item.get("AnswerPreview", "")),
+            str(item.get("UserComment", "")),
+            str(item.get("WrongSnippet", "")),
+            str(item.get("ExpectedAnswer", "")),
+            str(((item.get("Analysis") or {}).get("summary", ""))),
+            " ".join(item.get("SourceTitles", [])),
+        ]).lower()
+
+        if feedback_kind and item.get("FeedbackKind") != feedback_kind:
+            continue
         if review_status and item.get("ReviewStatus") != review_status:
             continue
         if disposition and item.get("Disposition") != disposition:
@@ -580,9 +609,11 @@ def filter_feedback_items(items: list[dict[str, Any]], query_params: dict[str, s
             continue
         if source_title and not any(source_title in title.lower() for title in item.get("SourceTitles", [])):
             continue
-        if date_from and item.get("CreatedAt", "") < date_from:
+        if date_from and (not created_at_date or created_at_date < date_from):
             continue
-        if date_to and item.get("CreatedAt", "") > date_to:
+        if date_to and (not created_at_date or created_at_date > date_to):
+            continue
+        if search_term and search_term not in search_blob:
             continue
         filtered.append(item)
     return filtered
@@ -675,9 +706,19 @@ def set_disposition(event: dict[str, Any], feedback_id: str):
     item["AdminNotes"] = str(payload.get("adminNotes", item.get("AdminNotes", ""))).strip()
     item["UpdatedAt"] = utc_now_iso()
     feedback_records_table.put_item(Item=_sanitize_value(item))
-    write_audit_log("disposition_set", "feedback", feedback_id, {
-        "disposition": disposition, "reviewStatus": review_status, "owner": item["Owner"],
-    })
+    write_audit_log(
+        "disposition_set",
+        "feedback",
+        feedback_id,
+        build_feedback_audit_details(
+            item,
+            {
+                "disposition": disposition,
+                "reviewStatus": review_status,
+                "owner": item["Owner"],
+            },
+        ),
+    )
     return json_response(200, {"feedback": item})
 
 
@@ -686,10 +727,7 @@ def delete_feedback(feedback_id: str):
     if not item or item.get("RecordType") != "FEEDBACK":
         return json_response(404, {"error": "Feedback not found"})
     feedback_records_table.delete_item(Key={"FeedbackId": feedback_id})
-    write_audit_log("feedback_deleted", "feedback", feedback_id, {
-        "feedbackKind": item.get("FeedbackKind", ""),
-        "reviewStatus": item.get("ReviewStatus", ""),
-    })
+    write_audit_log("feedback_deleted", "feedback", feedback_id, build_feedback_audit_details(item))
     return json_response(200, {"deleted": True, "feedbackId": feedback_id})
 
 
@@ -730,7 +768,12 @@ def promote_to_candidate(feedback_id: str):
     item["UpdatedAt"] = created_at
     item["ReviewStatus"] = "actioned"
     feedback_records_table.put_item(Item=_sanitize_value(item))
-    write_audit_log("promoted_to_candidate", "feedback", feedback_id, {"caseId": case_id})
+    write_audit_log(
+        "promoted_to_candidate",
+        "feedback",
+        feedback_id,
+        build_feedback_audit_details(item, {"caseId": case_id}),
+    )
     return json_response(200, {"case": candidate_case})
 
 
@@ -803,6 +846,7 @@ def create_prompt(event: dict[str, Any]):
         "AiSummary": str(payload.get("aiSummary", "")).strip(),
     }
     prompt_registry_table.put_item(Item=item)
+    write_audit_log("prompt_created", "prompt", version_id, {"title": item.get("Title", "")})
     return json_response(201, {"prompt": serialize_prompt_item(item)})
 
 
@@ -824,6 +868,7 @@ def update_prompt(event: dict[str, Any], version_id: str):
         item["LinkedFeedbackIds"] = payload.get("linkedFeedbackIds")
     item["UpdatedAt"] = utc_now_iso()
     prompt_registry_table.put_item(Item=item)
+    write_audit_log("prompt_updated", "prompt", version_id, {"title": item.get("Title", "")})
     return json_response(200, {"prompt": serialize_prompt_item(item)})
 
 

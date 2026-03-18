@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box,
@@ -11,6 +11,7 @@ import {
   Divider,
   Drawer,
   IconButton,
+  InputAdornment,
   LinearProgress,
   MenuItem,
   Paper,
@@ -19,6 +20,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableFooter,
   TableHead,
   TableRow,
@@ -35,7 +37,9 @@ import SkipNextIcon from "@mui/icons-material/SkipNext";
 import ThumbUpOutlinedIcon from "@mui/icons-material/ThumbUpOutlined";
 import ThumbDownOutlinedIcon from "@mui/icons-material/ThumbDownOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import SearchIcon from "@mui/icons-material/Search";
 import {
+  DISPOSITIONS,
   FeedbackItem,
   FeedbackDetail,
   InboxFilters,
@@ -53,7 +57,48 @@ const ROOT_CAUSE_CHIPS: Record<string, { label: string; color: "error" | "warnin
   answer_quality: { label: "Low quality", color: "warning" },
   product_bug: { label: "System bug", color: "error" },
   needs_human_review: { label: "Needs review", color: "default" },
+  positive_signal: { label: "Helpful", color: "info" },
 };
+
+type ResizableColumnKey = "question" | "analysis" | "context";
+
+const INITIAL_COLUMN_WIDTHS: Record<ResizableColumnKey, number> = {
+  question: 420,
+  analysis: 340,
+  context: 260,
+};
+
+const COLUMN_LIMITS: Record<ResizableColumnKey, { min: number; max: number }> = {
+  question: { min: 260, max: 720 },
+  analysis: { min: 240, max: 560 },
+  context: { min: 220, max: 420 },
+};
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getReviewStatusColor(status?: string): "default" | "success" | "info" | "warning" {
+  if (status === "actioned") return "success";
+  if (status === "dismissed") return "default";
+  if (status === "in_review") return "info";
+  return "warning";
+}
+
+function summarizeSources(item: FeedbackItem): { primary: string; secondary: string } {
+  const sources = item.sourceTitles || [];
+  if (sources.length === 0) {
+    return { primary: "No source documents captured", secondary: item.promptVersionId ? `Prompt ${item.promptVersionId}` : "Prompt version unavailable" };
+  }
+
+  const [first, ...rest] = sources;
+  return {
+    primary: first,
+    secondary: rest.length > 0
+      ? `+${rest.length} more source${rest.length > 1 ? "s" : ""}${item.promptVersionId ? ` | Prompt ${item.promptVersionId}` : ""}`
+      : item.promptVersionId ? `Prompt ${item.promptVersionId}` : "Single source hit",
+  };
+}
 
 interface InboxViewProps {
   feedbackItems: FeedbackItem[];
@@ -94,6 +139,20 @@ function EmptyInbox() {
   );
 }
 
+function FilteredEmptyInbox() {
+  return (
+    <Paper variant="outlined" sx={{ p: 6, textAlign: "center" }}>
+      <InboxOutlinedIcon sx={{ fontSize: 48, color: "text.disabled", mb: 2 }} />
+      <Typography variant="h6" color="text.secondary" gutterBottom>
+        No results match these filters
+      </Typography>
+      <Typography variant="body2" color="text.secondary">
+        Try clearing the date range or broadening the queue filters.
+      </Typography>
+    </Paper>
+  );
+}
+
 export default function InboxView(props: InboxViewProps) {
   const {
     feedbackItems,
@@ -115,9 +174,11 @@ export default function InboxView(props: InboxViewProps) {
   const [resolutionNote, setResolutionNote] = useState("");
   const [adminNotes, setAdminNotes] = useState("");
   const [reviewStatus, setReviewStatus] = useState("new");
+  const [disposition, setDisposition] = useState("pending");
   const [actionLoading, setActionLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [columnWidths, setColumnWidths] = useState(INITIAL_COLUMN_WIDTHS);
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     item: FeedbackItem | null;
@@ -128,12 +189,37 @@ export default function InboxView(props: InboxViewProps) {
     feedbackId: string;
     question: string;
   }>({ open: false, feedbackId: "", question: "" });
+  const resizeStateRef = useRef<{
+    column: ResizableColumnKey;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
 
   const pageSize = 25;
   const totalPages = Math.ceil(feedbackItems.length / pageSize);
   const pagedItems = useMemo(
     () => feedbackItems.slice(page * pageSize, (page + 1) * pageSize),
     [feedbackItems, page]
+  );
+  const rootCauseOptions = useMemo(() => {
+    const available = monitoring?.feedbackOverview?.rootCauseCounts
+      ? Object.keys(monitoring.feedbackOverview.rootCauseCounts)
+      : [];
+    const fallback = Object.keys(ROOT_CAUSE_CHIPS);
+    return Array.from(new Set([...available, ...fallback])).filter((key) => key && key !== "unknown");
+  }, [monitoring]);
+  const queueStats = useMemo(
+    () => ({
+      shown: feedbackItems.length,
+      needsReview: feedbackItems.filter((item) => item.feedbackKind !== "helpful" && item.reviewStatus !== "actioned").length,
+      resolved: feedbackItems.filter((item) => item.reviewStatus === "actioned").length,
+      positive: feedbackItems.filter((item) => item.feedbackKind === "helpful").length,
+    }),
+    [feedbackItems]
+  );
+  const tableMinWidth = useMemo(
+    () => 60 + columnWidths.question + columnWidths.analysis + columnWidths.context + 180 + 190 + 150,
+    [columnWidths]
   );
 
   useEffect(() => {
@@ -143,17 +229,61 @@ export default function InboxView(props: InboxViewProps) {
       setResolutionNote(fb.ResolutionNote || "");
       setAdminNotes(fb.AdminNotes || "");
       setReviewStatus(fb.ReviewStatus || "new");
+      setDisposition(fb.Disposition || "pending");
     } else {
       setOwner("");
       setResolutionNote("");
       setAdminNotes("");
       setReviewStatus("new");
+      setDisposition("pending");
     }
   }, [selectedFeedback]);
 
+  useEffect(() => {
+    setPage((currentPage) => {
+      if (feedbackItems.length === 0) {
+        return 0;
+      }
+      return Math.min(currentPage, Math.max(0, Math.ceil(feedbackItems.length / pageSize) - 1));
+    });
+  }, [feedbackItems.length]);
+
+  useEffect(() => {
+    const handlePointerMove = (event: MouseEvent) => {
+      if (!resizeStateRef.current) return;
+      const { column, startWidth, startX } = resizeStateRef.current;
+      const limits = COLUMN_LIMITS[column];
+      const nextWidth = clamp(startWidth + event.clientX - startX, limits.min, limits.max);
+      setColumnWidths((current) => ({ ...current, [column]: nextWidth }));
+    };
+
+    const stopResizing = () => {
+      if (!resizeStateRef.current) return;
+      resizeStateRef.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    window.addEventListener("mousemove", handlePointerMove);
+    window.addEventListener("mouseup", stopResizing);
+
+    return () => {
+      window.removeEventListener("mousemove", handlePointerMove);
+      window.removeEventListener("mouseup", stopResizing);
+      stopResizing();
+    };
+  }, []);
+
   const updateFilter = useCallback(
     (key: keyof InboxFilters, value: string) => {
-      onFiltersChange({ ...filters, [key]: value });
+      const nextFilters = { ...filters, [key]: value };
+      if (key === "dateFrom" && value && nextFilters.dateTo && value > nextFilters.dateTo) {
+        nextFilters.dateTo = value;
+      }
+      if (key === "dateTo" && value && nextFilters.dateFrom && value < nextFilters.dateFrom) {
+        nextFilters.dateTo = nextFilters.dateFrom;
+      }
+      onFiltersChange(nextFilters);
       setPage(0);
     },
     [filters, onFiltersChange]
@@ -161,11 +291,13 @@ export default function InboxView(props: InboxViewProps) {
 
   const clearFilters = useCallback(() => {
     onFiltersChange({
+      feedbackKind: "",
       reviewStatus: "",
       disposition: "",
       issueTag: "",
       promptVersionId: "",
       sourceTitle: "",
+      rootCause: "",
       dateFrom: "",
       dateTo: "",
       search: "",
@@ -174,6 +306,20 @@ export default function InboxView(props: InboxViewProps) {
   }, [onFiltersChange]);
 
   const hasActiveFilters = Object.values(filters).some(Boolean);
+  const startColumnResize = useCallback(
+    (column: ResizableColumnKey) => (event: React.MouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      resizeStateRef.current = {
+        column,
+        startX: event.clientX,
+        startWidth: columnWidths[column],
+      };
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    },
+    [columnWidths]
+  );
 
   const handleOpenDetail = useCallback(async (id: string) => {
     await onLoadFeedbackDetail(id);
@@ -195,7 +341,7 @@ export default function InboxView(props: InboxViewProps) {
         selectedFeedback.feedback.FeedbackId,
         {
           reviewStatus,
-          disposition: selectedFeedback.feedback.Disposition || "pending",
+          disposition,
           owner,
           resolutionNote,
           adminNotes,
@@ -204,8 +350,8 @@ export default function InboxView(props: InboxViewProps) {
       await onLoadFeedbackDetail(selectedFeedback.feedback.FeedbackId);
       await onFeedbackUpdated();
       addNotification("success", "Review saved.");
-    } catch (error: any) {
-      addNotification("error", error?.message || "Could not save review.");
+    } catch (error: unknown) {
+      addNotification("error", error instanceof Error ? error.message : "Could not save review.");
     } finally {
       setActionLoading(false);
     }
@@ -234,8 +380,8 @@ export default function InboxView(props: InboxViewProps) {
       await onLoadFeedbackDetail(selectedFeedback.feedback.FeedbackId);
       await onFeedbackUpdated();
       addNotification("success", "AI analysis complete.");
-    } catch (error: any) {
-      addNotification("error", error?.message || "Could not rerun analysis.");
+    } catch (error: unknown) {
+      addNotification("error", error instanceof Error ? error.message : "Could not rerun analysis.");
     } finally {
       setActionLoading(false);
     }
@@ -248,8 +394,8 @@ export default function InboxView(props: InboxViewProps) {
       await apiClient.userFeedback.promoteToCandidate(item.feedbackId);
       await onFeedbackUpdated();
       addNotification("success", "Added to test library.");
-    } catch (error: any) {
-      addNotification("error", error?.message || "Could not add to test library.");
+    } catch (error: unknown) {
+      addNotification("error", error instanceof Error ? error.message : "Could not add to test library.");
     } finally {
       setActionLoading(false);
       setConfirmDialog({ open: false, item: null, action: "test_library" });
@@ -270,8 +416,8 @@ export default function InboxView(props: InboxViewProps) {
       }
       await onFeedbackUpdated();
       addNotification("success", "Feedback deleted.");
-    } catch (error: any) {
-      addNotification("error", error?.message || "Could not delete feedback.");
+    } catch (error: unknown) {
+      addNotification("error", error instanceof Error ? error.message : "Could not delete feedback.");
     } finally {
       setActionLoading(false);
       setDeleteDialog({ open: false, feedbackId: "", question: "" });
@@ -291,242 +437,462 @@ export default function InboxView(props: InboxViewProps) {
     if (selectedFeedback && !detailOpen) {
       setDetailOpen(true);
     }
-  }, [selectedFeedback]);
+  }, [detailOpen, selectedFeedback]);
 
   if (loading && feedbackItems.length === 0) {
     return <InboxSkeleton />;
   }
 
   const isPositive = (item: FeedbackItem) => item.feedbackKind === "helpful";
+  const renderResizableHeader = (headerLabel: string, column: ResizableColumnKey) => (
+    <TableCell
+      scope="col"
+      sx={{
+        fontWeight: 600,
+        fontSize: "0.8125rem",
+        position: "relative",
+        userSelect: "none",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {headerLabel}
+      <Box
+        component="span"
+        onMouseDown={startColumnResize(column)}
+        sx={{
+          position: "absolute",
+          top: 0,
+          right: -6,
+          width: 12,
+          height: "100%",
+          cursor: "col-resize",
+          zIndex: 2,
+          "&::after": {
+            content: "\"\"",
+            position: "absolute",
+            top: 8,
+            bottom: 8,
+            left: "50%",
+            width: 2,
+            borderRadius: 999,
+            bgcolor: "divider",
+            transform: "translateX(-50%)",
+          },
+          "&:hover::after": {
+            bgcolor: "primary.main",
+          },
+        }}
+      />
+    </TableCell>
+  );
 
   return (
     <Stack spacing={1.5}>
       {(loading || actionLoading) && <LinearProgress sx={{ borderRadius: 1 }} />}
 
-      {/* Filters - single compact row */}
-      <Stack direction="row" gap={1} flexWrap="wrap" alignItems="center">
-        <TextField
-          select
-          size="small"
-          label="Type"
-          value={filters.disposition}
-          onChange={(e) => updateFilter("disposition", e.target.value)}
-          sx={{ minWidth: 120 }}
-          inputProps={{ "aria-label": "Filter by feedback type" }}
-        >
-          <MenuItem value="">All</MenuItem>
-          <MenuItem value="helpful">Positive</MenuItem>
-          <MenuItem value="not_helpful">Negative</MenuItem>
-        </TextField>
-        <TextField
-          select
-          size="small"
-          label="Status"
-          value={filters.reviewStatus}
-          onChange={(e) => updateFilter("reviewStatus", e.target.value)}
-          sx={{ minWidth: 120 }}
-          inputProps={{ "aria-label": "Filter by status" }}
-        >
-          <MenuItem value="">Any</MenuItem>
-          <MenuItem value="new">New</MenuItem>
-          <MenuItem value="in_review">Reviewing</MenuItem>
-          <MenuItem value="actioned">Resolved</MenuItem>
-          <MenuItem value="dismissed">Dismissed</MenuItem>
-        </TextField>
-        <TextField
-          size="small"
-          label="From"
-          type="date"
-          value={filters.dateFrom}
-          onChange={(e) => updateFilter("dateFrom", e.target.value)}
-          InputLabelProps={{ shrink: true }}
-          sx={{ width: 150 }}
-          inputProps={{ "aria-label": "From date" }}
-        />
-        <TextField
-          size="small"
-          label="To"
-          type="date"
-          value={filters.dateTo}
-          onChange={(e) => updateFilter("dateTo", e.target.value)}
-          InputLabelProps={{ shrink: true }}
-          sx={{ width: 150 }}
-          inputProps={{ "aria-label": "To date" }}
-        />
-        {hasActiveFilters && (
-          <Chip
-            label="Clear"
-            size="small"
-            variant="outlined"
-            onDelete={clearFilters}
-            onClick={clearFilters}
-            sx={{ fontSize: "0.75rem", height: 28 }}
-          />
-        )}
-        <Box sx={{ flex: 1 }} />
-        <Tooltip title="Refresh">
-          <IconButton
-            onClick={onRefresh}
-            disabled={loading}
-            size="small"
-            aria-label="Refresh"
-            sx={{ "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 } }}
-          >
-            <RefreshIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      </Stack>
+      <Paper variant="outlined" sx={{ p: 1.5 }}>
+        <Stack spacing={1.25}>
+          <Stack direction={{ xs: "column", xl: "row" }} gap={1} alignItems={{ xl: "center" }}>
+            <TextField
+              size="small"
+              label="Search queue"
+              value={filters.search}
+              onChange={(e) => updateFilter("search", e.target.value)}
+              sx={{ flex: 1, minWidth: { xs: "100%", xl: 280 } }}
+              inputProps={{ "aria-label": "Search the feedback queue" }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <TextField
+              select
+              size="small"
+              label="Feedback"
+              value={filters.feedbackKind}
+              onChange={(e) => updateFilter("feedbackKind", e.target.value)}
+              sx={{ minWidth: 150 }}
+              inputProps={{ "aria-label": "Filter by feedback type" }}
+            >
+              <MenuItem value="">All signals</MenuItem>
+              <MenuItem value="not_helpful">Needs attention</MenuItem>
+              <MenuItem value="helpful">Helpful</MenuItem>
+            </TextField>
+            <TextField
+              select
+              size="small"
+              label="Status"
+              value={filters.reviewStatus}
+              onChange={(e) => updateFilter("reviewStatus", e.target.value)}
+              sx={{ minWidth: 150 }}
+              inputProps={{ "aria-label": "Filter by review status" }}
+            >
+              <MenuItem value="">Any status</MenuItem>
+              <MenuItem value="new">New</MenuItem>
+              <MenuItem value="analyzed">AI analyzed</MenuItem>
+              <MenuItem value="in_review">Reviewing</MenuItem>
+              <MenuItem value="actioned">Resolved</MenuItem>
+              <MenuItem value="dismissed">Dismissed</MenuItem>
+            </TextField>
+            <TextField
+              select
+              size="small"
+              label="Root cause"
+              value={filters.rootCause}
+              onChange={(e) => updateFilter("rootCause", e.target.value)}
+              sx={{ minWidth: 170 }}
+              inputProps={{ "aria-label": "Filter by likely root cause" }}
+            >
+              <MenuItem value="">All causes</MenuItem>
+              {rootCauseOptions.map((rootCause) => (
+                <MenuItem key={rootCause} value={rootCause}>
+                  {label(rootCause)}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Stack>
+
+          <Stack direction={{ xs: "column", lg: "row" }} gap={1} alignItems={{ lg: "center" }}>
+            <TextField
+              select
+              size="small"
+              label="Action"
+              value={filters.disposition}
+              onChange={(e) => updateFilter("disposition", e.target.value)}
+              sx={{ minWidth: 170 }}
+              inputProps={{ "aria-label": "Filter by disposition" }}
+            >
+              <MenuItem value="">Any action</MenuItem>
+              {DISPOSITIONS.map((option) => (
+                <MenuItem key={option} value={option}>
+                  {label(option)}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              size="small"
+              label="From"
+              type="date"
+              value={filters.dateFrom}
+              onChange={(e) => updateFilter("dateFrom", e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              sx={{ width: 160 }}
+              inputProps={{ "aria-label": "From date", max: filters.dateTo || undefined }}
+            />
+            <TextField
+              size="small"
+              label="To"
+              type="date"
+              value={filters.dateTo}
+              onChange={(e) => updateFilter("dateTo", e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              sx={{ width: 160 }}
+              inputProps={{ "aria-label": "To date", min: filters.dateFrom || undefined }}
+              helperText={filters.dateFrom ? "Inclusive range" : " "}
+            />
+            {hasActiveFilters && (
+              <Chip
+                label="Clear filters"
+                size="small"
+                variant="outlined"
+                onDelete={clearFilters}
+                onClick={clearFilters}
+                sx={{ fontSize: "0.75rem", height: 28 }}
+              />
+            )}
+            <Box sx={{ flex: 1 }} />
+            <Tooltip title="Refresh queue and analytics">
+              <IconButton
+                onClick={onRefresh}
+                disabled={loading}
+                size="small"
+                aria-label="Refresh"
+                sx={{ "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 } }}
+              >
+                <RefreshIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+
+          <Stack direction="row" gap={1} flexWrap="wrap" alignItems="center">
+            <Chip size="small" label={`${queueStats.shown} shown`} sx={{ height: 24, fontSize: "0.75rem" }} />
+            <Chip size="small" color="warning" variant="outlined" label={`${queueStats.needsReview} need review`} sx={{ height: 24, fontSize: "0.75rem" }} />
+            <Chip size="small" color="success" variant="outlined" label={`${queueStats.resolved} resolved`} sx={{ height: 24, fontSize: "0.75rem" }} />
+            <Chip size="small" color="primary" variant="outlined" label={`${queueStats.positive} helpful`} sx={{ height: 24, fontSize: "0.75rem" }} />
+            <Typography variant="caption" color="text.secondary" sx={{ ml: "auto", fontSize: "0.75rem" }}>
+              Drag the divider in the table header to resize the main columns.
+            </Typography>
+          </Stack>
+        </Stack>
+      </Paper>
 
       {feedbackItems.length === 0 ? (
-        <EmptyInbox />
+        hasActiveFilters ? <FilteredEmptyInbox /> : <EmptyInbox />
       ) : (
         <Paper variant="outlined" sx={{ overflow: "hidden" }}>
-          <Table size="small" aria-label="Feedback items">
-            <TableHead>
-              <TableRow sx={{ bgcolor: "grey.50" }}>
-                <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem", width: 44 }} />
-                <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem" }}>Date</TableCell>
-                <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem" }}>Question</TableCell>
-                <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem" }}>Status</TableCell>
-                <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem", width: 160 }} align="right">Action</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {pagedItems.map((item) => {
-                const positive = isPositive(item);
-                const isActive = selectedFeedback?.feedback?.FeedbackId === item.feedbackId;
-                return (
-                  <TableRow
-                    key={item.feedbackId}
-                    hover
-                    selected={isActive}
-                    onClick={() => handleOpenDetail(item.feedbackId)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        handleOpenDetail(item.feedbackId);
-                      }
-                    }}
-                    tabIndex={0}
-                    sx={{ cursor: "pointer" }}
-                    role="row"
-                    aria-selected={isActive}
-                  >
-                    <TableCell sx={{ px: 1.5 }}>
-                      <Tooltip title={positive ? "Positive feedback" : "Negative feedback"}>
-                        <Stack direction="row" alignItems="center" gap={0.5}>
-                          {positive ? (
-                            <ThumbUpOutlinedIcon sx={{ fontSize: 18, color: "primary.main" }} aria-label="Positive" />
-                          ) : (
-                            <ThumbDownOutlinedIcon sx={{ fontSize: 18, color: "warning.dark" }} aria-label="Negative" />
-                          )}
-                        </Stack>
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell sx={{ whiteSpace: "nowrap", fontSize: "0.8125rem" }}>
-                      {formatDate(item.createdAt)}
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ fontWeight: 600, fontSize: "0.8125rem" }} noWrap title={item.userPromptPreview}>
-                        {item.userPromptPreview || "No preview"}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block", maxWidth: 360, fontSize: "0.75rem" }}>
-                        {item.summary || item.answerPreview}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        label={label(item.reviewStatus || "new")}
-                        color={
-                          item.reviewStatus === "actioned" ? "success"
-                            : item.reviewStatus === "dismissed" ? "default"
-                              : item.reviewStatus === "in_review" ? "info"
-                                : "warning"
+          <TableContainer sx={{ overflowX: "auto" }}>
+            <Table size="small" aria-label="Feedback items" sx={{ minWidth: tableMinWidth, tableLayout: "fixed" }}>
+              <colgroup>
+                <col style={{ width: 60 }} />
+                <col style={{ width: columnWidths.question }} />
+                <col style={{ width: columnWidths.analysis }} />
+                <col style={{ width: columnWidths.context }} />
+                <col style={{ width: 180 }} />
+                <col style={{ width: 190 }} />
+                <col style={{ width: 150 }} />
+              </colgroup>
+              <TableHead>
+                <TableRow sx={{ bgcolor: "grey.50" }}>
+                  <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem", whiteSpace: "nowrap" }}>
+                    Signal
+                  </TableCell>
+                  {renderResizableHeader("Question", "question")}
+                  {renderResizableHeader("Analysis", "analysis")}
+                  {renderResizableHeader("Context", "context")}
+                  <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem", whiteSpace: "nowrap" }}>
+                    Workflow
+                  </TableCell>
+                  <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem", whiteSpace: "nowrap" }}>
+                    Submitted
+                  </TableCell>
+                  <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem", whiteSpace: "nowrap" }} align="right">
+                    Actions
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {pagedItems.map((item) => {
+                  const positive = isPositive(item);
+                  const isActive = selectedFeedback?.feedback?.FeedbackId === item.feedbackId;
+                  const sourceSummary = summarizeSources(item);
+                  const rootCauseKey = item.rootCause || (positive ? "positive_signal" : "needs_human_review");
+                  const rootCauseChip = ROOT_CAUSE_CHIPS[rootCauseKey];
+
+                  return (
+                    <TableRow
+                      key={item.feedbackId}
+                      hover
+                      selected={isActive}
+                      onClick={() => handleOpenDetail(item.feedbackId)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleOpenDetail(item.feedbackId);
                         }
-                        variant={item.reviewStatus === "actioned" || item.reviewStatus === "dismissed" ? "filled" : "outlined"}
-                        sx={{ height: 24, fontSize: "0.75rem" }}
-                      />
-                    </TableCell>
-                    <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                      <Stack direction="row" gap={0.5} justifyContent="flex-end" alignItems="center">
-                        {positive ? (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            color="primary"
-                            onClick={(e) => openConfirmDialog(item, "test_library", e)}
-                            disabled={actionLoading}
-                            sx={{ fontSize: "0.75rem", textTransform: "none", whiteSpace: "nowrap" }}
+                      }}
+                      tabIndex={0}
+                      sx={{
+                        cursor: "pointer",
+                        "& .MuiTableCell-root": { verticalAlign: "top", py: 1.5 },
+                        ...(isActive ? { bgcolor: "action.selected" } : null),
+                      }}
+                      role="row"
+                      aria-selected={isActive}
+                    >
+                      <TableCell sx={{ px: 1.5 }}>
+                        <Stack spacing={0.75} alignItems="flex-start">
+                          <Tooltip title={positive ? "Helpful feedback" : "Feedback that needs review"}>
+                            {positive ? (
+                              <ThumbUpOutlinedIcon sx={{ fontSize: 20, color: "primary.main" }} aria-label="Helpful" />
+                            ) : (
+                              <ThumbDownOutlinedIcon sx={{ fontSize: 20, color: "warning.dark" }} aria-label="Needs attention" />
+                            )}
+                          </Tooltip>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                            {label(item.feedbackKind || "not_helpful")}
+                          </Typography>
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 600,
+                            fontSize: "0.875rem",
+                            display: "-webkit-box",
+                            WebkitLineClamp: 3,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                          }}
+                          title={item.userPromptPreview}
+                        >
+                          {item.userPromptPreview || "No question preview captured."}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            display: "-webkit-box",
+                            WebkitLineClamp: 3,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                            mt: 0.75,
+                            fontSize: "0.75rem",
+                          }}
+                        >
+                          {item.answerPreview || "No answer preview captured."}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Stack spacing={0.9}>
+                          <Stack direction="row" gap={0.75} flexWrap="wrap">
+                            <Chip
+                              size="small"
+                              label={rootCauseChip ? rootCauseChip.label : label(rootCauseKey)}
+                              color={rootCauseChip?.color || "default"}
+                              variant="outlined"
+                              sx={{ height: 24, fontSize: "0.75rem" }}
+                            />
+                            {item.recurrenceCount && item.recurrenceCount > 1 && (
+                              <Chip
+                                size="small"
+                                variant="outlined"
+                                label={`Seen ${item.recurrenceCount} times`}
+                                sx={{ height: 24, fontSize: "0.75rem" }}
+                              />
+                            )}
+                          </Stack>
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            sx={{
+                              fontSize: "0.8125rem",
+                              display: "-webkit-box",
+                              WebkitLineClamp: 4,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                            }}
                           >
-                            Add to tests
-                          </Button>
-                        ) : (
-                          <Button
+                            {item.summary || (positive ? "Helpful feedback received from the user." : "Awaiting admin review and classification.")}
+                          </Typography>
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontSize: "0.8125rem",
+                            fontWeight: 600,
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                          }}
+                          title={sourceSummary.primary}
+                        >
+                          {sourceSummary.primary}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5, fontSize: "0.75rem" }}>
+                          {sourceSummary.secondary}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Stack spacing={0.75}>
+                          <Chip
                             size="small"
-                            variant="outlined"
-                            color="warning"
-                            onClick={(e) => openConfirmDialog(item, "fix_prompt", e)}
-                            sx={{ fontSize: "0.75rem", textTransform: "none", whiteSpace: "nowrap" }}
-                          >
-                            Review
-                          </Button>
+                            label={label(item.reviewStatus || "new")}
+                            color={getReviewStatusColor(item.reviewStatus)}
+                            variant={item.reviewStatus === "actioned" || item.reviewStatus === "dismissed" ? "filled" : "outlined"}
+                            sx={{ height: 24, fontSize: "0.75rem", alignSelf: "flex-start" }}
+                          />
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                            {positive ? "Positive signal" : `Next step: ${label(item.disposition || "pending")}`}
+                          </Typography>
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontSize: "0.8125rem", whiteSpace: "nowrap" }}>
+                          {formatDate(item.createdAt)}
+                        </Typography>
+                        {item.updatedAt && item.updatedAt !== item.createdAt && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5, fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+                            Updated {formatDate(item.updatedAt)}
+                          </Typography>
                         )}
-                        <Tooltip title="Delete">
+                      </TableCell>
+                      <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                        <Stack direction="row" gap={0.5} justifyContent="flex-end" alignItems="center">
+                          {positive ? (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="primary"
+                              onClick={(e) => openConfirmDialog(item, "test_library", e)}
+                              disabled={actionLoading}
+                              sx={{ fontSize: "0.75rem", textTransform: "none", whiteSpace: "nowrap" }}
+                            >
+                              Add to tests
+                            </Button>
+                          ) : (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="warning"
+                              onClick={(e) => openConfirmDialog(item, "fix_prompt", e)}
+                              sx={{ fontSize: "0.75rem", textTransform: "none", whiteSpace: "nowrap" }}
+                            >
+                              Review
+                            </Button>
+                          )}
+                          <Tooltip title="Delete">
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteDialog({
+                                  open: true,
+                                  feedbackId: item.feedbackId,
+                                  question: item.userPromptPreview || "this item",
+                                });
+                              }}
+                              aria-label="Delete feedback"
+                              sx={{ color: "text.secondary", "&:hover": { color: "error.main" } }}
+                            >
+                              <DeleteOutlineIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+              {totalPages > 1 && (
+                <TableFooter>
+                  <TableRow>
+                    <TableCell colSpan={7}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                          {feedbackItems.length} items - Page {page + 1} of {totalPages}
+                        </Typography>
+                        <Stack direction="row" gap={0.5}>
                           <IconButton
                             size="small"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteDialog({
-                                open: true,
-                                feedbackId: item.feedbackId,
-                                question: item.userPromptPreview || "this item",
-                              });
-                            }}
-                            aria-label="Delete feedback"
-                            sx={{ color: "text.secondary", "&:hover": { color: "error.main" } }}
+                            onClick={() => setPage((p) => Math.max(0, p - 1))}
+                            disabled={page === 0}
+                            aria-label="Previous page"
                           >
-                            <DeleteOutlineIcon fontSize="small" />
+                            <NavigateBeforeIcon />
                           </IconButton>
-                        </Tooltip>
+                          <IconButton
+                            size="small"
+                            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                            disabled={page >= totalPages - 1}
+                            aria-label="Next page"
+                          >
+                            <NavigateNextIcon />
+                          </IconButton>
+                        </Stack>
                       </Stack>
                     </TableCell>
                   </TableRow>
-                );
-              })}
-            </TableBody>
-            {totalPages > 1 && (
-              <TableFooter>
-                <TableRow>
-                  <TableCell colSpan={5}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
-                        {feedbackItems.length} items — Page {page + 1} of {totalPages}
-                      </Typography>
-                      <Stack direction="row" gap={0.5}>
-                        <IconButton
-                          size="small"
-                          onClick={() => setPage((p) => Math.max(0, p - 1))}
-                          disabled={page === 0}
-                          aria-label="Previous page"
-                        >
-                          <NavigateBeforeIcon />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                          disabled={page >= totalPages - 1}
-                          aria-label="Next page"
-                        >
-                          <NavigateNextIcon />
-                        </IconButton>
-                      </Stack>
-                    </Stack>
-                  </TableCell>
-                </TableRow>
-              </TableFooter>
-            )}
-          </Table>
+                </TableFooter>
+              )}
+            </Table>
+          </TableContainer>
         </Paper>
       )}
 
@@ -742,10 +1108,27 @@ export default function InboxView(props: InboxViewProps) {
                   <MenuItem value="actioned">Resolved</MenuItem>
                   <MenuItem value="dismissed">Dismissed</MenuItem>
                 </TextField>
+                {selectedFeedback.feedback?.FeedbackKind !== "helpful" && (
+                  <TextField
+                    select
+                    fullWidth
+                    size="small"
+                    label="Action needed"
+                    value={disposition}
+                    onChange={(e) => setDisposition(e.target.value)}
+                    inputProps={{ "aria-label": "Disposition" }}
+                  >
+                    {DISPOSITIONS.map((option) => (
+                      <MenuItem key={option} value={option}>
+                        {label(option)}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                )}
                 <TextField
                   fullWidth
                   size="small"
-                  label="Notes"
+                  label="Internal notes"
                   multiline
                   minRows={2}
                   value={adminNotes}
