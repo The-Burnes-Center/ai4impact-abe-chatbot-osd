@@ -31,6 +31,7 @@ import { getColumnDefinition, METRIC_DESCRIPTIONS } from "./columns";
 import { useNotifications } from "../../components/notif-manager";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { useDocumentTitle } from "../../common/hooks/use-document-title";
+import AdminMarkdown from "../../components/admin-markdown";
 
 function scoreColor(pct: number): "success" | "warning" | "error" {
   if (pct >= 75) return "success";
@@ -353,24 +354,20 @@ function DetailedEvaluationPage() {
           <Stack spacing={2}>
             <Box>
               <Typography variant="subtitle2">Question:</Typography>
-              <Typography variant="body2">{selectedQuestion}</Typography>
+              <AdminMarkdown content={selectedQuestion} sx={{ mt: 0.5 }} />
             </Box>
             <Box>
               <Typography variant="subtitle2">Context:</Typography>
-              <Box
+              <Paper
+                variant="outlined"
                 sx={{
-                  maxHeight: 400,
-                  overflow: "auto",
-                  whiteSpace: "pre-wrap",
-                  border: "1px solid",
-                  borderColor: "divider",
+                  mt: 0.5,
                   p: 1.5,
                   bgcolor: "action.hover",
-                  borderRadius: 1,
                 }}
               >
-                {selectedContext}
-              </Box>
+                <AdminMarkdown content={selectedContext} maxHeight={400} />
+              </Paper>
             </Box>
           </Stack>
         </DialogContent>

@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import {
   Box,
-  Typography,
   Link,
   Dialog,
   DialogTitle,
@@ -9,25 +8,62 @@ import {
   DialogActions,
   Button,
 } from "@mui/material";
+import Typography from "@mui/material/Typography";
+import AdminMarkdown from "./admin-markdown";
 
-export function TruncatedTextCell({ text, maxLength = 50 }) {
+interface TruncatedTextCellProps {
+  text: string;
+  maxLength?: number;
+  previewMaxHeight?: number;
+}
+
+export function TruncatedTextCell({
+  text,
+  maxLength = 50,
+  previewMaxHeight = 88,
+}: TruncatedTextCellProps) {
   const [showModal, setShowModal] = useState(false);
-
-  const truncatedText =
-    text.length > maxLength ? text.slice(0, maxLength) + "..." : text;
+  const value = text || "";
+  const isTruncated = value.length > maxLength;
 
   return (
     <>
       <Box>
-        <Typography variant="body2" component="span">
-          {truncatedText}
-        </Typography>
-        {text.length > maxLength && (
+        {value ? (
+          <Box
+            sx={{
+              position: "relative",
+              maxHeight: isTruncated ? previewMaxHeight : "none",
+              overflow: "hidden",
+            }}
+          >
+            <AdminMarkdown content={value} compact />
+            {isTruncated && (
+              <Box
+                sx={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 28,
+                  background: (theme) =>
+                    `linear-gradient(to bottom, rgba(255,255,255,0), ${theme.palette.background.paper})`,
+                  pointerEvents: "none",
+                }}
+              />
+            )}
+          </Box>
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            N/A
+          </Typography>
+        )}
+        {isTruncated && (
           <Link
             component="button"
             variant="body2"
             onClick={() => setShowModal(true)}
-            sx={{ ml: 0.5 }}
+            sx={{ mt: 0.5 }}
           >
             Show More
           </Link>
@@ -42,9 +78,7 @@ export function TruncatedTextCell({ text, maxLength = 50 }) {
       >
         <DialogTitle id="full-text-dialog-title">Full Text</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
-            {text}
-          </Typography>
+          <AdminMarkdown content={value} />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowModal(false)}>Close</Button>

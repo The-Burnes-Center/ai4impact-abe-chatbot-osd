@@ -48,6 +48,7 @@ import {
   label,
 } from "./types";
 import { ApiClient } from "../../../common/api-client/api-client";
+import AdminMarkdown from "../../../components/admin-markdown";
 import { useNotifications } from "../../../components/notif-manager";
 
 const ROOT_CAUSE_CHIPS: Record<string, { label: string; color: "error" | "warning" | "info" | "default" }> = {
@@ -555,7 +556,7 @@ export default function InboxView(props: InboxViewProps) {
             </TextField>
           </Stack>
 
-          <Stack direction={{ xs: "column", lg: "row" }} gap={1} alignItems={{ lg: "center" }}>
+          <Stack direction={{ xs: "column", lg: "row" }} gap={1} alignItems={{ lg: "flex-start" }}>
             <TextField
               select
               size="small"
@@ -581,6 +582,8 @@ export default function InboxView(props: InboxViewProps) {
               InputLabelProps={{ shrink: true }}
               sx={{ width: 160 }}
               inputProps={{ "aria-label": "From date", max: filters.dateTo || undefined }}
+              helperText=" "
+              FormHelperTextProps={{ sx: { minHeight: 20 } }}
             />
             <TextField
               size="small"
@@ -592,6 +595,7 @@ export default function InboxView(props: InboxViewProps) {
               sx={{ width: 160 }}
               inputProps={{ "aria-label": "To date", min: filters.dateFrom || undefined }}
               helperText={filters.dateFrom ? "Inclusive range" : " "}
+              FormHelperTextProps={{ sx: { minHeight: 20 } }}
             />
             {hasActiveFilters && (
               <Chip
@@ -707,34 +711,20 @@ export default function InboxView(props: InboxViewProps) {
                         </Stack>
                       </TableCell>
                       <TableCell>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            fontWeight: 600,
-                            fontSize: "0.875rem",
-                            display: "-webkit-box",
-                            WebkitLineClamp: 3,
-                            WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
-                          }}
-                          title={item.userPromptPreview}
-                        >
-                          {item.userPromptPreview || "No question preview captured."}
-                        </Typography>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{
-                            display: "-webkit-box",
-                            WebkitLineClamp: 3,
-                            WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
-                            mt: 0.75,
-                            fontSize: "0.75rem",
-                          }}
-                        >
-                          {item.answerPreview || "No answer preview captured."}
-                        </Typography>
+                        <Box sx={{ maxHeight: 72, overflow: "hidden" }}>
+                          <AdminMarkdown
+                            content={item.userPromptPreview || "No question preview captured."}
+                            compact
+                            sx={{ fontWeight: 600 }}
+                          />
+                        </Box>
+                        <Box sx={{ maxHeight: 72, overflow: "hidden", mt: 0.75 }}>
+                          <AdminMarkdown
+                            content={item.answerPreview || "No answer preview captured."}
+                            compact
+                            sx={{ color: "text.secondary" }}
+                          />
+                        </Box>
                       </TableCell>
                       <TableCell>
                         <Stack spacing={0.9}>
@@ -913,17 +903,13 @@ export default function InboxView(props: InboxViewProps) {
                 <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
                   Question
                 </Typography>
-                <Typography variant="body2" sx={{ mt: 0.5, fontSize: "0.875rem" }}>
-                  {confirmDialog.item.userPromptPreview}
-                </Typography>
+                <AdminMarkdown content={confirmDialog.item.userPromptPreview || "N/A"} sx={{ mt: 0.5 }} />
               </Box>
               <Box>
                 <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
                   ABE's Answer
                 </Typography>
-                <Typography variant="body2" sx={{ mt: 0.5, fontSize: "0.875rem", maxHeight: 200, overflow: "auto" }}>
-                  {confirmDialog.item.answerPreview || "N/A"}
-                </Typography>
+                <AdminMarkdown content={confirmDialog.item.answerPreview || "N/A"} maxHeight={200} sx={{ mt: 0.5 }} />
               </Box>
               <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.8125rem" }}>
                 This Q&A pair will be saved to the test library as a reference for future evaluations.
@@ -992,11 +978,14 @@ export default function InboxView(props: InboxViewProps) {
                   <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.6875rem", letterSpacing: 1 }}>
                     User Question
                   </Typography>
-                  <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mt: 0.5, fontSize: "0.875rem" }}>
-                    {selectedFeedback.trace?.UserPrompt ||
+                  <AdminMarkdown
+                    content={
+                      selectedFeedback.trace?.UserPrompt ||
                       selectedFeedback.feedback?.UserPromptPreview ||
-                      "N/A"}
-                  </Typography>
+                      "N/A"
+                    }
+                    sx={{ mt: 0.5 }}
+                  />
                 </Box>
 
                 <Divider />
@@ -1005,14 +994,15 @@ export default function InboxView(props: InboxViewProps) {
                   <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.6875rem", letterSpacing: 1 }}>
                     ABE's Answer
                   </Typography>
-                  <Typography
-                    variant="body2"
-                    sx={{ whiteSpace: "pre-wrap", mt: 0.5, maxHeight: 200, overflow: "auto", fontSize: "0.875rem" }}
-                  >
-                    {selectedFeedback.trace?.FinalAnswer ||
+                  <AdminMarkdown
+                    content={
+                      selectedFeedback.trace?.FinalAnswer ||
                       selectedFeedback.feedback?.AnswerPreview ||
-                      "N/A"}
-                  </Typography>
+                      "N/A"
+                    }
+                    maxHeight={240}
+                    sx={{ mt: 0.5 }}
+                  />
                 </Box>
 
                 {/* User's feedback details */}
@@ -1026,9 +1016,7 @@ export default function InboxView(props: InboxViewProps) {
                         <Typography variant="overline" color="error.dark" sx={{ fontSize: "0.6875rem" }}>
                           What was wrong
                         </Typography>
-                        <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mt: 0.5, fontSize: "0.8125rem" }}>
-                          {selectedFeedback.feedback.WrongSnippet}
-                        </Typography>
+                        <AdminMarkdown content={selectedFeedback.feedback.WrongSnippet} compact sx={{ mt: 0.5 }} />
                       </Paper>
                     )}
                     {selectedFeedback.feedback?.ExpectedAnswer && (
@@ -1036,9 +1024,7 @@ export default function InboxView(props: InboxViewProps) {
                         <Typography variant="overline" color="success.dark" sx={{ fontSize: "0.6875rem" }}>
                           What user expected
                         </Typography>
-                        <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mt: 0.5, fontSize: "0.8125rem" }}>
-                          {selectedFeedback.feedback.ExpectedAnswer}
-                        </Typography>
+                        <AdminMarkdown content={selectedFeedback.feedback.ExpectedAnswer} compact sx={{ mt: 0.5 }} />
                       </Paper>
                     )}
                     {selectedFeedback.feedback?.UserComment && (
@@ -1046,9 +1032,7 @@ export default function InboxView(props: InboxViewProps) {
                         <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
                           User comment
                         </Typography>
-                        <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mt: 0.5, fontSize: "0.8125rem" }}>
-                          {selectedFeedback.feedback.UserComment}
-                        </Typography>
+                        <AdminMarkdown content={selectedFeedback.feedback.UserComment} compact sx={{ mt: 0.5 }} />
                       </Box>
                     )}
                   </>
@@ -1062,9 +1046,7 @@ export default function InboxView(props: InboxViewProps) {
                       <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.6875rem", letterSpacing: 1 }}>
                         AI Analysis
                       </Typography>
-                      <Typography variant="body2" sx={{ mt: 0.5, mb: 1.5, fontSize: "0.8125rem" }}>
-                        {selectedFeedback.feedback.Analysis.summary}
-                      </Typography>
+                      <AdminMarkdown content={selectedFeedback.feedback.Analysis.summary} compact sx={{ mt: 0.5, mb: 1.5 }} />
                       <Stack direction="row" gap={0.75} flexWrap="wrap">
                         {(() => {
                           const rc = selectedFeedback.feedback?.Analysis?.likelyRootCause || "";
