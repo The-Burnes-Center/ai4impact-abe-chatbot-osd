@@ -3,11 +3,12 @@ import {
   Box,
   Button,
   Chip,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  Grid,
+  IconButton,
   LinearProgress,
   List,
   ListItemButton,
@@ -17,6 +18,7 @@ import {
   Skeleton,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
@@ -27,6 +29,10 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EditNoteOutlinedIcon from "@mui/icons-material/EditNoteOutlined";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import HistoryIcon from "@mui/icons-material/History";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import MenuIcon from "@mui/icons-material/Menu";
 import { PromptData, formatDate } from "./types";
 import { ApiClient } from "../../../common/api-client/api-client";
 import { useNotifications } from "../../../components/notif-manager";
@@ -39,20 +45,50 @@ interface PromptWorkspaceProps {
   selectedFeedbackIds: string[];
 }
 
-function buildDiff(base: string, candidate: string): { type: "same" | "add" | "remove"; text: string }[] {
-  const baseLines = (base || "").split("\n");
-  const candidateLines = (candidate || "").split("\n");
-  const maxLines = Math.max(baseLines.length, candidateLines.length);
-  const result: { type: "same" | "add" | "remove"; text: string }[] = [];
+const TEMPLATE_VARIABLES: { name: string; description: string; example: string }[] = [
+  {
+    name: "{{current_date}}",
+    description: "Today's date, formatted as a full human-readable string (e.g. \"Thursday, March 19, 2026\"). Injected at runtime so the model knows the current date.",
+    example: "Thursday, March 19, 2026",
+  },
+  {
+    name: "{{metadata_json}}",
+    description: "JSON object containing the retrieved source documents from the knowledge base. Each document has a title and S3 URI. The model uses this to ground answers in real sources.",
+    example: '{ "documents": [{ "title": "FAR Part 15.pdf", "uri": "s3://bucket/key" }] }',
+  },
+];
 
-  for (let i = 0; i < maxLines; i++) {
-    const left = baseLines[i] ?? "";
-    const right = candidateLines[i] ?? "";
-    if (left === right) {
-      result.push({ type: "same", text: left });
+function computeDiff(base: string, candidate: string): { type: "same" | "add" | "remove"; text: string }[] {
+  const a = (base || "").split("\n");
+  const b = (candidate || "").split("\n");
+
+  const n = a.length;
+  const m = b.length;
+  const dp: number[][] = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      if (a[i] === b[j]) {
+        dp[i][j] = dp[i + 1][j + 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+  }
+
+  const result: { type: "same" | "add" | "remove"; text: string }[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && a[i] === b[j]) {
+      result.push({ type: "same", text: a[i] });
+      i++;
+      j++;
+    } else if (j < m && (i >= n || dp[i][j + 1] >= dp[i + 1][j])) {
+      result.push({ type: "add", text: b[j] });
+      j++;
     } else {
-      if (left) result.push({ type: "remove", text: left });
-      if (right) result.push({ type: "add", text: right });
+      result.push({ type: "remove", text: a[i] });
+      i++;
     }
   }
   return result;
@@ -78,14 +114,10 @@ function renderPreview(template: string): string {
 
 function PromptSkeleton() {
   return (
-    <Grid container spacing={2}>
-      <Grid item xs={12} lg={4}>
-        <Skeleton variant="rounded" height={300} />
-      </Grid>
-      <Grid item xs={12} lg={8}>
-        <Skeleton variant="rounded" height={500} />
-      </Grid>
-    </Grid>
+    <Stack spacing={2} sx={{ maxWidth: 960, mx: "auto" }}>
+      <Skeleton variant="rounded" height={48} />
+      <Skeleton variant="rounded" height={500} />
+    </Stack>
   );
 }
 
@@ -105,6 +137,8 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
   const [pendingPromptId, setPendingPromptId] = useState("");
   const [aiNote, setAiNote] = useState("");
   const [viewMode, setViewMode] = useState<"edit" | "preview" | "diff">("edit");
+  const [showVarRef, setShowVarRef] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const hasUnsavedChanges = draft.title !== savedDraft.title || draft.notes !== savedDraft.notes || draft.template !== savedDraft.template;
 
@@ -138,8 +172,12 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
   }, [currentPrompt]);
 
   const diffLines = useMemo(
-    () => buildDiff(livePrompt?.template || "", draft.template),
+    () => computeDiff(livePrompt?.template || "", draft.template),
     [livePrompt, draft.template]
+  );
+  const diffHasChanges = useMemo(
+    () => diffLines.some((l) => l.type !== "same"),
+    [diffLines]
   );
 
   const previewText = useMemo(() => renderPreview(draft.template), [draft.template]);
@@ -254,22 +292,48 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
     <>
       {actionLoading && <LinearProgress sx={{ mb: 1, borderRadius: 1 }} />}
 
-      <Grid container spacing={2}>
-        {/* Version list */}
-        <Grid item xs={12} lg={4}>
-          <Paper variant="outlined" sx={{ p: 2 }}>
+      <Stack direction={{ xs: "column", lg: "row" }} gap={2} sx={{ alignItems: "flex-start" }}>
+        {/* Sidebar toggle for small screens / when collapsed */}
+        {!sidebarOpen && (
+          <Tooltip title="Show version list">
+            <IconButton
+              size="small"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Show version sidebar"
+              sx={{ alignSelf: "flex-start" }}
+            >
+              <MenuIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+
+        {/* Version sidebar */}
+        <Collapse in={sidebarOpen} orientation="horizontal" sx={{ flexShrink: 0 }}>
+          <Paper variant="outlined" sx={{ p: 2, width: { xs: "100%", lg: 280 }, minWidth: 240 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-              <Typography variant="h6">Versions</Typography>
-              <Button size="small" startIcon={<AddIcon />} onClick={handleCreateDraft} disabled={actionLoading}>
-                New Draft
-              </Button>
+              <Typography variant="h6" sx={{ fontSize: "1rem" }}>Versions</Typography>
+              <Stack direction="row" gap={0.5}>
+                <Button size="small" startIcon={<AddIcon />} onClick={handleCreateDraft} disabled={actionLoading}>
+                  New Draft
+                </Button>
+                <Tooltip title="Hide sidebar">
+                  <IconButton
+                    size="small"
+                    onClick={() => setSidebarOpen(false)}
+                    aria-label="Hide version sidebar"
+                    sx={{ display: { xs: "none", lg: "flex" } }}
+                  >
+                    <ExpandLessIcon fontSize="small" sx={{ transform: "rotate(-90deg)" }} />
+                  </IconButton>
+                </Tooltip>
+              </Stack>
             </Stack>
             {promptData.items.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: "center" }}>
                 No prompt versions yet. Create a draft to get started.
               </Typography>
             ) : (
-              <List dense disablePadding>
+              <List dense disablePadding sx={{ maxHeight: 520, overflow: "auto" }}>
                 {promptData.items.map((item) => {
                   const isItemLive = item.versionId === promptData.liveVersionId;
                   return (
@@ -289,7 +353,7 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
                       <ListItemText
                         primary={
                           <Stack direction="row" gap={1} alignItems="center">
-                            <Typography variant="body2" fontWeight={isItemLive ? 700 : 400} noWrap>
+                            <Typography variant="body2" fontWeight={isItemLive ? 700 : 400} noWrap sx={{ fontSize: "0.8125rem" }}>
                               {item.title || item.versionId}
                             </Typography>
                             {isItemLive && (
@@ -298,7 +362,7 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
                           </Stack>
                         }
                         secondary={
-                          <Typography variant="caption" color="text.secondary">
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
                             {item.status} · {formatDate(item.updatedAt || item.createdAt)}
                           </Typography>
                         }
@@ -309,199 +373,251 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
               </List>
             )}
           </Paper>
-        </Grid>
+        </Collapse>
 
-        {/* Editor */}
-        <Grid item xs={12} lg={8}>
-          <Stack spacing={2}>
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <Stack direction={{ xs: "column", md: "row" }} gap={1} justifyContent="space-between" alignItems={{ md: "center" }}>
-                <Stack>
-                  <Typography variant="h6">{currentPrompt?.title || "Select a prompt"}</Typography>
-                  {currentPrompt?.aiSummary && (
-                    <Paper
-                      variant="outlined"
+        {/* Main editor — centered, max-width for readability */}
+        <Stack spacing={2} sx={{ flex: 1, maxWidth: 960, mx: "auto", width: "100%" }}>
+          <Paper variant="outlined" sx={{ p: 2.5 }}>
+            {/* Header: title + actions */}
+            <Stack direction={{ xs: "column", md: "row" }} gap={1.5} justifyContent="space-between" alignItems={{ md: "flex-start" }}>
+              <Stack sx={{ flex: 1, minWidth: 0 }}>
+                <Typography variant="h6" sx={{ fontSize: "1.125rem" }}>{currentPrompt?.title || "Select a prompt"}</Typography>
+
+                {/* AI reasoning block */}
+                {currentPrompt?.aiSummary && (
+                  <Paper
+                    variant="outlined"
+                    sx={{
+                      mt: 1,
+                      p: 1.5,
+                      bgcolor: currentPrompt.aiSummary.startsWith("No changes")
+                        ? "warning.50"
+                        : "info.50",
+                      borderColor: currentPrompt.aiSummary.startsWith("No changes")
+                        ? "warning.200"
+                        : "info.200",
+                    }}
+                  >
+                    <Typography
+                      variant="caption"
                       sx={{
-                        mt: 0.75,
-                        p: 1.25,
-                        bgcolor: currentPrompt.aiSummary.startsWith("No changes")
-                          ? "warning.50"
-                          : "info.50",
-                        borderColor: currentPrompt.aiSummary.startsWith("No changes")
-                          ? "warning.200"
-                          : "info.200",
+                        display: "block",
+                        fontWeight: 600,
+                        fontSize: "0.6875rem",
+                        mb: 0.5,
+                        letterSpacing: 0.5,
+                        textTransform: "uppercase",
+                        color: currentPrompt.aiSummary.startsWith("No changes")
+                          ? "warning.dark"
+                          : "info.dark",
                       }}
                     >
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          display: "block",
-                          fontWeight: 600,
-                          fontSize: "0.6875rem",
-                          mb: 0.5,
-                          letterSpacing: 0.5,
-                          textTransform: "uppercase",
-                          color: currentPrompt.aiSummary.startsWith("No changes")
-                            ? "warning.dark"
-                            : "info.dark",
-                        }}
-                      >
-                        AI Reasoning
-                      </Typography>
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        sx={{ fontSize: "0.8125rem", whiteSpace: "pre-line" }}
-                      >
-                        {currentPrompt.aiSummary}
-                      </Typography>
-                    </Paper>
-                  )}
-                </Stack>
-                <Stack direction="row" gap={1} flexWrap="wrap">
-                  <Button
-                    size="small"
-                    startIcon={<AutoFixHighIcon />}
-                    onClick={() => setShowAiDialog(true)}
-                    disabled={!selectedPromptId || actionLoading}
-                  >
-                    AI Draft
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={handleSave}
-                    disabled={!selectedPromptId || isLive || actionLoading}
-                  >
-                    Save Draft
-                  </Button>
-                  <Button
-                    size="small"
-                    color="error"
-                    startIcon={<DeleteOutlineIcon />}
-                    onClick={() => setShowDeleteDialog(true)}
-                    disabled={!selectedPromptId || isLive || actionLoading}
-                  >
-                    Delete
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="contained"
-                    startIcon={<PublishIcon />}
-                    onClick={() => setShowPublishDialog(true)}
-                    disabled={!selectedPromptId || actionLoading}
-                  >
-                    Publish
-                  </Button>
-                </Stack>
+                      AI Reasoning
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ fontSize: "0.8125rem", whiteSpace: "pre-line" }}
+                    >
+                      {currentPrompt.aiSummary}
+                    </Typography>
+                  </Paper>
+                )}
               </Stack>
 
-              {selectedFeedbackIds.length > 0 && (
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block", fontSize: "0.75rem" }}>
-                  {selectedFeedbackIds.length} feedback item(s) linked for AI draft
-                </Typography>
-              )}
+              <Stack direction="row" gap={1} flexWrap="wrap" sx={{ flexShrink: 0 }}>
+                <Button
+                  size="small"
+                  startIcon={<AutoFixHighIcon />}
+                  onClick={() => setShowAiDialog(true)}
+                  disabled={!selectedPromptId || actionLoading}
+                >
+                  AI Draft
+                </Button>
+                <Button
+                  size="small"
+                  onClick={handleSave}
+                  disabled={!selectedPromptId || isLive || actionLoading}
+                >
+                  Save Draft
+                </Button>
+                <Button
+                  size="small"
+                  color="error"
+                  startIcon={<DeleteOutlineIcon />}
+                  onClick={() => setShowDeleteDialog(true)}
+                  disabled={!selectedPromptId || isLive || actionLoading}
+                >
+                  Delete
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  startIcon={<PublishIcon />}
+                  onClick={() => setShowPublishDialog(true)}
+                  disabled={!selectedPromptId || actionLoading}
+                >
+                  Publish
+                </Button>
+              </Stack>
+            </Stack>
 
-              {hasUnsavedChanges && !isLive && (
-                <Stack direction="row" gap={0.75} alignItems="center" sx={{ mt: 1 }}>
-                  <WarningAmberIcon sx={{ fontSize: 16, color: "warning.main" }} />
-                  <Typography variant="caption" color="warning.dark" sx={{ fontSize: "0.75rem", fontWeight: 600 }}>
-                    You have unsaved changes
+            {selectedFeedbackIds.length > 0 && (
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block", fontSize: "0.75rem" }}>
+                {selectedFeedbackIds.length} feedback item(s) linked for AI draft
+              </Typography>
+            )}
+
+            {hasUnsavedChanges && !isLive && (
+              <Stack direction="row" gap={0.75} alignItems="center" sx={{ mt: 1 }}>
+                <WarningAmberIcon sx={{ fontSize: 16, color: "warning.main" }} />
+                <Typography variant="caption" color="warning.dark" sx={{ fontSize: "0.75rem", fontWeight: 600 }}>
+                  You have unsaved changes
+                </Typography>
+              </Stack>
+            )}
+
+            {/* Template variable reference — collapsible */}
+            <Stack
+              direction="row"
+              alignItems="center"
+              gap={0.5}
+              sx={{ mt: 2, cursor: "pointer", userSelect: "none" }}
+              onClick={() => setShowVarRef((v) => !v)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowVarRef((v) => !v); } }}
+              aria-expanded={showVarRef}
+            >
+              <InfoOutlinedIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem", fontWeight: 600 }}>
+                Available template variables
+              </Typography>
+              {showVarRef
+                ? <ExpandLessIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+                : <ExpandMoreIcon sx={{ fontSize: 16, color: "text.secondary" }} />}
+            </Stack>
+            <Collapse in={showVarRef}>
+              <Paper variant="outlined" sx={{ mt: 1, p: 1.5, bgcolor: "background.default" }}>
+                <Stack spacing={1.5}>
+                  {TEMPLATE_VARIABLES.map((v) => (
+                    <Box key={v.name}>
+                      <Stack direction="row" gap={1} alignItems="center">
+                        <Chip
+                          size="small"
+                          label={v.name}
+                          variant="outlined"
+                          sx={{ fontFamily: "monospace", fontSize: "0.75rem", height: 24 }}
+                        />
+                      </Stack>
+                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.8125rem", mt: 0.5 }}>
+                        {v.description}
+                      </Typography>
+                      <Typography variant="caption" sx={{ fontSize: "0.7rem", mt: 0.25, display: "block", fontFamily: "monospace", color: "text.disabled" }}>
+                        Example: {v.example}
+                      </Typography>
+                    </Box>
+                  ))}
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+                    These placeholders are replaced with live values when ABE processes a user message. Keep them in your template.
                   </Typography>
                 </Stack>
-              )}
+              </Paper>
+            </Collapse>
 
-              {/* View mode tabs */}
-              <Stack direction="row" gap={1} sx={{ mt: 2, mb: 1 }} role="tablist" aria-label="Prompt view mode">
-                {(["edit", "preview", "diff"] as const).map((mode) => (
-                  <Chip
-                    key={mode}
-                    label={mode.charAt(0).toUpperCase() + mode.slice(1)}
-                    variant={viewMode === mode ? "filled" : "outlined"}
-                    color={viewMode === mode ? "primary" : "default"}
-                    onClick={() => setViewMode(mode)}
-                    size="small"
-                    role="tab"
-                    aria-selected={viewMode === mode}
-                    sx={{
-                      fontSize: "0.75rem",
-                      "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 1 },
-                    }}
-                  />
-                ))}
-              </Stack>
-
-              <TextField
-                fullWidth
-                size="small"
-                label="Title"
-                sx={{ mt: 1 }}
-                value={draft.title}
-                onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
-                disabled={isLive}
-              />
-              <TextField
-                fullWidth
-                size="small"
-                label="Notes"
-                sx={{ mt: 1.5 }}
-                value={draft.notes}
-                onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
-                disabled={isLive}
-              />
-
-              {viewMode === "edit" && (
-                <TextField
-                  fullWidth
-                  multiline
-                  minRows={18}
-                  maxRows={40}
-                  label="Prompt template"
-                  sx={{ mt: 1.5 }}
-                  value={draft.template}
-                  onChange={(e) => setDraft((d) => ({ ...d, template: e.target.value }))}
-                  disabled={isLive}
+            {/* View mode tabs */}
+            <Stack direction="row" gap={1} sx={{ mt: 2, mb: 1 }} role="tablist" aria-label="Prompt view mode">
+              {(["edit", "preview", "diff"] as const).map((mode) => (
+                <Chip
+                  key={mode}
+                  label={mode === "diff" ? `Diff${diffHasChanges ? "" : " (no changes)"}` : mode.charAt(0).toUpperCase() + mode.slice(1)}
+                  variant={viewMode === mode ? "filled" : "outlined"}
+                  color={viewMode === mode ? "primary" : "default"}
+                  onClick={() => setViewMode(mode)}
+                  size="small"
+                  role="tab"
+                  aria-selected={viewMode === mode}
+                  sx={{
+                    fontSize: "0.75rem",
+                    "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 1 },
+                  }}
                 />
-              )}
+              ))}
+            </Stack>
 
-              {viewMode === "preview" && (
-                <Box
-                  sx={{
-                    mt: 1.5,
-                    p: 2,
-                    borderRadius: 1,
-                    bgcolor: "grey.50",
-                    border: "1px solid",
-                    borderColor: "divider",
-                    fontFamily: "monospace",
-                    fontSize: "0.8rem",
-                    whiteSpace: "pre-wrap",
-                    maxHeight: 600,
-                    overflow: "auto",
-                  }}
-                >
-                  {previewText}
-                </Box>
-              )}
+            <TextField
+              fullWidth
+              size="small"
+              label="Title"
+              sx={{ mt: 1 }}
+              value={draft.title}
+              onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
+              disabled={isLive}
+            />
+            <TextField
+              fullWidth
+              size="small"
+              label="Notes"
+              sx={{ mt: 1.5 }}
+              value={draft.notes}
+              onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
+              disabled={isLive}
+            />
 
-              {viewMode === "diff" && (
-                <Box
-                  sx={{
-                    mt: 1.5,
-                    p: 2,
-                    borderRadius: 1,
-                    bgcolor: "grey.50",
-                    border: "1px solid",
-                    borderColor: "divider",
-                    fontFamily: "monospace",
-                    fontSize: "0.8125rem",
-                    whiteSpace: "pre-wrap",
-                    maxHeight: 600,
-                    overflow: "auto",
-                  }}
-                  role="region"
-                  aria-label="Diff between live prompt and current draft"
-                >
-                  {livePrompt ? (
+            {viewMode === "edit" && (
+              <TextField
+                fullWidth
+                multiline
+                minRows={18}
+                maxRows={40}
+                label="Prompt template"
+                sx={{ mt: 1.5 }}
+                value={draft.template}
+                onChange={(e) => setDraft((d) => ({ ...d, template: e.target.value }))}
+                disabled={isLive}
+              />
+            )}
+
+            {viewMode === "preview" && (
+              <Box
+                sx={{
+                  mt: 1.5,
+                  p: 2,
+                  borderRadius: 1,
+                  bgcolor: "grey.50",
+                  border: "1px solid",
+                  borderColor: "divider",
+                  fontFamily: "monospace",
+                  fontSize: "0.8rem",
+                  whiteSpace: "pre-wrap",
+                  maxHeight: 600,
+                  overflow: "auto",
+                }}
+              >
+                {previewText}
+              </Box>
+            )}
+
+            {viewMode === "diff" && (
+              <Box
+                sx={{
+                  mt: 1.5,
+                  p: 2,
+                  borderRadius: 1,
+                  bgcolor: "grey.50",
+                  border: "1px solid",
+                  borderColor: "divider",
+                  fontFamily: "monospace",
+                  fontSize: "0.8125rem",
+                  whiteSpace: "pre-wrap",
+                  maxHeight: 600,
+                  overflow: "auto",
+                }}
+                role="region"
+                aria-label="Diff between live prompt and current draft"
+              >
+                {livePrompt ? (
+                  diffHasChanges ? (
                     diffLines.map((line, i) => (
                       <div
                         key={i}
@@ -528,52 +644,56 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
                       </div>
                     ))
                   ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      No live prompt to compare against.
+                    <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", py: 3 }}>
+                      No differences — this draft is identical to the live prompt.
                     </Typography>
-                  )}
-                </Box>
-              )}
-            </Paper>
-
-            {/* Version history */}
-            {currentPrompt && (
-              <Paper variant="outlined" sx={{ p: 2 }}>
-                <Stack direction="row" gap={1} alignItems="center" sx={{ mb: 1.5 }}>
-                  <HistoryIcon fontSize="small" color="action" />
-                  <Typography variant="subtitle2">Version Info</Typography>
-                </Stack>
-                <Stack spacing={0.5}>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
-                    Version ID: {currentPrompt.versionId}
+                  )
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    No live prompt to compare against.
                   </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
-                    Status: {currentPrompt.status}
-                  </Typography>
-                  {currentPrompt.parentVersionId && (
-                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
-                      Parent: {currentPrompt.parentVersionId}
-                    </Typography>
-                  )}
-                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
-                    Created: {formatDate(currentPrompt.createdAt)} by {currentPrompt.createdBy || "unknown"}
-                  </Typography>
-                  {currentPrompt.publishedAt && (
-                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
-                      Published: {formatDate(currentPrompt.publishedAt)}
-                    </Typography>
-                  )}
-                  {(currentPrompt.linkedFeedbackIds || []).length > 0 && (
-                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
-                      Linked feedback: {currentPrompt.linkedFeedbackIds!.length} item(s)
-                    </Typography>
-                  )}
-                </Stack>
-              </Paper>
+                )}
+              </Box>
             )}
-          </Stack>
-        </Grid>
-      </Grid>
+          </Paper>
+
+          {/* Version info */}
+          {currentPrompt && (
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Stack direction="row" gap={1} alignItems="center" sx={{ mb: 1.5 }}>
+                <HistoryIcon fontSize="small" color="action" />
+                <Typography variant="subtitle2">Version Info</Typography>
+              </Stack>
+              <Stack spacing={0.5}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                  Version ID: {currentPrompt.versionId}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                  Status: {currentPrompt.status}
+                </Typography>
+                {currentPrompt.parentVersionId && (
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                    Parent: {currentPrompt.parentVersionId}
+                  </Typography>
+                )}
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                  Created: {formatDate(currentPrompt.createdAt)} by {currentPrompt.createdBy || "unknown"}
+                </Typography>
+                {currentPrompt.publishedAt && (
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                    Published: {formatDate(currentPrompt.publishedAt)}
+                  </Typography>
+                )}
+                {(currentPrompt.linkedFeedbackIds || []).length > 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                    Linked feedback: {currentPrompt.linkedFeedbackIds!.length} item(s)
+                  </Typography>
+                )}
+              </Stack>
+            </Paper>
+          )}
+        </Stack>
+      </Stack>
 
       {/* Publish confirmation dialog */}
       <Dialog
@@ -652,25 +772,32 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
       <Dialog open={showAiDialog} onClose={() => { setShowAiDialog(false); setAiNote(""); }} maxWidth="sm" fullWidth>
         <DialogTitle>Generate AI Draft</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            The AI will rewrite the current prompt based on feedback patterns.
-            Optionally describe what you want it to focus on.
-          </Typography>
-          <TextField
-            fullWidth
-            multiline
-            minRows={3}
-            maxRows={6}
-            label="What should this prompt improve? (optional)"
-            placeholder="e.g. Improve accuracy for contract questions, be more concise, cite sources better..."
-            value={aiNote}
-            onChange={(e) => setAiNote(e.target.value)}
-          />
-          {selectedFeedbackIds.length > 0 && (
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
-              {selectedFeedbackIds.length} feedback item(s) will be used as context.
+          <Stack spacing={2} sx={{ mt: 0.5 }}>
+            <Typography variant="body2" color="text.secondary">
+              The AI will apply targeted, minimal edits to the current prompt based on linked feedback.
+              It preserves the original structure and only changes what the feedback calls for.
             </Typography>
-          )}
+            <TextField
+              fullWidth
+              multiline
+              minRows={3}
+              maxRows={6}
+              label="What should this prompt improve? (optional)"
+              placeholder="e.g. Improve accuracy for contract questions, be more concise, cite sources better..."
+              value={aiNote}
+              onChange={(e) => setAiNote(e.target.value)}
+            />
+            {selectedFeedbackIds.length > 0 && (
+              <Paper variant="outlined" sx={{ p: 1.25, bgcolor: "info.50", borderColor: "info.200" }}>
+                <Typography variant="body2" sx={{ fontSize: "0.8125rem" }}>
+                  <strong>{selectedFeedbackIds.length}</strong> feedback item(s) will be sent as context for the AI to analyze.
+                </Typography>
+              </Paper>
+            )}
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+              If the AI determines no changes are needed, it will explain why and clone the current prompt unchanged.
+            </Typography>
+          </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { setShowAiDialog(false); setAiNote(""); }}>Cancel</Button>
