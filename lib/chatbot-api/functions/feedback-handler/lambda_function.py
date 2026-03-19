@@ -34,6 +34,10 @@ ANALYSIS_MODEL_ID = os.environ.get(
     "FEEDBACK_ANALYSIS_MODEL_ID",
     os.environ.get("FAST_MODEL_ID", "us.anthropic.claude-3-5-haiku-20241022-v1:0"),
 )
+REWRITE_MODEL_ID = os.environ.get(
+    "PROMPT_REWRITE_MODEL_ID",
+    os.environ.get("PRIMARY_MODEL_ID", "us.anthropic.claude-sonnet-4-20250514-v1:0"),
+)
 
 ALLOWED_DISPOSITIONS = {
     "pending",
@@ -323,6 +327,28 @@ def invoke_model_json(system_prompt: str, user_prompt: str) -> dict[str, Any]:
     )
     response = bedrock.invoke_model(
         modelId=ANALYSIS_MODEL_ID,
+        contentType="application/json",
+        accept="application/json",
+        body=request_body,
+    )
+    payload = json.loads(response["body"].read())
+    text = payload["content"][0]["text"]
+    return extract_json_object(text)
+
+
+def invoke_rewrite_model_json(system_prompt: str, user_prompt: str) -> dict[str, Any]:
+    """Invoke the high-quality rewrite model (Sonnet) with generous token budget."""
+    request_body = json.dumps(
+        {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 16000,
+            "temperature": 0,
+            "system": system_prompt,
+            "messages": [{"role": "user", "content": user_prompt}],
+        }
+    )
+    response = bedrock.invoke_model(
+        modelId=REWRITE_MODEL_ID,
         contentType="application/json",
         accept="application/json",
         body=request_body,
@@ -941,17 +967,29 @@ def ai_suggest_prompt(event: dict[str, Any], version_id: str):
             }
         ]
 
-    system_prompt = """
-You rewrite system prompts for an internal RAG chatbot.
-Return JSON only with keys:
-- summary
-- suggestedTemplate
+    system_prompt = """You are an expert prompt engineer editing the system prompt for ABE, an internal RAG chatbot that helps government procurement professionals.
 
-Rules:
-- Keep placeholders like {{current_date}} and {{metadata_json}} if present
-- Improve the prompt based on the feedback patterns
-- Do not invent tools that do not exist
+Your job: apply TARGETED, MINIMAL edits to the current prompt based on user feedback. Do NOT rewrite from scratch. Preserve the original structure, tone, section ordering, and wording as much as possible. Only change lines directly related to the feedback issues.
+
+RESPONSE FORMAT — you MUST return a single JSON object with exactly these keys:
+
+{
+  "prompt": "<the full revised system prompt — must be the COMPLETE template, not a summary or snippet>",
+  "reasoning": "<1-3 sentences explaining what you changed and why, or why no change was needed>",
+  "changes_made": ["<short description of each discrete edit>"],
+  "declined": false
+}
+
+RULES:
+1. The "prompt" value must contain the ENTIRE system prompt template — every line. Never return a summary, bullet list, or partial snippet in this field.
+2. Keep ALL placeholders exactly as-is: {{current_date}}, {{metadata_json}}, and any others.
+3. Do NOT invent tools, capabilities, or behaviors that do not already exist in the prompt.
+4. Do NOT remove existing sections unless the feedback explicitly calls for it.
+5. If the current prompt already addresses the feedback adequately, set "declined" to true, return the original prompt unchanged in "prompt", and explain in "reasoning" why no edit is needed.
+6. Keep your edits surgical — add a sentence, adjust wording, reorder a clause. Avoid rewriting whole sections.
+7. "changes_made" must be an array of strings (can be empty if declined).
 """.strip()
+
     user_prompt = json.dumps(
         {
             "currentPrompt": item.get("Template", ""),
@@ -961,22 +999,38 @@ Rules:
     )
 
     try:
-        suggestion = invoke_model_json(system_prompt, user_prompt)
-        suggested_template = str(suggestion.get("suggestedTemplate", "")).strip()
-        summary = str(suggestion.get("summary", "")).strip()
+        result = invoke_rewrite_model_json(system_prompt, user_prompt)
+        suggested_template = str(result.get("prompt", "")).strip()
+        reasoning = str(result.get("reasoning", "")).strip()
+        changes_made = result.get("changes_made", [])
+        declined = bool(result.get("declined", False))
+
+        if not suggested_template:
+            suggested_template = item.get("Template", "")
+            reasoning = reasoning or "AI returned an empty prompt; using the original."
+            declined = True
+
+        if declined:
+            changes_desc = "No changes — " + reasoning
+        elif changes_made:
+            changes_desc = reasoning + "\n\nChanges:\n" + "\n".join(f"• {c}" for c in changes_made)
+        else:
+            changes_desc = reasoning
+
     except Exception:
         logger.exception("AI prompt suggestion failed")
         suggested_template = item.get("Template", "")
-        summary = "AI draft suggestion failed; cloned the selected prompt as a draft."
+        changes_desc = "AI draft suggestion failed; cloned the selected prompt as a draft."
+        declined = True
 
     draft_event = {
         "body": {
-            "title": f"Draft from {version_id}",
-            "notes": summary,
+            "title": f"AI draft from {version_id}" if not declined else f"Clone of {version_id} (AI declined)",
+            "notes": changes_desc,
             "template": suggested_template,
             "parentVersionId": version_id,
             "linkedFeedbackIds": selected_feedback_ids,
-            "aiSummary": summary,
+            "aiSummary": changes_desc,
         }
     }
     return create_prompt(draft_event)

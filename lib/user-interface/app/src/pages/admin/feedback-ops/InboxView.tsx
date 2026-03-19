@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Chip,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -21,6 +22,8 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import NavigateBeforeIcon from "@mui/icons-material/NavigateBefore";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -165,6 +168,7 @@ export default function InboxView(props: InboxViewProps) {
     feedbackId: string;
     question: string;
   }>({ open: false, feedbackId: "", question: "" });
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
 
   const pageSize = 25;
   const totalPages = Math.ceil(feedbackItems.length / pageSize);
@@ -247,6 +251,10 @@ export default function InboxView(props: InboxViewProps) {
   }, [onFiltersChange]);
 
   const hasActiveFilters = Object.values(filters).some(Boolean);
+  const activeFilterCount = useMemo(
+    () => Object.values(filters).filter((v) => Boolean(v)).length,
+    [filters]
+  );
 
   const handleOpenDetail = useCallback(async (id: string) => {
     await onLoadFeedbackDetail(id);
@@ -378,111 +386,38 @@ export default function InboxView(props: InboxViewProps) {
 
       <Paper variant="outlined" sx={{ p: 1.5 }}>
         <Stack spacing={1.25}>
-          <Stack direction={{ xs: "column", xl: "row" }} gap={1} alignItems={{ xl: "center" }}>
-            <TextField
+          {/* Always visible: toggle more filters, search, refresh */}
+          <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
+            <Button
               size="small"
-              label="Search queue"
-              value={filters.search}
-              onChange={(e) => updateFilter("search", e.target.value)}
-              sx={{ flex: 1, minWidth: { xs: "100%", xl: 280 } }}
-              inputProps={{ "aria-label": "Search the feedback queue" }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon fontSize="small" />
-                  </InputAdornment>
-                ),
+              variant="text"
+              color="inherit"
+              onClick={() => setFiltersExpanded((v) => !v)}
+              aria-expanded={filtersExpanded}
+              aria-controls="inbox-advanced-filters"
+              id="inbox-filters-toggle"
+              startIcon={filtersExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+              sx={{
+                textTransform: "none",
+                fontWeight: 600,
+                fontSize: "0.8125rem",
+                color: "text.primary",
+                minWidth: "auto",
+                px: 0.75,
               }}
-            />
-            <TextField
-              select
-              size="small"
-              label="Feedback"
-              value={filters.feedbackKind}
-              onChange={(e) => updateFilter("feedbackKind", e.target.value)}
-              sx={{ minWidth: 150 }}
-              inputProps={{ "aria-label": "Filter by feedback type" }}
             >
-              <MenuItem value="">All signals</MenuItem>
-              <MenuItem value="not_helpful">Needs attention</MenuItem>
-              <MenuItem value="helpful">Helpful</MenuItem>
-            </TextField>
-            <TextField
-              select
-              size="small"
-              label="Status"
-              value={filters.reviewStatus}
-              onChange={(e) => updateFilter("reviewStatus", e.target.value)}
-              sx={{ minWidth: 150 }}
-              inputProps={{ "aria-label": "Filter by review status" }}
-            >
-              <MenuItem value="">Any status</MenuItem>
-              <MenuItem value="new">New</MenuItem>
-              <MenuItem value="analyzed">AI analyzed</MenuItem>
-              <MenuItem value="in_review">Reviewing</MenuItem>
-              <MenuItem value="actioned">Resolved</MenuItem>
-              <MenuItem value="dismissed">Dismissed</MenuItem>
-            </TextField>
-            <TextField
-              select
-              size="small"
-              label="Root cause"
-              value={filters.rootCause}
-              onChange={(e) => updateFilter("rootCause", e.target.value)}
-              sx={{ minWidth: 170 }}
-              inputProps={{ "aria-label": "Filter by likely root cause" }}
-            >
-              <MenuItem value="">All causes</MenuItem>
-              {rootCauseOptions.map((rootCause) => (
-                <MenuItem key={rootCause} value={rootCause}>
-                  {label(rootCause)}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Stack>
-
-          <Stack direction={{ xs: "column", lg: "row" }} gap={1} alignItems={{ lg: "flex-start" }}>
-            <TextField
-              select
-              size="small"
-              label="Action"
-              value={filters.disposition}
-              onChange={(e) => updateFilter("disposition", e.target.value)}
-              sx={{ minWidth: 170 }}
-              inputProps={{ "aria-label": "Filter by disposition" }}
-            >
-              <MenuItem value="">Any action</MenuItem>
-              {DISPOSITIONS.map((option) => (
-                <MenuItem key={option} value={option}>
-                  {label(option)}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              size="small"
-              label="From"
-              type="date"
-              value={filters.dateFrom}
-              onChange={(e) => updateFilter("dateFrom", e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              sx={{ width: 160 }}
-              inputProps={{ "aria-label": "From date", max: filters.dateTo || undefined }}
-              helperText=" "
-              FormHelperTextProps={{ sx: { minHeight: 20 } }}
-            />
-            <TextField
-              size="small"
-              label="To"
-              type="date"
-              value={filters.dateTo}
-              onChange={(e) => updateFilter("dateTo", e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              sx={{ width: 160 }}
-              inputProps={{ "aria-label": "To date", min: filters.dateFrom || undefined }}
-              helperText={filters.dateFrom ? "Inclusive range" : " "}
-              FormHelperTextProps={{ sx: { minHeight: 20 } }}
-            />
-            {hasActiveFilters && (
+              {filtersExpanded ? "Hide filters" : "More filters"}
+            </Button>
+            {!filtersExpanded && activeFilterCount > 0 && (
+              <Chip
+                size="small"
+                label={`${activeFilterCount} active`}
+                color="primary"
+                variant="outlined"
+                sx={{ height: 24, fontSize: "0.75rem" }}
+              />
+            )}
+            {!filtersExpanded && hasActiveFilters && (
               <Chip
                 label="Clear filters"
                 size="small"
@@ -492,7 +427,21 @@ export default function InboxView(props: InboxViewProps) {
                 sx={{ fontSize: "0.75rem", height: 28 }}
               />
             )}
-            <Box sx={{ flex: 1 }} />
+            <TextField
+              size="small"
+              label="Search queue"
+              value={filters.search}
+              onChange={(e) => updateFilter("search", e.target.value)}
+              sx={{ flex: 1, minWidth: { xs: "100%", sm: 200 } }}
+              inputProps={{ "aria-label": "Search the feedback queue" }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
             <Tooltip title="Refresh queue and analytics">
               <IconButton
                 onClick={onRefresh}
@@ -505,6 +454,111 @@ export default function InboxView(props: InboxViewProps) {
               </IconButton>
             </Tooltip>
           </Stack>
+
+          <Collapse in={filtersExpanded} id="inbox-advanced-filters" role="region" aria-labelledby="inbox-filters-toggle">
+            <Stack spacing={1.25}>
+              <Stack direction={{ xs: "column", xl: "row" }} gap={1} alignItems={{ xl: "center" }}>
+                <TextField
+                  select
+                  size="small"
+                  label="Feedback"
+                  value={filters.feedbackKind}
+                  onChange={(e) => updateFilter("feedbackKind", e.target.value)}
+                  sx={{ minWidth: 150 }}
+                  inputProps={{ "aria-label": "Filter by feedback type" }}
+                >
+                  <MenuItem value="">All signals</MenuItem>
+                  <MenuItem value="not_helpful">Needs attention</MenuItem>
+                  <MenuItem value="helpful">Helpful</MenuItem>
+                </TextField>
+                <TextField
+                  select
+                  size="small"
+                  label="Status"
+                  value={filters.reviewStatus}
+                  onChange={(e) => updateFilter("reviewStatus", e.target.value)}
+                  sx={{ minWidth: 150 }}
+                  inputProps={{ "aria-label": "Filter by review status" }}
+                >
+                  <MenuItem value="">Any status</MenuItem>
+                  <MenuItem value="new">New</MenuItem>
+                  <MenuItem value="analyzed">AI analyzed</MenuItem>
+                  <MenuItem value="in_review">Reviewing</MenuItem>
+                  <MenuItem value="actioned">Resolved</MenuItem>
+                  <MenuItem value="dismissed">Dismissed</MenuItem>
+                </TextField>
+                <TextField
+                  select
+                  size="small"
+                  label="Root cause"
+                  value={filters.rootCause}
+                  onChange={(e) => updateFilter("rootCause", e.target.value)}
+                  sx={{ minWidth: 170 }}
+                  inputProps={{ "aria-label": "Filter by likely root cause" }}
+                >
+                  <MenuItem value="">All causes</MenuItem>
+                  {rootCauseOptions.map((rootCause) => (
+                    <MenuItem key={rootCause} value={rootCause}>
+                      {label(rootCause)}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Stack>
+
+              <Stack direction={{ xs: "column", lg: "row" }} gap={1} alignItems={{ lg: "flex-start" }}>
+                <TextField
+                  select
+                  size="small"
+                  label="Action"
+                  value={filters.disposition}
+                  onChange={(e) => updateFilter("disposition", e.target.value)}
+                  sx={{ minWidth: 170 }}
+                  inputProps={{ "aria-label": "Filter by disposition" }}
+                >
+                  <MenuItem value="">Any action</MenuItem>
+                  {DISPOSITIONS.map((option) => (
+                    <MenuItem key={option} value={option}>
+                      {label(option)}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  size="small"
+                  label="From"
+                  type="date"
+                  value={filters.dateFrom}
+                  onChange={(e) => updateFilter("dateFrom", e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ width: 160 }}
+                  inputProps={{ "aria-label": "From date", max: filters.dateTo || undefined }}
+                  helperText=" "
+                  FormHelperTextProps={{ sx: { minHeight: 20 } }}
+                />
+                <TextField
+                  size="small"
+                  label="To"
+                  type="date"
+                  value={filters.dateTo}
+                  onChange={(e) => updateFilter("dateTo", e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ width: 160 }}
+                  inputProps={{ "aria-label": "To date", min: filters.dateFrom || undefined }}
+                  helperText={filters.dateFrom ? "Inclusive range" : " "}
+                  FormHelperTextProps={{ sx: { minHeight: 20 } }}
+                />
+                {hasActiveFilters && (
+                  <Chip
+                    label="Clear filters"
+                    size="small"
+                    variant="outlined"
+                    onDelete={clearFilters}
+                    onClick={clearFilters}
+                    sx={{ fontSize: "0.75rem", height: 28 }}
+                  />
+                )}
+              </Stack>
+            </Stack>
+          </Collapse>
 
           <Stack direction="row" gap={1} flexWrap="wrap" alignItems="center">
             <Chip size="small" label={`${queueStats.shown} shown`} sx={{ height: 24, fontSize: "0.75rem" }} />
@@ -579,29 +633,59 @@ export default function InboxView(props: InboxViewProps) {
                     </Typography>
                   </Stack>
 
-                  {/* User question */}
-                  <Box sx={{ maxHeight: 48, overflow: "hidden" }}>
-                    <AdminMarkdown
-                      content={item.userPromptPreview || "No question preview captured."}
-                      compact
-                      sx={{ fontWeight: 600, fontSize: "0.875rem" }}
-                    />
-                  </Box>
-
-                  {/* ABE answer preview */}
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{
-                      fontSize: "0.8125rem",
-                      display: "-webkit-box",
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {item.answerPreview || "No answer preview captured."}
-                  </Typography>
+                  {/* Q / A — both use AdminMarkdown (react-markdown + GFM, same as detail drawer) */}
+                  <Stack spacing={1} role="group" aria-label="User question and ABE answer preview">
+                    <Stack direction="row" alignItems="flex-start" gap={1}>
+                      <Typography
+                        component="span"
+                        variant="caption"
+                        sx={{
+                          flexShrink: 0,
+                          mt: 0.125,
+                          fontWeight: 700,
+                          fontSize: "0.6875rem",
+                          letterSpacing: 0.5,
+                          color: "primary.main",
+                          lineHeight: 1.5,
+                        }}
+                        aria-label="Question"
+                      >
+                        Q
+                      </Typography>
+                      <Box sx={{ flex: 1, minWidth: 0, maxHeight: 52, overflow: "hidden" }}>
+                        <AdminMarkdown
+                          content={item.userPromptPreview || "No question preview captured."}
+                          compact
+                          sx={{ fontWeight: 600, fontSize: "0.875rem" }}
+                        />
+                      </Box>
+                    </Stack>
+                    <Stack direction="row" alignItems="flex-start" gap={1}>
+                      <Typography
+                        component="span"
+                        variant="caption"
+                        sx={{
+                          flexShrink: 0,
+                          mt: 0.125,
+                          fontWeight: 700,
+                          fontSize: "0.6875rem",
+                          letterSpacing: 0.5,
+                          color: "text.secondary",
+                          lineHeight: 1.5,
+                        }}
+                        aria-label="Answer"
+                      >
+                        A
+                      </Typography>
+                      <Box sx={{ flex: 1, minWidth: 0, maxHeight: 56, overflow: "hidden" }}>
+                        <AdminMarkdown
+                          content={item.answerPreview || "No answer preview captured."}
+                          compact
+                          sx={{ color: "text.secondary", fontSize: "0.8125rem" }}
+                        />
+                      </Box>
+                    </Stack>
+                  </Stack>
 
                   {/* Root cause + recurrence chips + analysis summary */}
                   <Stack direction="row" gap={0.75} flexWrap="wrap" alignItems="center">

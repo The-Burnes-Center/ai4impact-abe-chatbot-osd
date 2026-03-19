@@ -194,6 +194,7 @@ export class LambdaFunctionStack extends Construct {
         "MONITORING_CASES_TABLE": props.monitoringCasesTable.tableName,
         "PROMPT_FAMILY": "ABE_CHAT",
         "FEEDBACK_ANALYSIS_MODEL_ID": process.env.FAST_MODEL_ID || "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+        "PROMPT_REWRITE_MODEL_ID": process.env.PRIMARY_MODEL_ID || "us.anthropic.claude-sonnet-4-20250514-v1:0",
       },
       timeout: cdk.Duration.seconds(30),
     });

@@ -31,6 +31,7 @@ import {
   PromptData,
   InboxFilters,
   ActivityLogEntry,
+  ClusterSummary,
   formatDate,
   label,
 } from "./types";
@@ -263,7 +264,10 @@ export default function FeedbackOpsPage() {
     await Promise.all([loadFeedback(), loadMonitoring(), loadActivityLog()]);
   }, [loadActivityLog, loadFeedback, loadMonitoring]);
 
-  const handleCreateDraftFromCluster = useCallback(() => {
+  const handleCreateDraftFromCluster = useCallback((cluster: ClusterSummary) => {
+    if (cluster.sampleFeedbackId) {
+      setSelectedFeedbackIds([cluster.sampleFeedbackId]);
+    }
     setTab("prompts");
   }, []);
 

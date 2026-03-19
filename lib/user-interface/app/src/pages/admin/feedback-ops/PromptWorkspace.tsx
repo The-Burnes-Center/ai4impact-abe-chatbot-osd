@@ -319,9 +319,43 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
                 <Stack>
                   <Typography variant="h6">{currentPrompt?.title || "Select a prompt"}</Typography>
                   {currentPrompt?.aiSummary && (
-                    <Typography variant="caption" color="text.secondary">
-                      AI: {currentPrompt.aiSummary}
-                    </Typography>
+                    <Paper
+                      variant="outlined"
+                      sx={{
+                        mt: 0.75,
+                        p: 1.25,
+                        bgcolor: currentPrompt.aiSummary.startsWith("No changes")
+                          ? "warning.50"
+                          : "info.50",
+                        borderColor: currentPrompt.aiSummary.startsWith("No changes")
+                          ? "warning.200"
+                          : "info.200",
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          display: "block",
+                          fontWeight: 600,
+                          fontSize: "0.6875rem",
+                          mb: 0.5,
+                          letterSpacing: 0.5,
+                          textTransform: "uppercase",
+                          color: currentPrompt.aiSummary.startsWith("No changes")
+                            ? "warning.dark"
+                            : "info.dark",
+                        }}
+                      >
+                        AI Reasoning
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ fontSize: "0.8125rem", whiteSpace: "pre-line" }}
+                      >
+                        {currentPrompt.aiSummary}
+                      </Typography>
+                    </Paper>
                   )}
                 </Stack>
                 <Stack direction="row" gap={1} flexWrap="wrap">

@@ -12,6 +12,7 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
@@ -240,17 +241,19 @@ export default function TrendsView({ monitoring, loading, onCreateDraftFromClust
                       </Typography>
                       <Stack direction="row" gap={0.5}>
                         {onCreateDraftFromCluster && cluster.recommendedAction === "prompt update" && (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onCreateDraftFromCluster(cluster);
-                            }}
-                            sx={{ fontSize: "0.75rem", textTransform: "none" }}
-                          >
-                            Fix prompt
-                          </Button>
+                          <Tooltip title="Opens Prompts and links this pattern’s sample feedback for AI Draft.">
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onCreateDraftFromCluster(cluster);
+                              }}
+                              sx={{ fontSize: "0.75rem", textTransform: "none" }}
+                            >
+                              Fix prompt
+                            </Button>
+                          </Tooltip>
                         )}
                         <Button
                           size="small"
