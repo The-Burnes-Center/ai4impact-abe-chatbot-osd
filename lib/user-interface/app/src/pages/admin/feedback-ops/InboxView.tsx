@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box,
@@ -17,13 +17,6 @@ import {
   Paper,
   Skeleton,
   Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableFooter,
-  TableHead,
-  TableRow,
   TextField,
   Tooltip,
   Typography,
@@ -61,23 +54,6 @@ const ROOT_CAUSE_CHIPS: Record<string, { label: string; color: "error" | "warnin
   positive_signal: { label: "Helpful", color: "info" },
 };
 
-type ResizableColumnKey = "question" | "analysis" | "context";
-
-const INITIAL_COLUMN_WIDTHS: Record<ResizableColumnKey, number> = {
-  question: 420,
-  analysis: 340,
-  context: 260,
-};
-
-const COLUMN_LIMITS: Record<ResizableColumnKey, { min: number; max: number }> = {
-  question: { min: 260, max: 720 },
-  analysis: { min: 240, max: 560 },
-  context: { min: 220, max: 420 },
-};
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
 
 function getReviewStatusColor(status?: string): "default" | "success" | "info" | "warning" {
   if (status === "actioned") return "success";
@@ -179,7 +155,6 @@ export default function InboxView(props: InboxViewProps) {
   const [actionLoading, setActionLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [columnWidths, setColumnWidths] = useState(INITIAL_COLUMN_WIDTHS);
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     item: FeedbackItem | null;
@@ -190,11 +165,6 @@ export default function InboxView(props: InboxViewProps) {
     feedbackId: string;
     question: string;
   }>({ open: false, feedbackId: "", question: "" });
-  const resizeStateRef = useRef<{
-    column: ResizableColumnKey;
-    startX: number;
-    startWidth: number;
-  } | null>(null);
 
   const pageSize = 25;
   const totalPages = Math.ceil(feedbackItems.length / pageSize);
@@ -217,10 +187,6 @@ export default function InboxView(props: InboxViewProps) {
       positive: feedbackItems.filter((item) => item.feedbackKind === "helpful").length,
     }),
     [feedbackItems]
-  );
-  const tableMinWidth = useMemo(
-    () => 60 + columnWidths.question + columnWidths.analysis + columnWidths.context + 180 + 190 + 150,
-    [columnWidths]
   );
 
   useEffect(() => {
@@ -248,32 +214,6 @@ export default function InboxView(props: InboxViewProps) {
       return Math.min(currentPage, Math.max(0, Math.ceil(feedbackItems.length / pageSize) - 1));
     });
   }, [feedbackItems.length]);
-
-  useEffect(() => {
-    const handlePointerMove = (event: MouseEvent) => {
-      if (!resizeStateRef.current) return;
-      const { column, startWidth, startX } = resizeStateRef.current;
-      const limits = COLUMN_LIMITS[column];
-      const nextWidth = clamp(startWidth + event.clientX - startX, limits.min, limits.max);
-      setColumnWidths((current) => ({ ...current, [column]: nextWidth }));
-    };
-
-    const stopResizing = () => {
-      if (!resizeStateRef.current) return;
-      resizeStateRef.current = null;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-
-    window.addEventListener("mousemove", handlePointerMove);
-    window.addEventListener("mouseup", stopResizing);
-
-    return () => {
-      window.removeEventListener("mousemove", handlePointerMove);
-      window.removeEventListener("mouseup", stopResizing);
-      stopResizing();
-    };
-  }, []);
 
   const updateFilter = useCallback(
     (key: keyof InboxFilters, value: string) => {
@@ -307,20 +247,6 @@ export default function InboxView(props: InboxViewProps) {
   }, [onFiltersChange]);
 
   const hasActiveFilters = Object.values(filters).some(Boolean);
-  const startColumnResize = useCallback(
-    (column: ResizableColumnKey) => (event: React.MouseEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-      resizeStateRef.current = {
-        column,
-        startX: event.clientX,
-        startWidth: columnWidths[column],
-      };
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-    },
-    [columnWidths]
-  );
 
   const handleOpenDetail = useCallback(async (id: string) => {
     await onLoadFeedbackDetail(id);
@@ -445,47 +371,6 @@ export default function InboxView(props: InboxViewProps) {
   }
 
   const isPositive = (item: FeedbackItem) => item.feedbackKind === "helpful";
-  const renderResizableHeader = (headerLabel: string, column: ResizableColumnKey) => (
-    <TableCell
-      scope="col"
-      sx={{
-        fontWeight: 600,
-        fontSize: "0.8125rem",
-        position: "relative",
-        userSelect: "none",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {headerLabel}
-      <Box
-        component="span"
-        onMouseDown={startColumnResize(column)}
-        sx={{
-          position: "absolute",
-          top: 0,
-          right: -6,
-          width: 12,
-          height: "100%",
-          cursor: "col-resize",
-          zIndex: 2,
-          "&::after": {
-            content: "\"\"",
-            position: "absolute",
-            top: 8,
-            bottom: 8,
-            left: "50%",
-            width: 2,
-            borderRadius: 999,
-            bgcolor: "divider",
-            transform: "translateX(-50%)",
-          },
-          "&:hover::after": {
-            bgcolor: "primary.main",
-          },
-        }}
-      />
-    </TableCell>
-  );
 
   return (
     <Stack spacing={1.5}>
@@ -626,9 +511,6 @@ export default function InboxView(props: InboxViewProps) {
             <Chip size="small" color="warning" variant="outlined" label={`${queueStats.needsReview} need review`} sx={{ height: 24, fontSize: "0.75rem" }} />
             <Chip size="small" color="success" variant="outlined" label={`${queueStats.resolved} resolved`} sx={{ height: 24, fontSize: "0.75rem" }} />
             <Chip size="small" color="primary" variant="outlined" label={`${queueStats.positive} helpful`} sx={{ height: 24, fontSize: "0.75rem" }} />
-            <Typography variant="caption" color="text.secondary" sx={{ ml: "auto", fontSize: "0.75rem" }}>
-              Drag the divider in the table header to resize the main columns.
-            </Typography>
           </Stack>
         </Stack>
       </Paper>
@@ -636,254 +518,230 @@ export default function InboxView(props: InboxViewProps) {
       {feedbackItems.length === 0 ? (
         hasActiveFilters ? <FilteredEmptyInbox /> : <EmptyInbox />
       ) : (
-        <Paper variant="outlined" sx={{ overflow: "hidden" }}>
-          <TableContainer sx={{ overflowX: "auto" }}>
-            <Table size="small" aria-label="Feedback items" sx={{ minWidth: tableMinWidth, tableLayout: "fixed" }}>
-              <colgroup>
-                <col style={{ width: 60 }} />
-                <col style={{ width: columnWidths.question }} />
-                <col style={{ width: columnWidths.analysis }} />
-                <col style={{ width: columnWidths.context }} />
-                <col style={{ width: 180 }} />
-                <col style={{ width: 190 }} />
-                <col style={{ width: 150 }} />
-              </colgroup>
-              <TableHead>
-                <TableRow sx={{ bgcolor: "grey.50" }}>
-                  <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem", whiteSpace: "nowrap" }}>
-                    Signal
-                  </TableCell>
-                  {renderResizableHeader("Question", "question")}
-                  {renderResizableHeader("Analysis", "analysis")}
-                  {renderResizableHeader("Context", "context")}
-                  <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem", whiteSpace: "nowrap" }}>
-                    Workflow
-                  </TableCell>
-                  <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem", whiteSpace: "nowrap" }}>
-                    Submitted
-                  </TableCell>
-                  <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem", whiteSpace: "nowrap" }} align="right">
-                    Actions
-                  </TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {pagedItems.map((item) => {
-                  const positive = isPositive(item);
-                  const isActive = selectedFeedback?.feedback?.FeedbackId === item.feedbackId;
-                  const sourceSummary = summarizeSources(item);
-                  const rootCauseKey = item.rootCause || (positive ? "positive_signal" : "needs_human_review");
-                  const rootCauseChip = ROOT_CAUSE_CHIPS[rootCauseKey];
+        <Stack spacing={1.25} sx={{ maxWidth: 900 }} role="list" aria-label="Feedback items">
+          {pagedItems.map((item) => {
+            const positive = isPositive(item);
+            const isActive = selectedFeedback?.feedback?.FeedbackId === item.feedbackId;
+            const sourceSummary = summarizeSources(item);
+            const rootCauseKey = item.rootCause || (positive ? "positive_signal" : "needs_human_review");
+            const rootCauseChip = ROOT_CAUSE_CHIPS[rootCauseKey];
 
-                  return (
-                    <TableRow
-                      key={item.feedbackId}
-                      hover
-                      selected={isActive}
-                      onClick={() => handleOpenDetail(item.feedbackId)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          handleOpenDetail(item.feedbackId);
-                        }
-                      }}
-                      tabIndex={0}
-                      sx={{
-                        cursor: "pointer",
-                        "& .MuiTableCell-root": { verticalAlign: "top", py: 1.5 },
-                        ...(isActive ? { bgcolor: "action.selected" } : null),
-                      }}
-                      role="row"
-                      aria-selected={isActive}
-                    >
-                      <TableCell sx={{ px: 1.5 }}>
-                        <Stack spacing={0.75} alignItems="flex-start">
-                          <Tooltip title={positive ? "Helpful feedback" : "Feedback that needs review"}>
-                            {positive ? (
-                              <ThumbUpOutlinedIcon sx={{ fontSize: 20, color: "primary.main" }} aria-label="Helpful" />
-                            ) : (
-                              <ThumbDownOutlinedIcon sx={{ fontSize: 20, color: "warning.dark" }} aria-label="Needs attention" />
-                            )}
-                          </Tooltip>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
-                            {label(item.feedbackKind || "not_helpful")}
-                          </Typography>
-                        </Stack>
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ maxHeight: 72, overflow: "hidden" }}>
-                          <AdminMarkdown
-                            content={item.userPromptPreview || "No question preview captured."}
-                            compact
-                            sx={{ fontWeight: 600 }}
-                          />
-                        </Box>
-                        <Box sx={{ maxHeight: 72, overflow: "hidden", mt: 0.75 }}>
-                          <AdminMarkdown
-                            content={item.answerPreview || "No answer preview captured."}
-                            compact
-                            sx={{ color: "text.secondary" }}
-                          />
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Stack spacing={0.9}>
-                          <Stack direction="row" gap={0.75} flexWrap="wrap">
-                            <Chip
-                              size="small"
-                              label={rootCauseChip ? rootCauseChip.label : label(rootCauseKey)}
-                              color={rootCauseChip?.color || "default"}
-                              variant="outlined"
-                              sx={{ height: 24, fontSize: "0.75rem" }}
-                            />
-                            {item.recurrenceCount && item.recurrenceCount > 1 && (
-                              <Chip
-                                size="small"
-                                variant="outlined"
-                                label={`Seen ${item.recurrenceCount} times`}
-                                sx={{ height: 24, fontSize: "0.75rem" }}
-                              />
-                            )}
-                          </Stack>
-                          <Typography
-                            variant="body2"
-                            color="text.secondary"
-                            sx={{
-                              fontSize: "0.8125rem",
-                              display: "-webkit-box",
-                              WebkitLineClamp: 4,
-                              WebkitBoxOrient: "vertical",
-                              overflow: "hidden",
-                            }}
-                          >
-                            {item.summary || (positive ? "Helpful feedback received from the user." : "Awaiting admin review and classification.")}
-                          </Typography>
-                        </Stack>
-                      </TableCell>
-                      <TableCell>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            fontSize: "0.8125rem",
-                            fontWeight: 600,
-                            display: "-webkit-box",
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
-                          }}
-                          title={sourceSummary.primary}
-                        >
-                          {sourceSummary.primary}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5, fontSize: "0.75rem" }}>
-                          {sourceSummary.secondary}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Stack spacing={0.75}>
-                          <Chip
-                            size="small"
-                            label={label(item.reviewStatus || "new")}
-                            color={getReviewStatusColor(item.reviewStatus)}
-                            variant={item.reviewStatus === "actioned" || item.reviewStatus === "dismissed" ? "filled" : "outlined"}
-                            sx={{ height: 24, fontSize: "0.75rem", alignSelf: "flex-start" }}
-                          />
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
-                            {positive ? "Positive signal" : `Next step: ${label(item.disposition || "pending")}`}
-                          </Typography>
-                        </Stack>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ fontSize: "0.8125rem", whiteSpace: "nowrap" }}>
-                          {formatDate(item.createdAt)}
-                        </Typography>
-                        {item.updatedAt && item.updatedAt !== item.createdAt && (
-                          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5, fontSize: "0.75rem", whiteSpace: "nowrap" }}>
-                            Updated {formatDate(item.updatedAt)}
-                          </Typography>
+            return (
+              <Paper
+                key={item.feedbackId}
+                variant="outlined"
+                role="listitem"
+                tabIndex={0}
+                onClick={() => handleOpenDetail(item.feedbackId)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleOpenDetail(item.feedbackId);
+                  }
+                }}
+                aria-selected={isActive}
+                sx={{
+                  cursor: "pointer",
+                  borderLeft: "3px solid",
+                  borderLeftColor: positive ? "primary.main" : "warning.main",
+                  transition: "box-shadow 150ms ease, background-color 150ms ease",
+                  ...(isActive && { bgcolor: "action.selected" }),
+                  "&:hover": {
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04)",
+                  },
+                }}
+              >
+                <Stack sx={{ p: 2, gap: 1.25 }}>
+                  {/* Top bar: signal, status, date */}
+                  <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
+                    <Tooltip title={positive ? "Helpful feedback" : "Feedback that needs review"}>
+                      <Stack direction="row" alignItems="center" gap={0.75}>
+                        {positive ? (
+                          <ThumbUpOutlinedIcon sx={{ fontSize: 18, color: "primary.main" }} aria-label="Helpful" />
+                        ) : (
+                          <ThumbDownOutlinedIcon sx={{ fontSize: 18, color: "warning.dark" }} aria-label="Needs attention" />
                         )}
-                      </TableCell>
-                      <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                        <Stack direction="row" gap={0.5} justifyContent="flex-end" alignItems="center">
-                          {positive ? (
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color="primary"
-                              onClick={(e) => openConfirmDialog(item, "test_library", e)}
-                              disabled={actionLoading}
-                              sx={{ fontSize: "0.75rem", textTransform: "none", whiteSpace: "nowrap" }}
-                            >
-                              Add to tests
-                            </Button>
-                          ) : (
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color="warning"
-                              onClick={(e) => openConfirmDialog(item, "fix_prompt", e)}
-                              sx={{ fontSize: "0.75rem", textTransform: "none", whiteSpace: "nowrap" }}
-                            >
-                              Review
-                            </Button>
-                          )}
-                          <Tooltip title="Delete">
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDeleteDialog({
-                                  open: true,
-                                  feedbackId: item.feedbackId,
-                                  question: item.userPromptPreview || "this item",
-                                });
-                              }}
-                              aria-label="Delete feedback"
-                              sx={{ color: "text.secondary", "&:hover": { color: "error.main" } }}
-                            >
-                              <DeleteOutlineIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-              {totalPages > 1 && (
-                <TableFooter>
-                  <TableRow>
-                    <TableCell colSpan={7}>
-                      <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
-                          {feedbackItems.length} items - Page {page + 1} of {totalPages}
+                        <Typography variant="body2" sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
+                          {label(item.feedbackKind || "not_helpful")}
                         </Typography>
-                        <Stack direction="row" gap={0.5}>
-                          <IconButton
-                            size="small"
-                            onClick={() => setPage((p) => Math.max(0, p - 1))}
-                            disabled={page === 0}
-                            aria-label="Previous page"
-                          >
-                            <NavigateBeforeIcon />
-                          </IconButton>
-                          <IconButton
-                            size="small"
-                            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                            disabled={page >= totalPages - 1}
-                            aria-label="Next page"
-                          >
-                            <NavigateNextIcon />
-                          </IconButton>
-                        </Stack>
                       </Stack>
-                    </TableCell>
-                  </TableRow>
-                </TableFooter>
-              )}
-            </Table>
-          </TableContainer>
-        </Paper>
+                    </Tooltip>
+                    <Chip
+                      size="small"
+                      label={label(item.reviewStatus || "new")}
+                      color={getReviewStatusColor(item.reviewStatus)}
+                      variant={item.reviewStatus === "actioned" || item.reviewStatus === "dismissed" ? "filled" : "outlined"}
+                      sx={{ height: 22, fontSize: "0.7rem" }}
+                    />
+                    <Box sx={{ flex: 1 }} />
+                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+                      {formatDate(item.createdAt)}
+                    </Typography>
+                  </Stack>
+
+                  {/* User question */}
+                  <Box sx={{ maxHeight: 48, overflow: "hidden" }}>
+                    <AdminMarkdown
+                      content={item.userPromptPreview || "No question preview captured."}
+                      compact
+                      sx={{ fontWeight: 600, fontSize: "0.875rem" }}
+                    />
+                  </Box>
+
+                  {/* ABE answer preview */}
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{
+                      fontSize: "0.8125rem",
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {item.answerPreview || "No answer preview captured."}
+                  </Typography>
+
+                  {/* Root cause + recurrence chips + analysis summary */}
+                  <Stack direction="row" gap={0.75} flexWrap="wrap" alignItems="center">
+                    <Chip
+                      size="small"
+                      label={rootCauseChip ? rootCauseChip.label : label(rootCauseKey)}
+                      color={rootCauseChip?.color || "default"}
+                      variant="outlined"
+                      sx={{ height: 22, fontSize: "0.7rem" }}
+                    />
+                    {item.recurrenceCount && item.recurrenceCount > 1 && (
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={`Seen ${item.recurrenceCount}x`}
+                        sx={{ height: 22, fontSize: "0.7rem" }}
+                      />
+                    )}
+                  </Stack>
+                  {item.summary && (
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{
+                        fontSize: "0.8125rem",
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {item.summary}
+                    </Typography>
+                  )}
+
+                  {/* Footer: sources, disposition, actions */}
+                  <Divider sx={{ mt: 0.25 }} />
+                  <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{
+                        fontSize: "0.75rem",
+                        maxWidth: 260,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={sourceSummary.primary}
+                    >
+                      {sourceSummary.primary}
+                    </Typography>
+                    {sourceSummary.secondary && sourceSummary.primary !== "No source documents captured" && (
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+                        {sourceSummary.secondary}
+                      </Typography>
+                    )}
+                    {!positive && (
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={label(item.disposition || "pending")}
+                        sx={{ height: 20, fontSize: "0.675rem" }}
+                      />
+                    )}
+                    <Box sx={{ flex: 1 }} />
+                    <Stack direction="row" gap={0.5} alignItems="center" onClick={(e) => e.stopPropagation()}>
+                      {positive ? (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          onClick={(e) => openConfirmDialog(item, "test_library", e)}
+                          disabled={actionLoading}
+                          sx={{ fontSize: "0.75rem", textTransform: "none", whiteSpace: "nowrap", py: 0.25 }}
+                        >
+                          Add to tests
+                        </Button>
+                      ) : (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="warning"
+                          onClick={(e) => openConfirmDialog(item, "fix_prompt", e)}
+                          sx={{ fontSize: "0.75rem", textTransform: "none", whiteSpace: "nowrap", py: 0.25 }}
+                        >
+                          Review
+                        </Button>
+                      )}
+                      <Tooltip title="Delete">
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteDialog({
+                              open: true,
+                              feedbackId: item.feedbackId,
+                              question: item.userPromptPreview || "this item",
+                            });
+                          }}
+                          aria-label="Delete feedback"
+                          sx={{ color: "text.secondary", "&:hover": { color: "error.main" } }}
+                        >
+                          <DeleteOutlineIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  </Stack>
+                </Stack>
+              </Paper>
+            );
+          })}
+        </Stack>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && feedbackItems.length > 0 && (
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ maxWidth: 900, pt: 0.5 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+            {feedbackItems.length} items &middot; Page {page + 1} of {totalPages}
+          </Typography>
+          <Stack direction="row" gap={0.5}>
+            <IconButton
+              size="small"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0}
+              aria-label="Previous page"
+            >
+              <NavigateBeforeIcon />
+            </IconButton>
+            <IconButton
+              size="small"
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={page >= totalPages - 1}
+              aria-label="Next page"
+            >
+              <NavigateNextIcon />
+            </IconButton>
+          </Stack>
+        </Stack>
       )}
 
       {/* Confirm "Add to test library" dialog */}
