@@ -180,7 +180,6 @@ export interface InboxFilters {
   issueTag: string;
   promptVersionId: string;
   sourceTitle: string;
-  rootCause: string;
   dateFrom: string;
   dateTo: string;
   search: string;

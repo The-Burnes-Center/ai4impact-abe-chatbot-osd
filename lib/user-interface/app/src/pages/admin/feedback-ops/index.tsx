@@ -134,7 +134,6 @@ export default function FeedbackOpsPage() {
     issueTag: "",
     promptVersionId: "",
     sourceTitle: "",
-    rootCause: "",
     dateFrom: "",
     dateTo: "",
     search: "",
@@ -362,7 +361,6 @@ export default function FeedbackOpsPage() {
             filters={filters}
             loading={loading}
             apiClient={apiClient}
-            monitoring={monitoring}
             onFiltersChange={setFilters}
             onRefresh={refreshAll}
             onSelectFeedback={setSelectedFeedback}

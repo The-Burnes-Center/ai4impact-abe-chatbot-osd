@@ -39,7 +39,6 @@ import {
   FeedbackItem,
   FeedbackDetail,
   InboxFilters,
-  MonitoringData,
   formatDate,
   label,
 } from "./types";
@@ -86,7 +85,6 @@ interface InboxViewProps {
   filters: InboxFilters;
   loading: boolean;
   apiClient: ApiClient | null;
-  monitoring: MonitoringData | null;
   onFiltersChange: (filters: InboxFilters) => void;
   onRefresh: () => Promise<void>;
   onSelectFeedback: (detail: FeedbackDetail | null) => void;
@@ -140,7 +138,6 @@ export default function InboxView(props: InboxViewProps) {
     filters,
     loading,
     apiClient,
-    monitoring,
     onFiltersChange,
     onRefresh,
     onSelectFeedback,
@@ -176,13 +173,6 @@ export default function InboxView(props: InboxViewProps) {
     () => feedbackItems.slice(page * pageSize, (page + 1) * pageSize),
     [feedbackItems, page]
   );
-  const rootCauseOptions = useMemo(() => {
-    const available = monitoring?.feedbackOverview?.rootCauseCounts
-      ? Object.keys(monitoring.feedbackOverview.rootCauseCounts)
-      : [];
-    const fallback = Object.keys(ROOT_CAUSE_CHIPS);
-    return Array.from(new Set([...available, ...fallback])).filter((key) => key && key !== "unknown");
-  }, [monitoring]);
   const queueStats = useMemo(
     () => ({
       shown: feedbackItems.length,
@@ -242,7 +232,6 @@ export default function InboxView(props: InboxViewProps) {
       issueTag: "",
       promptVersionId: "",
       sourceTitle: "",
-      rootCause: "",
       dateFrom: "",
       dateTo: "",
       search: "",
@@ -486,22 +475,6 @@ export default function InboxView(props: InboxViewProps) {
                   <MenuItem value="in_review">Reviewing</MenuItem>
                   <MenuItem value="actioned">Resolved</MenuItem>
                   <MenuItem value="dismissed">Dismissed</MenuItem>
-                </TextField>
-                <TextField
-                  select
-                  size="small"
-                  label="Root cause"
-                  value={filters.rootCause}
-                  onChange={(e) => updateFilter("rootCause", e.target.value)}
-                  sx={{ minWidth: 170 }}
-                  inputProps={{ "aria-label": "Filter by likely root cause" }}
-                >
-                  <MenuItem value="">All causes</MenuItem>
-                  {rootCauseOptions.map((rootCause) => (
-                    <MenuItem key={rootCause} value={rootCause}>
-                      {label(rootCause)}
-                    </MenuItem>
-                  ))}
                 </TextField>
               </Stack>
 

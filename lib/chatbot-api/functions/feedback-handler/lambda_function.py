@@ -13,6 +13,7 @@ from boto3.dynamodb.conditions import Key
 
 from abe_utils import (
     extract_json_object,
+    get_audit_actor_label,
     get_logger,
     is_admin_request,
     json_response,
@@ -94,8 +95,16 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def write_audit_log(action: str, entity_type: str, entity_id: str, details: dict[str, Any] | None = None, actor: str = "admin"):
+def write_audit_log(
+    action: str,
+    entity_type: str,
+    entity_id: str,
+    details: dict[str, Any] | None = None,
+    *,
+    event: dict[str, Any] | None = None,
+):
     """Append an audit entry to the feedback records table with RecordType=AUDIT_LOG."""
+    actor = get_audit_actor_label(event) if event else "Admin"
     try:
         feedback_records_table.put_item(Item={
             "FeedbackId": f"audit-{uuid.uuid4()}",
@@ -744,20 +753,21 @@ def set_disposition(event: dict[str, Any], feedback_id: str):
                 "owner": item["Owner"],
             },
         ),
+        event=event,
     )
     return json_response(200, {"feedback": item})
 
 
-def delete_feedback(feedback_id: str):
+def delete_feedback(event: dict[str, Any], feedback_id: str):
     item = feedback_records_table.get_item(Key={"FeedbackId": feedback_id}).get("Item")
     if not item or item.get("RecordType") != "FEEDBACK":
         return json_response(404, {"error": "Feedback not found"})
     feedback_records_table.delete_item(Key={"FeedbackId": feedback_id})
-    write_audit_log("feedback_deleted", "feedback", feedback_id, build_feedback_audit_details(item))
+    write_audit_log("feedback_deleted", "feedback", feedback_id, build_feedback_audit_details(item), event=event)
     return json_response(200, {"deleted": True, "feedbackId": feedback_id})
 
 
-def promote_to_candidate(feedback_id: str):
+def promote_to_candidate(event: dict[str, Any], feedback_id: str):
     from boto3.dynamodb.conditions import Attr
 
     item = feedback_records_table.get_item(Key={"FeedbackId": feedback_id}).get("Item")
@@ -799,6 +809,7 @@ def promote_to_candidate(feedback_id: str):
         "feedback",
         feedback_id,
         build_feedback_audit_details(item, {"caseId": case_id}),
+        event=event,
     )
     return json_response(200, {"case": candidate_case})
 
@@ -855,6 +866,7 @@ def create_prompt(event: dict[str, Any]):
 
     version_id = f"v-{uuid.uuid4()}"
     now = utc_now_iso()
+    created_by = get_audit_actor_label(event)
     item = {
         "PromptFamily": PROMPT_FAMILY,
         "VersionId": version_id,
@@ -867,12 +879,12 @@ def create_prompt(event: dict[str, Any]):
         "LinkedFeedbackIds": payload.get("linkedFeedbackIds", []) if isinstance(payload.get("linkedFeedbackIds"), list) else [],
         "CreatedAt": now,
         "UpdatedAt": now,
-        "CreatedBy": "admin",
+        "CreatedBy": created_by,
         "PublishedAt": "",
         "AiSummary": str(payload.get("aiSummary", "")).strip(),
     }
     prompt_registry_table.put_item(Item=item)
-    write_audit_log("prompt_created", "prompt", version_id, {"title": item.get("Title", "")})
+    write_audit_log("prompt_created", "prompt", version_id, {"title": item.get("Title", "")}, event=event)
     return json_response(201, {"prompt": serialize_prompt_item(item)})
 
 
@@ -894,11 +906,11 @@ def update_prompt(event: dict[str, Any], version_id: str):
         item["LinkedFeedbackIds"] = payload.get("linkedFeedbackIds")
     item["UpdatedAt"] = utc_now_iso()
     prompt_registry_table.put_item(Item=item)
-    write_audit_log("prompt_updated", "prompt", version_id, {"title": item.get("Title", "")})
+    write_audit_log("prompt_updated", "prompt", version_id, {"title": item.get("Title", "")}, event=event)
     return json_response(200, {"prompt": serialize_prompt_item(item)})
 
 
-def publish_prompt(version_id: str):
+def publish_prompt(event: dict[str, Any], version_id: str):
     item = get_prompt_table_item(version_id)
     if not item or item.get("ItemType") != "PromptVersion":
         return json_response(404, {"error": "Prompt version not found"})
@@ -918,18 +930,18 @@ def publish_prompt(version_id: str):
             "UpdatedAt": now,
         }
     )
-    write_audit_log("prompt_published", "prompt", version_id, {"title": item.get("Title", "")})
+    write_audit_log("prompt_published", "prompt", version_id, {"title": item.get("Title", "")}, event=event)
     return json_response(200, {"liveVersionId": version_id, "prompt": serialize_prompt_item(item)})
 
 
-def delete_prompt(version_id: str):
+def delete_prompt(event: dict[str, Any], version_id: str):
     item = get_prompt_table_item(version_id)
     if not item or item.get("ItemType") != "PromptVersion":
         return json_response(404, {"error": "not_found", "message": "Prompt version not found"})
     if item.get("Status") == "published" and get_live_prompt_version_id() == version_id:
         return json_response(400, {"error": "validation_error", "message": "Cannot delete the live prompt. Publish a different version first."})
     prompt_registry_table.delete_item(Key={"PromptFamily": PROMPT_FAMILY, "VersionId": version_id})
-    write_audit_log("prompt_deleted", "prompt", version_id, {"title": item.get("Title", "")})
+    write_audit_log("prompt_deleted", "prompt", version_id, {"title": item.get("Title", "")}, event=event)
     return json_response(200, {"deleted": True, "versionId": version_id})
 
 
@@ -1212,9 +1224,9 @@ def lambda_handler(event, context):
         if method == "POST" and len(path_parts) == 4 and path_parts[:2] == ["admin", "feedback"] and path_parts[3] == "disposition":
             return set_disposition(event, path_parts[2])
         if method == "POST" and len(path_parts) == 4 and path_parts[:2] == ["admin", "feedback"] and path_parts[3] == "promote-to-candidate":
-            return promote_to_candidate(path_parts[2])
+            return promote_to_candidate(event, path_parts[2])
         if method == "DELETE" and len(path_parts) == 3 and path_parts[:2] == ["admin", "feedback"]:
-            return delete_feedback(path_parts[2])
+            return delete_feedback(event, path_parts[2])
 
         if method == "GET" and path_parts == ["admin", "prompts"]:
             return list_prompts()
@@ -1225,9 +1237,9 @@ def lambda_handler(event, context):
         if method == "PUT" and len(path_parts) == 3 and path_parts[:2] == ["admin", "prompts"]:
             return update_prompt(event, path_parts[2])
         if method == "DELETE" and len(path_parts) == 3 and path_parts[:2] == ["admin", "prompts"]:
-            return delete_prompt(path_parts[2])
+            return delete_prompt(event, path_parts[2])
         if method == "POST" and len(path_parts) == 4 and path_parts[:2] == ["admin", "prompts"] and path_parts[3] == "publish":
-            return publish_prompt(path_parts[2])
+            return publish_prompt(event, path_parts[2])
         if method == "POST" and len(path_parts) == 4 and path_parts[:2] == ["admin", "prompts"] and path_parts[3] == "ai-suggest":
             return ai_suggest_prompt(event, path_parts[2])
 
