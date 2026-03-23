@@ -231,6 +231,7 @@ export const LABELS: Record<string, string> = {
   // Activity log actions
   "disposition_set": "Review updated",
   "promoted_to_candidate": "Added to tests",
+  "test_library_queued": "Added to tests",
   "feedback_deleted": "Feedback deleted",
   "prompt_published": "Prompt published",
   "prompt_deleted": "Prompt deleted",

@@ -129,6 +129,26 @@ export class EvaluationsClient {
     return response.json();
   }
 
+  async deleteEvaluation(evaluationId: string) {
+    const auth = await Utils.authenticate();
+    const response = await fetch(`${this.API}/eval-results-handler`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: auth,
+      },
+      body: JSON.stringify({
+        operation: "delete_evaluation",
+        evaluation_id: evaluationId,
+      }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Failed to delete evaluation: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
   async getUploadURL(fileName: string, fileType: string): Promise<string> {
     if (!fileType) throw new Error("Must have valid file type!");
     const auth = await Utils.authenticate();

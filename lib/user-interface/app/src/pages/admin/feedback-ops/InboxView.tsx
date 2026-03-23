@@ -349,7 +349,10 @@ export default function InboxView(props: InboxViewProps) {
       setActionLoading(true);
       await apiClient.userFeedback.promoteToCandidate(item.feedbackId);
       await onFeedbackUpdated();
-      addNotification("success", "Added to test library.");
+      addNotification(
+        "success",
+        "Queued for test library. ABE's answer is kept as-is; the question will be lightly edited for evaluations."
+      );
     } catch (error: unknown) {
       addNotification("error", error instanceof Error ? error.message : "Could not add to test library.");
     } finally {
@@ -1024,7 +1027,9 @@ export default function InboxView(props: InboxViewProps) {
                 <AdminMarkdown content={confirmDialog.item.answerPreview || "N/A"} maxHeight={200} sx={{ mt: 0.5 }} />
               </Box>
               <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.8125rem" }}>
-                This Q&A pair will be saved to the test library as a reference for future evaluations.
+                ABE's answer is saved exactly as shown. The user's question is queued for a light edit so it stands alone
+                without changing meaning—staying as close as possible to what they typed—then written to the evaluation
+                test library (usually within a minute).
               </Typography>
             </Stack>
           )}

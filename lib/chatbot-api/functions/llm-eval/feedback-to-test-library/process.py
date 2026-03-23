@@ -24,41 +24,39 @@ procurement chatbot operated by the Office of the Secretary of Defense (OSD). AB
 government buyers navigate acquisition regulations, find contracts (GSA Schedule, BPAs, GWACs), \
 identify vendors, and understand compliance requirements.
 
-You will be given a user's question and the chatbot's answer from a conversation that the \
-user marked as helpful. Your ONLY job is to rewrite the user's question into a clean, \
-standalone question. Do NOT touch the answer — it will be kept exactly as-is.
+You will receive the user's exact message (as they typed it) and the chatbot's answer from \
+that turn. The answer will be stored VERBATIM for regression testing. Your ONLY job is to \
+produce a standalone version of the user's question that is still likely to elicit the SAME \
+answer from the same retrieval + model setup.
 
-The user's original question may be:
-- Poorly worded, vague, or overly casual ("i want carpet")
-- A follow-up that makes no sense without prior context ("what about pricing for that?")
-- A single word or fragment ("vendors?")
-
-Rewrite it into a clear, self-contained question that would naturally lead to the given \
-answer. Use the answer's content to understand what the user was really asking about. \
-The rewritten question should make sense to someone with no prior conversation context.
+Priorities (in order):
+1. Stay as close as possible to the user's original wording, tone, and length. Prefer light \
+edits over rewriting.
+2. Only add missing context when the question is a fragment or follow-up that cannot be \
+understood without the answer (e.g. "what about vendors?" → minimally name the topic implied \
+by the answer).
+3. Do NOT turn casual phrasing into formal essay questions unless necessary for clarity.
+4. Do NOT introduce new constraints, entities, or topics that the user did not imply.
+5. Use the answer only to infer what the user meant — not to invent a different question.
 
 Rules:
 - Output ONLY valid JSON with exactly one key: "question".
 - Do not wrap the JSON in markdown code fences or add any text outside the JSON object.
 - Do not include or modify the answer in your output.
 
-Example input:
-User Question: i want carpet
-Chatbot Response: Based on the available contracts, you can purchase carpet through \
-MRO001 (Maintenance, Repair, and Operations). There are 10 vendors available.
+Example (minimal fix):
+User Question: any other vendors available
+Chatbot Response: Under contract MRO001, vendors include Acme Supply, Beta Flooring, …
 
 Example output:
-{"question": "How can I purchase carpet through government contracts?"}
+{"question": "Are any other vendors available under MRO001?"}
 
-Example input:
-User Question: what about the health stuff
-Chatbot Response: When purchasing carpet for a fire department, look for products that \
-meet these health and safety standards: UL GREENGUARD Gold certification, free of PFAS \
-and vinyl, no added antimicrobials, Cradle to Cradle Certified.
+Example (fragment disambiguated, still short):
+User Question: vendors?
+Chatbot Response: For statewide carpet, MRO001 lists 12 approved vendors including …
 
 Example output:
-{"question": "What environmental and health standards should I look for when purchasing \
-carpet for a fire department?"}"""
+{"question": "Which vendors are on MRO001 for carpet?"}"""
 
 
 def normalize_question(q: str) -> str:
@@ -150,7 +148,7 @@ def rewrite_question(prompt: str, completion: str) -> str:
         "max_tokens": 512,
         "system": SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": user_message}],
-        "temperature": 0.2,
+        "temperature": 0.15,
     })
 
     response = bedrock.invoke_model(

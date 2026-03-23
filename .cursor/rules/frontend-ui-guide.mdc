@@ -1,0 +1,46 @@
+---
+description: Frontend UI stack (MUI), no new Cloudscape, and WCAG 2.1 AA expectations for app code
+globs: lib/user-interface/app/src/**/*.{tsx,ts}
+alwaysApply: false
+---
+
+# Frontend UI guide
+
+Applies to [`lib/user-interface/app/src/`](lib/user-interface/app/src/).
+
+## Component stack
+
+- **Use MUI** for layout, inputs, navigation, and feedback: `@mui/material`, `@mui/icons-material`, and `@mui/x-charts` for charts (LineChart, BarChart, PieChart, etc.).
+- **Do not** introduce **Cloudscape** in new or touched code: never add imports from `@cloudscape-design/*`. Legacy files that still use Cloudscape are out of scope until migrated.
+- Match existing shell patterns where relevant: [`BaseAppLayout`](lib/user-interface/app/src/components/base-app-layout.tsx), [`AdminPageLayout`](lib/user-interface/app/src/components/admin-page-layout.tsx), [`NavigationPanel`](lib/user-interface/app/src/components/navigation-panel.tsx).
+
+```tsx
+// Avoid — new Cloudscape usage
+import { Container, Header, SpaceBetween } from "@cloudscape-design/components";
+
+// Prefer — MUI
+import { Box, Stack, Typography, Button } from "@mui/material";
+import { LineChart } from "@mui/x-charts/LineChart";
+```
+
+## WCAG 2.1 Level AA
+
+Treat accessibility as a normal requirement for UI changes, not an optional polish pass.
+
+- **Perceivable:** Sufficient contrast for text and meaningful non-text UI (focus indicators, chart segments that convey meaning). Do not rely on color alone for state (success/error/selected); pair with text, icons, or patterns.
+- **Operable:** All interactive flows usable with keyboard only; visible focus; no keyboard traps in drawers, dialogs, or custom widgets; logical focus order (including when opening/closing modals).
+- **Understandable:** Persistent labels on form controls; clear error identification and recovery (inline or associated with the field where possible).
+- **Robust:** Correct semantics (`button`, `link`, headings, table headers); name/role/value for custom controls; **status messages** announced to assistive tech (`aria-live` / `role="alert"` where appropriate—see [`notif-flashbar.tsx`](lib/user-interface/app/src/components/notif-flashbar.tsx)); loading states not silent (e.g. `role="progressbar"` or live region text on long operations).
+
+**Verification (when you touch UI):** run an automated pass (e.g. axe) on affected routes; spot-check keyboard and one screen reader scenario for non-trivial interactions. Feature-specific checklists may live next to the feature (e.g. [`feedback-ops/ACCESSIBILITY.md`](lib/user-interface/app/src/pages/admin/feedback-ops/ACCESSIBILITY.md)).
+
+## UX and implementation hygiene
+
+- **Errors:** User-facing copy must be safe and clear; do not expose stack traces or raw API errors (see project security conventions).
+- **Production builds:** No `console.log`; avoid `alert()`—use notifications or inline UI.
+- **Loading / empty / error states:** Prefer explicit UI over blank screens; align with patterns used elsewhere in the app.
+
+## When migrating or refactoring
+
+- Prefer replacing Cloudscape with MUI in the same PR when the file is already being edited for other reasons, scope permitting.
+- Large migrations should stay focused: one surface or route at a time, with `tsc` and `vite build` passing.

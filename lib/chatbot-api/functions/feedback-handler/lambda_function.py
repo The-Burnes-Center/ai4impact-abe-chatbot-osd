@@ -14,6 +14,7 @@ from boto3.dynamodb.conditions import Key
 from abe_utils import (
     extract_json_object,
     get_audit_actor_label,
+    get_claims,
     get_logger,
     is_admin_request,
     json_response,
@@ -768,50 +769,61 @@ def delete_feedback(event: dict[str, Any], feedback_id: str):
 
 
 def promote_to_candidate(event: dict[str, Any], feedback_id: str):
-    from boto3.dynamodb.conditions import Attr
+    """Queue helpful feedback for the eval test library: answer kept verbatim; question rewritten async (SQS)."""
+    queue_url = (os.environ.get("FEEDBACK_TO_TEST_LIBRARY_QUEUE_URL") or "").strip()
+    if not queue_url:
+        logger.error("FEEDBACK_TO_TEST_LIBRARY_QUEUE_URL is not set")
+        return json_response(503, {"error": "Test library pipeline is not configured."})
 
     item = feedback_records_table.get_item(Key={"FeedbackId": feedback_id}).get("Item")
-    if not item:
+    if not item or item.get("RecordType") != "FEEDBACK":
         return json_response(404, {"error": "Feedback not found"})
 
-    trace = get_response_trace(item.get("MessageId", "")) or {}
-    analysis = item.get("Analysis") or {}
-    case_id = f"FDBK#{feedback_id}"
-    created_at = utc_now_iso()
-    candidate_case = {
-        "SetName": "CandidateSet",
-        "CaseId": case_id,
-        "SourceFeedbackId": feedback_id,
-        "CreatedAt": created_at,
-        "UpdatedAt": created_at,
-        "PromptVersionId": item.get("PromptVersionId", ""),
-        "Provenance": "feedback_candidate",
-        "Status": "candidate",
-        "Question": (analysis.get("candidateMonitoringCase") or {}).get("question") or trace.get("UserPrompt", ""),
-        "ReferenceAnswer": (analysis.get("candidateMonitoringCase") or {}).get("referenceAnswer") or item.get("ExpectedAnswer", ""),
-        "Summary": analysis.get("summary", ""),
-        "Reason": (analysis.get("candidateMonitoringCase") or {}).get("reason", ""),
-        "RootCause": analysis.get("likelyRootCause", ""),
-    }
-    try:
-        monitoring_cases_table.put_item(
-            Item=_sanitize_value(candidate_case),
-            ConditionExpression=Attr("CaseId").not_exists(),
-        )
-    except monitoring_cases_table.meta.client.exceptions.ConditionalCheckFailedException:
-        return json_response(409, {"error": "This feedback has already been promoted to a candidate."})
+    if item.get("FeedbackKind") != "helpful":
+        return json_response(400, {"error": "Only helpful feedback can be added to the test library."})
 
-    item["UpdatedAt"] = created_at
+    if item.get("TestLibraryQueuedAt"):
+        return json_response(409, {"error": "This feedback has already been queued for the test library."})
+
+    trace = get_response_trace(str(item.get("MessageId", "")).strip()) or {}
+    prompt = str(trace.get("UserPrompt") or item.get("UserPromptPreview") or "").strip()
+    completion = str(trace.get("FinalAnswer") or item.get("AnswerPreview") or "").strip()
+    if not prompt or not completion:
+        return json_response(
+            400,
+            {"error": "Missing stored question or answer for this feedback; cannot add to the test library."},
+        )
+
+    session_id = str(trace.get("SessionId") or item.get("SessionId") or "")
+    claims = get_claims(event)
+    user_id = str(claims.get("sub") or claims.get("cognito:username") or "").strip() or "admin"
+    display_name = get_audit_actor_label(event)
+
+    payload = {
+        "prompt": prompt,
+        "completion": completion,
+        "sessionId": session_id,
+        "userId": user_id,
+        "displayName": display_name,
+        "submittedAt": utc_now_iso(),
+    }
+
+    sqs_client = boto3.client("sqs", region_name=os.environ.get("AWS_REGION", "us-east-1"))
+    sqs_client.send_message(QueueUrl=queue_url, MessageBody=json.dumps(payload))
+
+    now = utc_now_iso()
+    item["TestLibraryQueuedAt"] = now
+    item["UpdatedAt"] = now
     item["ReviewStatus"] = "actioned"
     feedback_records_table.put_item(Item=_sanitize_value(item))
     write_audit_log(
-        "promoted_to_candidate",
+        "test_library_queued",
         "feedback",
         feedback_id,
-        build_feedback_audit_details(item, {"caseId": case_id}),
+        build_feedback_audit_details(item, {"sessionId": session_id}),
         event=event,
     )
-    return json_response(200, {"case": candidate_case})
+    return json_response(200, {"status": "queued", "message": "Test library processor will lightly edit the question and keep the answer unchanged."})
 
 
 def serialize_prompt_item(item: dict[str, Any]) -> dict[str, Any]:

@@ -195,6 +195,7 @@ export class LambdaFunctionStack extends Construct {
         "PROMPT_FAMILY": "ABE_CHAT",
         "FEEDBACK_ANALYSIS_MODEL_ID": process.env.FAST_MODEL_ID || "us.anthropic.claude-3-5-haiku-20241022-v1:0",
         "PROMPT_REWRITE_MODEL_ID": process.env.PRIMARY_MODEL_ID || "us.anthropic.claude-sonnet-4-20250514-v1:0",
+        "FEEDBACK_TO_TEST_LIBRARY_QUEUE_URL": props.feedbackToTestLibraryQueue.queueUrl,
       },
       timeout: cdk.Duration.seconds(30),
     });
@@ -240,6 +241,12 @@ export class LambdaFunctionStack extends Construct {
         `arn:aws:bedrock:*::foundation-model/anthropic.*`,
         `arn:aws:bedrock:*:${cdk.Stack.of(this).account}:inference-profile/*`,
       ]
+    }));
+
+    feedbackAPIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['sqs:SendMessage'],
+      resources: [props.feedbackToTestLibraryQueue.queueArn],
     }));
 
     this.feedbackFunction = feedbackAPIHandlerFunction;
@@ -482,8 +489,10 @@ const evalResultsAPIHandlerFunction = new lambda.Function(scope, 'EvalResultsHan
   environment: {
     "EVALUATION_RESULTS_TABLE": props.evalResutlsTable.tableName,
     "EVALUATION_SUMMARIES_TABLE": props.evalSummariesTable.tableName,
+    "TEST_CASES_BUCKET": props.evalTestCasesBucket.bucketName,
+    "EVAL_RESULTS_BUCKET": props.evalResultsBucket.bucketName,
   },
-  timeout: cdk.Duration.seconds(30),
+  timeout: cdk.Duration.seconds(60),
 });
 evalResultsAPIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({ 
   effect: iam.Effect.ALLOW,
@@ -796,6 +805,54 @@ this.stepFunctionsStack = new StepFunctionsStack(scope, 'StepFunctionsStack', {
   promptRegistryTable: props.promptRegistryTable,
 });
 
-// Step Functions execution permissions granted in index.ts where the state machine is accessible
+const evalStateMachineArn = this.stepFunctionsStack.llmEvalStateMachine.stateMachineArn;
+const evalStateMachineName = cdk.Fn.select(6, cdk.Fn.split(':', evalStateMachineArn));
+const evalExecutionArnPattern = cdk.Fn.join('', [
+  'arn:aws:states:',
+  cdk.Stack.of(scope).region,
+  ':',
+  cdk.Stack.of(scope).account,
+  ':execution:',
+  evalStateMachineName,
+  ':*',
+]);
+evalResultsAPIHandlerFunction.addToRolePolicy(
+  new iam.PolicyStatement({
+    effect: iam.Effect.ALLOW,
+    actions: ['states:StopExecution'],
+    resources: [evalExecutionArnPattern],
+  }),
+);
+
+const evalS3ListResources =
+  props.evalTestCasesBucket.bucketArn === props.evalResultsBucket.bucketArn
+    ? [props.evalTestCasesBucket.bucketArn]
+    : [props.evalTestCasesBucket.bucketArn, props.evalResultsBucket.bucketArn];
+evalResultsAPIHandlerFunction.addToRolePolicy(
+  new iam.PolicyStatement({
+    effect: iam.Effect.ALLOW,
+    actions: ['s3:ListBucket'],
+    resources: evalS3ListResources,
+    conditions: {
+      StringLike: { 's3:prefix': ['evaluations/*'] },
+    },
+  }),
+);
+const evalS3DeleteObjectResources =
+  props.evalTestCasesBucket.bucketArn === props.evalResultsBucket.bucketArn
+    ? [`${props.evalTestCasesBucket.bucketArn}/evaluations/*`]
+    : [
+        `${props.evalTestCasesBucket.bucketArn}/evaluations/*`,
+        `${props.evalResultsBucket.bucketArn}/evaluations/*`,
+      ];
+evalResultsAPIHandlerFunction.addToRolePolicy(
+  new iam.PolicyStatement({
+    effect: iam.Effect.ALLOW,
+    actions: ['s3:DeleteObject'],
+    resources: evalS3DeleteObjectResources,
+  }),
+);
+
+// Step Functions DescribeExecution / GetExecutionHistory granted in index.ts
 }
 }

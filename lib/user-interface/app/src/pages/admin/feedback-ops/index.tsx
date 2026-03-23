@@ -76,6 +76,17 @@ function describeActivity(entry: ActivityLogEntry): {
         description: "Added to the candidate test library for follow-up evaluation.",
         meta: [caseId ? `Case: ${caseId}` : "", promptVersionId ? `Prompt: ${promptVersionId}` : ""].filter(Boolean),
       };
+    case "test_library_queued": {
+      const sessionId = getDetailText(entry, "sessionId");
+      return {
+        title: questionPreview || `Feedback ${shortenId(entry.entityId)}`,
+        description:
+          "Queued for the evaluation test library. The answer is stored verbatim; the question is lightly edited for standalone use.",
+        meta: [sessionId ? `Session: ${shortenId(sessionId)}` : "", promptVersionId ? `Prompt: ${promptVersionId}` : ""].filter(
+          Boolean
+        ),
+      };
+    }
     case "feedback_deleted":
       return {
         title: questionPreview || `Feedback ${shortenId(entry.entityId)}`,

@@ -23,6 +23,10 @@ import {
   CircularProgress,
   IconButton,
   LinearProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { Utils } from "../../common/utils";
@@ -42,6 +46,8 @@ export default function PastEvalsTab() {
   const navigate = useNavigate();
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [deleteInProgress, setDeleteInProgress] = useState(false);
 
   const onProblemClick = useCallback(
     (evaluationItem: any) => {
@@ -53,7 +59,13 @@ export default function PastEvalsTab() {
     [navigate]
   );
 
-  const columnDefinitions = getColumnDefinition("evaluationSummary", onProblemClick);
+  const onRequestDeleteEvaluation = useCallback((item: any) => {
+    setDeleteTarget(item);
+  }, []);
+
+  const columnDefinitions = getColumnDefinition("evaluationSummary", onProblemClick, {
+    onDeleteEvaluation: onRequestDeleteEvaluation,
+  });
 
   const currentPageItems =
     pages[Math.min(pages.length - 1, currentPageIndex - 1)]?.Items || [];
@@ -162,6 +174,24 @@ export default function PastEvalsTab() {
     [apiClient]
   );
 
+  const confirmDeleteEvaluation = useCallback(async () => {
+    const id = deleteTarget?.EvaluationId;
+    if (!id) return;
+    setDeleteInProgress(true);
+    setError(null);
+    try {
+      await apiClient.evaluations.deleteEvaluation(id);
+      setDeleteTarget(null);
+      needsRefresh.current = true;
+      setCurrentPageIndex(1);
+      await getEvaluations({ pageIndex: 1 });
+    } catch (err) {
+      setError(`Failed to delete evaluation: ${Utils.getErrorMessage(err)}`);
+    } finally {
+      setDeleteInProgress(false);
+    }
+  }, [deleteTarget, apiClient, getEvaluations]);
+
   useEffect(() => {
     needsRefresh.current = true;
     setCurrentPageIndex(1);
@@ -180,6 +210,38 @@ export default function PastEvalsTab() {
 
   return (
     <Stack spacing={2}>
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onClose={() => !deleteInProgress && setDeleteTarget(null)}
+        aria-labelledby="delete-eval-dialog-title"
+      >
+        <DialogTitle id="delete-eval-dialog-title">Delete this evaluation?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            This removes the run from history and deletes stored results. If the evaluation is still running or stuck,
+            its Step Functions execution will be stopped. This cannot be undone.
+          </Typography>
+          {deleteTarget ? (
+            <Typography variant="body2" sx={{ mt: 1, fontWeight: 600 }}>
+              {deleteTarget.evaluation_name || "Unnamed"} ({deleteTarget.EvaluationId})
+            </Typography>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTarget(null)} disabled={deleteInProgress}>
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => void confirmDeleteEvaluation()}
+            disabled={deleteInProgress}
+          >
+            {deleteInProgress ? "Deleting…" : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Typography variant="h6">Evaluation History</Typography>
         <IconButton onClick={() => getEvaluations({ pageIndex: currentPageIndex })} aria-label="Refresh evaluations">
@@ -232,7 +294,11 @@ export default function PastEvalsTab() {
                   <TableRow key={item.EvaluationId || index} hover sx={isRunning ? { opacity: 0.7 } : {}}>
                     {columnDefinitions.map((col) => (
                       <TableCell key={col.id}>
-                        {isRunning && col.id !== "evaluationName" && col.id !== "timestamp" && col.id !== "viewDetails" ? (
+                        {isRunning &&
+                        col.id !== "evaluationName" &&
+                        col.id !== "timestamp" &&
+                        col.id !== "viewDetails" &&
+                        col.id !== "deleteEval" ? (
                           <LinearProgress sx={{ width: 60 }} />
                         ) : (
                           col.cell(item)

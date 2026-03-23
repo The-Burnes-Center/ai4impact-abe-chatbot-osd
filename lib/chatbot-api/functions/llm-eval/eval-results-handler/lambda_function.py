@@ -1,16 +1,23 @@
 import os
 import boto3
+import logging
 from botocore.exceptions import ClientError
 import json
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Key, Attr
 from datetime import datetime
 from decimal import Decimal
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 EVALUATION_SUMMARIES_TABLE = os.environ.get("EVALUATION_SUMMARIES_TABLE") or os.environ.get("EVAL_SUMMARIES_TABLE")
 EVALUATION_RESULTS_TABLE = os.environ.get("EVALUATION_RESULTS_TABLE") or os.environ.get("EVAL_RESULTS_TABLE")
+TEST_CASES_BUCKET = os.environ.get("TEST_CASES_BUCKET")
+EVAL_RESULTS_BUCKET = os.environ.get("EVAL_RESULTS_BUCKET") or TEST_CASES_BUCKET
 
 dynamodb = boto3.resource("dynamodb", region_name='us-east-1')
 sfn_client = boto3.client("stepfunctions", region_name='us-east-1')
+s3_client = boto3.client("s3", region_name="us-east-1")
 
 summaries_table = dynamodb.Table(EVALUATION_SUMMARIES_TABLE)
 results_table = dynamodb.Table(EVALUATION_RESULTS_TABLE)
@@ -287,6 +294,152 @@ def get_eval_status(evaluation_id):
         return {"statusCode": 500, "headers": headers, "body": json.dumps({"error": str(e)})}
 
 
+def _delete_objects_in_prefix(bucket: str, prefix: str) -> None:
+    if not bucket:
+        return
+    try:
+        response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+        while True:
+            contents = response.get("Contents") or []
+            if contents:
+                s3_client.delete_objects(
+                    Bucket=bucket,
+                    Delete={"Objects": [{"Key": obj["Key"]} for obj in contents], "Quiet": True},
+                )
+                logger.info("Deleted %s objects from s3://%s/%s", len(contents), bucket, prefix)
+            if not response.get("IsTruncated"):
+                break
+            response = s3_client.list_objects_v2(
+                Bucket=bucket,
+                Prefix=prefix,
+                ContinuationToken=response["NextContinuationToken"],
+            )
+    except ClientError as e:
+        logger.warning("S3 cleanup failed for %s/%s: %s", bucket, prefix, e)
+
+
+def _cleanup_eval_s3(evaluation_id: str) -> None:
+    prefixes = [
+        f"evaluations/{evaluation_id}/chunks/",
+        f"evaluations/{evaluation_id}/partial_results/",
+        f"evaluations/{evaluation_id}/aggregated_results/",
+    ]
+    buckets = []
+    if TEST_CASES_BUCKET:
+        buckets.append(TEST_CASES_BUCKET)
+    if EVAL_RESULTS_BUCKET and EVAL_RESULTS_BUCKET not in buckets:
+        buckets.append(EVAL_RESULTS_BUCKET)
+    for b in buckets:
+        for p in prefixes:
+            _delete_objects_in_prefix(b, p)
+
+
+def delete_evaluation(evaluation_id: str):
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Content-Type": "application/json",
+    }
+    if not evaluation_id or not str(evaluation_id).strip():
+        return {
+            "statusCode": 400,
+            "headers": headers,
+            "body": json.dumps({"error": "evaluation_id is required"}),
+        }
+
+    eid = str(evaluation_id).strip()
+    summary_rows = []
+    exclusive = None
+    try:
+        while True:
+            qargs = {
+                "KeyConditionExpression": Key("PartitionKey").eq("Evaluation"),
+                "FilterExpression": Attr("EvaluationId").eq(eid),
+            }
+            if exclusive:
+                qargs["ExclusiveStartKey"] = exclusive
+            resp = summaries_table.query(**qargs)
+            summary_rows.extend(resp.get("Items", []))
+            exclusive = resp.get("LastEvaluatedKey")
+            if not exclusive:
+                break
+
+        execution_arns = []
+        for row in summary_rows:
+            arn = row.get("executionArn")
+            if arn and arn not in execution_arns:
+                execution_arns.append(arn)
+
+        for arn in execution_arns:
+            try:
+                sfn_client.stop_execution(
+                    executionArn=arn,
+                    error="EvaluationDeleted",
+                    cause="Removed via admin UI",
+                )
+            except ClientError as e:
+                code = e.response.get("Error", {}).get("Code", "")
+                if code not in (
+                    "ExecutionDoesNotExist",
+                    "InvalidArn",
+                    "ExecutionAlreadyCompleted",
+                ):
+                    logger.warning("StopExecution %s: %s", arn, e)
+
+        for row in summary_rows:
+            summaries_table.delete_item(
+                Key={
+                    "PartitionKey": row["PartitionKey"],
+                    "Timestamp": row["Timestamp"],
+                }
+            )
+
+        exclusive = None
+        while True:
+            qargs = {"KeyConditionExpression": Key("EvaluationId").eq(eid)}
+            if exclusive:
+                qargs["ExclusiveStartKey"] = exclusive
+            resp = results_table.query(**qargs)
+            with results_table.batch_writer() as batch:
+                for item in resp.get("Items", []):
+                    batch.delete_item(
+                        Key={
+                            "EvaluationId": eid,
+                            "QuestionId": item["QuestionId"],
+                        }
+                    )
+            exclusive = resp.get("LastEvaluatedKey")
+            if not exclusive:
+                break
+
+        _cleanup_eval_s3(eid)
+
+        return {
+            "statusCode": 200,
+            "headers": headers,
+            "body": json.dumps(
+                {
+                    "evaluation_id": eid,
+                    "deleted_summaries": len(summary_rows),
+                    "stopped_executions": len(execution_arns),
+                }
+            ),
+        }
+    except ClientError as e:
+        logger.exception("delete_evaluation ClientError")
+        return {
+            "statusCode": 500,
+            "headers": headers,
+            "body": json.dumps({"error": str(e)}),
+        }
+    except Exception as e:
+        logger.exception("delete_evaluation")
+        return {
+            "statusCode": 500,
+            "headers": headers,
+            "body": json.dumps({"error": str(e)}),
+        }
+
+
 def lambda_handler(event, context):
     headers = {
         'Access-Control-Allow-Origin': '*',
@@ -337,6 +490,19 @@ def lambda_handler(event, context):
                     'body': json.dumps({'error': 'evaluation_id is required'})
                 }
             result = get_eval_status(evaluation_id)
+            if 'headers' in result:
+                result['headers'].update(headers)
+            else:
+                result['headers'] = headers
+            return result
+        elif operation == 'delete_evaluation':
+            if not evaluation_id:
+                return {
+                    'statusCode': 400,
+                    'headers': headers,
+                    'body': json.dumps({'error': 'evaluation_id is required'})
+                }
+            result = delete_evaluation(evaluation_id)
             if 'headers' in result:
                 result['headers'].update(headers)
             else:
