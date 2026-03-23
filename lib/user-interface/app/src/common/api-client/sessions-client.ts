@@ -10,6 +10,10 @@ import {
 
 import { AppConfig } from "../types";
 
+function devLog(...args: unknown[]) {
+  if (import.meta.env.DEV) console.log(...args);
+}
+
 export class SessionsClient {
 
   private readonly API;
@@ -48,8 +52,7 @@ export class SessionsClient {
         output = await response.json();
         validData = true;
       } catch (e) {
-        // just retry, we get 3 attempts!
-        console.log(e);
+        devLog(e);
       }
     }
     if (!validData) {
@@ -115,7 +118,7 @@ export class SessionsClient {
         output = JSON.parse(decoded).chat_history! as any[];
         validData = true;
       } catch (e) {
-        console.log(e);
+        devLog(e);
       }
     }
     if (!validData) {

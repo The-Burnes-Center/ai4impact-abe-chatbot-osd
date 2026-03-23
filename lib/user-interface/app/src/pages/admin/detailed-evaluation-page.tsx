@@ -45,7 +45,16 @@ function scoreBgKey(pct: number) {
   return "error.light";
 }
 
+function scoreTierLabel(pct: number): string {
+  if (pct >= 75) return "Strong";
+  if (pct >= 50) return "Moderate";
+  return "Needs improvement";
+}
+
 function SummaryCard({ title, pct, description }: { title: string; pct: number; description: string }) {
+  const tier = scoreTierLabel(pct);
+  const color = scoreColor(pct);
+  const summary = `${title}: ${pct.toFixed(0)}%. ${tier} performance band.`;
   return (
     <Tooltip
       title={<Typography variant="body2" sx={{ p: 0.5 }}>{description}</Typography>}
@@ -53,17 +62,21 @@ function SummaryCard({ title, pct, description }: { title: string; pct: number; 
       arrow
       enterDelay={200}
     >
-      <Paper sx={{ p: 2, bgcolor: scoreBgKey(pct), textAlign: "center", cursor: "help" }}>
+      <Paper
+        component="article"
+        aria-label={summary}
+        sx={{ p: 2, bgcolor: scoreBgKey(pct), textAlign: "center", cursor: "help" }}
+      >
         <Stack direction="row" justifyContent="center" alignItems="center" spacing={0.5}>
-          <Typography variant="subtitle2" color="text.secondary">
+          <Typography variant="subtitle2" color="text.secondary" component="h2" sx={{ fontSize: "0.875rem" }}>
             {title}
           </Typography>
-          <InfoOutlinedIcon sx={{ fontSize: 14, color: "text.secondary" }} />
+          <InfoOutlinedIcon sx={{ fontSize: 14, color: "text.secondary" }} aria-hidden />
         </Stack>
-        <Typography variant="h4" fontWeight="bold">
+        <Typography variant="h4" fontWeight="bold" component="p" sx={{ my: 0.5 }}>
           {pct.toFixed(0)}%
         </Typography>
-        <Chip label={scoreColor(pct)} color={scoreColor(pct)} size="small" />
+        <Chip label={tier} color={color} size="small" variant="outlined" />
       </Paper>
     </Tooltip>
   );

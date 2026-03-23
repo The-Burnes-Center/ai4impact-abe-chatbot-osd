@@ -88,6 +88,7 @@ const TextContent = styled.h1`
   font-size: clamp(1.5rem, 4vw, 2.5rem);
   font-weight: 600;
   color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
   animation: ${fadeIn} 0.75s ease-out;
   z-index: 2;
   text-align: center;

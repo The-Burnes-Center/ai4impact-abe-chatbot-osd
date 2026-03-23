@@ -1,7 +1,11 @@
 import {
   Utils
 } from "../utils"
-import { AppConfig } from "../types"; 
+import { AppConfig } from "../types";
+
+function devLog(...args: unknown[]) {
+  if (import.meta.env.DEV) console.log(...args);
+}
 
 // This was made by cohort 1. I'm using it to add KPI data
 export class MetricClient {
@@ -24,7 +28,7 @@ export class MetricClient {
       return await response.json()
     }
     catch (err) {
-      console.log(err);
+      devLog(err);
       return "unknown";
     }
   }
@@ -43,7 +47,7 @@ export class MetricClient {
       return await response.json()
     }
     catch (err) {
-      console.log(err);
+      devLog(err);
       return "unknown";
     }
   }
@@ -52,7 +56,6 @@ export class MetricClient {
     // timestamp generated in lambda function
     //console.log(interactionData["interaction_data"]);//.interaction_data);
     //console.log("hi hi")
-    console.log(JSON.stringify({interaction_data: interactionData}));
     try {
       const auth = await Utils.authenticate();      
       const response = await fetch(this.API + '/chatbot-use', {
@@ -66,12 +69,10 @@ export class MetricClient {
       //console.log(JSON.stringify({interaction_data: interactionData}));
       if (!response.ok) {
         const errorText = await response.text();
-        console.log('Error response:', response.status, errorText);
-      } else {
-        console.log('CHAT INTERACTION SAVED');
+        devLog("Error response:", response.status, errorText);
       }
     } catch (e) {
-      console.log('Error saving chatbot interaction - ' + e);
+      devLog("Error saving chatbot interaction", e);
     }
   }
 
@@ -81,7 +82,6 @@ export class MetricClient {
       //console.log("Parameters: " + {startTime,endTime,nextPageToken});
       const params = new URLSearchParams();
       if (startTime) params.append("startTime", startTime);
-      console.log(startTime)
       if (endTime) params.append("endTime", endTime);
       if (nextPageToken) params.append("nextPageToken", nextPageToken);
 
@@ -97,7 +97,7 @@ export class MetricClient {
       });
       return await response.json()
     } catch (e) {
-      console.log("Error retrieving chatbot use data - " + e);
+      devLog("Error retrieving chatbot use data", e);
     }
 }
 
@@ -113,7 +113,7 @@ export class MetricClient {
         },      
       });
     } catch (e) {
-      console.log("Error deleting chatbot use datapoints - " + e);
+      devLog("Error deleting chatbot use datapoints", e);
     }
     
   }
@@ -160,7 +160,7 @@ export class MetricClient {
         a.click();
         a.remove();
     } catch (error) {
-        console.error("Download failed:", error);
+        devLog("Download failed:", error);
         throw error;
     }
   }
@@ -180,12 +180,10 @@ export class MetricClient {
       //console.log(JSON.stringify({interaction_data: interactionData}));
       if (!response.ok) {
         const errorText = await response.text();
-        console.log('Error response:', response.status, errorText);
-      } else {
-        //console.log('Incremented the logins on ' + date);
+        devLog("Error response:", response.status, errorText);
       }
     } catch (e) {
-      console.log('Error incrementing daily logins - ' + e);
+      devLog("Error incrementing daily logins", e);
     }
   }
 
@@ -211,7 +209,7 @@ export class MetricClient {
     
       return chartData;
     } catch (e) {
-      console.log("Error retrieving daily logins - " + e);
+      devLog("Error retrieving daily logins", e);
       return [];
     }
   }
@@ -221,7 +219,6 @@ export class MetricClient {
     const objs = uses.Items;
     let dict: {string: number};
     objs.array.forEach(obj => {
-      console.log(obj)
       const date = obj['Timestamp'].split('T')[0];
 
       if (dict[date]) {
@@ -230,7 +227,6 @@ export class MetricClient {
           dict[date] = 1;
       }
     });
-    console.log(dict);
   }
 
   async getAvgUsesPerUsers(startDate: string, endDate: string) {
@@ -238,10 +234,8 @@ export class MetricClient {
 
     const logins = await this.getDailyLogins(startDate.split('T')[0], endDate.split('T')[0]);
     const users = logins.length;
-    console.log(users, "users over the timeframe");
 
     const uses = await this.getChatbotUse(startDate, endDate);
-    console.log(uses['Items'].length / users);
     return uses['Items'].length / users;
   }
 
@@ -262,7 +256,7 @@ export class MetricClient {
       
       return await response.json();
     } catch (err) {
-      console.log("Error retrieving metrics:", err);
+      devLog("Error retrieving metrics:", err);
       throw err;
     }
   }
@@ -284,7 +278,7 @@ export class MetricClient {
 
       return await response.json();
     } catch (err) {
-      console.log("Error retrieving FAQ insights:", err);
+      devLog("Error retrieving FAQ insights:", err);
       throw err;
     }
   }
@@ -306,7 +300,7 @@ export class MetricClient {
 
       return await response.json();
     } catch (err) {
-      console.log("Error retrieving agency breakdown:", err);
+      devLog("Error retrieving agency breakdown:", err);
       throw err;
     }
   }
@@ -328,7 +322,7 @@ export class MetricClient {
 
       return await response.json();
     } catch (err) {
-      console.log("Error retrieving user breakdown:", err);
+      devLog("Error retrieving user breakdown:", err);
       throw err;
     }
   }
@@ -350,7 +344,7 @@ export class MetricClient {
 
       return await response.json();
     } catch (err) {
-      console.log("Error retrieving traffic details:", err);
+      devLog("Error retrieving traffic details:", err);
       throw err;
     }
   }

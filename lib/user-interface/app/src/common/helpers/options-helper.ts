@@ -35,7 +35,7 @@ export abstract class OptionsHelper {
         name,
       };
     } catch (error) {
-      console.error(error);
+      if (import.meta.env.DEV) console.error(error);
       return retValue;
     }
   }

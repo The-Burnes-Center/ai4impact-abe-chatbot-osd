@@ -19,6 +19,7 @@ import { StorageHelper, ThemeMode } from "../common/helpers/storage-helper";
 import { Auth } from "aws-amplify";
 import { CHATBOT_NAME } from "../common/constants";
 import { tokens } from "../common/theme";
+import { v4 as uuidv4 } from "uuid";
 
 interface GlobalHeaderProps {
   onMenuClick?: () => void;
@@ -89,8 +90,8 @@ export default function GlobalHeader({ onMenuClick }: GlobalHeaderProps) {
         )}
         <Box
           component="button"
-          onClick={() => navigate("/chatbot/playground")}
-          aria-label="Go to home page"
+          onClick={() => navigate(`/chatbot/playground/${uuidv4()}`)}
+          aria-label="Open ABE chat in a new session"
           sx={{
             display: "flex",
             alignItems: "center",

@@ -443,7 +443,15 @@ export default function ChatMessage(props: ChatMessageProps) {
     <div>
       {/* AI Message */}
       {props.message?.type === ChatBotMessageType.AI && (
-        <div className={styles.aiMessage} role="article" aria-label="ABE response">
+        <div
+          className={styles.aiMessage}
+          role="article"
+          aria-label="ABE response"
+          aria-busy={Boolean(
+            props.isLastAiMessage &&
+              (props.streamingStatus?.active || props.message.content.length === 0)
+          )}
+        >
           <Avatar
             className={styles.aiAvatar}
             sx={{
@@ -476,7 +484,7 @@ export default function ChatMessage(props: ChatMessageProps) {
               ) : null}
 
               {props.isLastAiMessage && props.streamingStatus?.active ? (
-                <div className={styles.statusIndicator} role="status" aria-live="polite">
+                <div className={styles.statusIndicator} role="status" aria-live="off">
                   <CircularProgress size={14} sx={{ color: "primary.main" }} />
                   <Typography variant="body2" sx={{ color: "text.secondary", fontStyle: "italic" }}>
                     {props.streamingStatus.text}
@@ -544,6 +552,7 @@ export default function ChatMessage(props: ChatMessageProps) {
                     aria-label="Mark response as not helpful and provide feedback"
                     aria-pressed={selectedIcon === 0}
                     aria-expanded={feedbackOpen}
+                    aria-controls={feedbackOpen ? "abe-feedback-form-panel" : undefined}
                     sx={{
                       borderRadius: 1.5,
                       px: 1,
@@ -584,6 +593,7 @@ export default function ChatMessage(props: ChatMessageProps) {
               {/* Inline feedback form — replaces bottom drawer */}
               <Collapse in={feedbackOpen} timeout={200}>
                 <Box
+                  id="abe-feedback-form-panel"
                   sx={{
                     mt: 1.5,
                     pt: 1.5,
@@ -594,7 +604,7 @@ export default function ChatMessage(props: ChatMessageProps) {
                   aria-label="Feedback form"
                 >
                   <Stack spacing={1.5}>
-                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: "0.8125rem" }}>
+                    <Typography component="h3" variant="subtitle2" sx={{ fontWeight: 600, fontSize: "0.8125rem" }}>
                       What went wrong? <Typography component="span" variant="caption" color="text.secondary">(select all that apply)</Typography>
                     </Typography>
 

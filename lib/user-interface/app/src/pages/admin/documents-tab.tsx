@@ -31,6 +31,10 @@ import { Utils } from "../../common/utils";
 import { useNotifications } from "../../components/notif-manager";
 import DataFileUpload from "./file-upload-tab";
 
+function devError(...args: unknown[]) {
+  if (import.meta.env.DEV) console.error(...args);
+}
+
 export interface DocumentsTabProps {
   documentType: AdminDataType;
   statusRefreshFunction: () => void;
@@ -61,7 +65,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       const lastSyncDate = new Date(props.lastSyncTime);
 
       if (isNaN(lastSyncDate.getTime())) {
-        console.error("Invalid lastSyncTime format:", props.lastSyncTime);
+        devError("Invalid lastSyncTime format:", props.lastSyncTime);
         props.setShowUnsyncedAlert(false);
         return;
       }
@@ -75,7 +79,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
 
       props.setShowUnsyncedAlert(hasUnsyncedFiles);
     } catch (error) {
-      console.error("Error comparing sync time:", error);
+      devError("Error comparing sync time:", error);
       props.setShowUnsyncedAlert(false);
     }
   }, [pages, props.lastSyncTime, props.setShowUnsyncedAlert]);
@@ -98,7 +102,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
           }
         });
       } catch (error) {
-        console.error(Utils.getErrorMessage(error));
+        devError(Utils.getErrorMessage(error));
       }
 
       setLoading(false);
@@ -156,7 +160,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       );
     } catch (e) {
       addNotification("error", "Error deleting files");
-      console.error(e);
+      devError(e);
     }
     await getDocuments({ pageIndex: currentPageIndex });
 
@@ -182,7 +186,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
             await new Promise((resolve) => setTimeout(resolve, 1000));
             await props.statusRefreshFunction();
           } catch (error) {
-            console.error("Error calling statusRefreshFunction():", error);
+            devError("Error calling statusRefreshFunction():", error);
           }
         }
 
@@ -198,7 +202,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
           "error",
           "Error checking sync status, please try again later."
         );
-        console.error("Error checking sync status:", error);
+        devError("Error checking sync status:", error);
       }
     };
 
@@ -236,11 +240,11 @@ export default function DocumentsTab(props: DocumentsTabProps) {
             await props.statusRefreshFunction();
           }
         } catch (error) {
-          console.error("Error in immediate status check:", error);
+          devError("Error in immediate status check:", error);
         }
       }, 2000);
     } catch (error) {
-      console.error(error);
+      devError(error);
       addNotification(
         "error",
         "Error running sync, please try again later."

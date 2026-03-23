@@ -82,6 +82,7 @@ function TipsTab() {
               <ListItemButton
                 onClick={() => toggle(`prompt-${index}`)}
                 aria-expanded={!!expanded[`prompt-${index}`]}
+                aria-controls={`help-prompt-panel-${index}`}
                 sx={{ px: 0.5, borderRadius: 1 }}
               >
                 {expanded[`prompt-${index}`] ? <ExpandLess sx={{ mr: 1 }} /> : <ExpandMore sx={{ mr: 1 }} />}
@@ -90,7 +91,11 @@ function TipsTab() {
                   primaryTypographyProps={{ fontWeight: 600, fontSize: "0.9375rem" }}
                 />
               </ListItemButton>
-              <Collapse in={!!expanded[`prompt-${index}`]} timeout={200}>
+              <Collapse
+                in={!!expanded[`prompt-${index}`]}
+                timeout={200}
+                id={`help-prompt-panel-${index}`}
+              >
                 <Typography variant="body2" color="text.secondary" sx={{ pl: 4.5, pb: 1.5 }}>
                   {prompt.details}
                 </Typography>
@@ -112,6 +117,7 @@ function TipsTab() {
               <ListItemButton
                 onClick={() => toggle(`question-${index}`)}
                 aria-expanded={!!expanded[`question-${index}`]}
+                aria-controls={`help-question-panel-${index}`}
                 sx={{ px: 0.5, borderRadius: 1 }}
               >
                 {expanded[`question-${index}`] ? <ExpandLess sx={{ mr: 1 }} /> : <ExpandMore sx={{ mr: 1 }} />}
@@ -120,7 +126,11 @@ function TipsTab() {
                   primaryTypographyProps={{ fontWeight: 600, fontSize: "0.9375rem" }}
                 />
               </ListItemButton>
-              <Collapse in={!!expanded[`question-${index}`]} timeout={200}>
+              <Collapse
+                in={!!expanded[`question-${index}`]}
+                timeout={200}
+                id={`help-question-panel-${index}`}
+              >
                 <Stack component="ul" spacing={0.5} sx={{ pl: 4.5, pb: 1.5, m: 0, listStyle: "disc" }}>
                   {section.items.map((q, qIndex) => (
                     <li key={qIndex}>
@@ -227,6 +237,7 @@ export default function HelpPage() {
       <Tabs
         value={tabIndex}
         onChange={(_, v) => setTabIndex(v)}
+        aria-label="Help sections"
         sx={{ borderBottom: 1, borderColor: "divider" }}
       >
         <Tab label="Tips & Questions" />

@@ -21,8 +21,8 @@ Quick customizations:
 # AWS Tools Used
 AWS Amplify
 - Connects to Github repository (Super-Secret-Swag), agency specific branches
-Cloudscape Design System
-- Front-end components to be used with the AWS suite of products
+MUI (Material UI) and React
+- Primary UI stack for new development; some legacy paths may still reference Cloudscape
 
 ## Back-end
 The back-end code is a series of AWS lambda functions that serve as connectors between AWS services.

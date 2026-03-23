@@ -43,8 +43,7 @@ export default function DataPage() {
       } else {
         setLastSyncTime("Unknown");
       }
-    } catch (e) {
-      console.error("Error in refreshSyncTime():", e);
+    } catch {
       setLastSyncTime("Error loading sync time");
     }
   };

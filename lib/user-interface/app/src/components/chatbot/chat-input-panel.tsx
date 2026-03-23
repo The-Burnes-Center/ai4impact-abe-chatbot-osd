@@ -11,6 +11,7 @@ import StopCircleOutlinedIcon from "@mui/icons-material/StopCircleOutlined";
 import {
   Dispatch,
   SetStateAction,
+  forwardRef,
   useContext,
   useEffect,
   useRef,
@@ -47,7 +48,8 @@ export interface ChatInputPanelProps {
   onQueuedPromptHandled?: () => void;
 }
 
-export default function ChatInputPanel(props: ChatInputPanelProps) {
+const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
+  function ChatInputPanel(props, ref) {
   const { setNeedsRefresh } = useContext(SessionRefreshContext);
   const { transcript, listening, browserSupportsSpeechRecognition } =
     useSpeechRecognition();
@@ -209,6 +211,7 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
       >
         <div className={styles.input_textarea_container}>
           <TextareaAutosize
+            ref={ref}
             className={styles.input_textarea}
             maxRows={6}
             minRows={1}
@@ -289,4 +292,6 @@ export default function ChatInputPanel(props: ChatInputPanelProps) {
       </Paper>
     </Stack>
   );
-}
+});
+
+export default ChatInputPanel;

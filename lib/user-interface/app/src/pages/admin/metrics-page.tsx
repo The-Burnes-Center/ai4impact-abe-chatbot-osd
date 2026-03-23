@@ -173,7 +173,17 @@ function OverviewTab({ metrics }: { metrics: MetricsData }) {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Last 30 days
             </Typography>
-            <Box sx={{ width: "100%", height: 350 }}>
+            <Typography
+              id="chart-activity-desc"
+              component="p"
+              variant="body2"
+              color="text.secondary"
+              sx={{ mb: 1 }}
+            >
+              Line chart: sessions, messages, and unique users per day. Each series uses a distinct color
+              in the legend; the same numbers appear in the daily breakdown table below.
+            </Typography>
+            <Box role="group" aria-labelledby="chart-activity-desc" sx={{ width: "100%", height: 350 }}>
               <LineChart
                 xAxis={[
                   {
@@ -316,7 +326,17 @@ function FAQTab({ faqData }: { faqData: FAQData | null }) {
             <Typography variant="h4" gutterBottom>
               Top Topics
             </Typography>
-            <Box sx={{ width: "100%", height: 350 }}>
+            <Typography
+              id="chart-faq-topics-desc"
+              component="p"
+              variant="body2"
+              color="text.secondary"
+              sx={{ mb: 1 }}
+            >
+              Horizontal bar chart: question count per topic. Bar color shows magnitude; exact counts are
+              in the All Topics table below.
+            </Typography>
+            <Box role="group" aria-labelledby="chart-faq-topics-desc" sx={{ width: "100%", height: 350 }}>
               <BarChart
                 yAxis={[{ data: chartTopics.map((t) => t.topic), scaleType: "band" }]}
                 xAxis={[{ label: "Questions" }]}
@@ -420,7 +440,17 @@ function AgencyTab({ agencyData }: { agencyData: AgencyData | null }) {
             <Typography variant="h4" gutterBottom>
               Messages by Agency
             </Typography>
-            <Box sx={{ width: "100%", height: 350 }}>
+            <Typography
+              id="chart-agency-desc"
+              component="p"
+              variant="body2"
+              color="text.secondary"
+              sx={{ mb: 1 }}
+            >
+              Horizontal bar chart: message volume by agency. Values are also listed in the All Agencies
+              table below.
+            </Typography>
+            <Box role="group" aria-labelledby="chart-agency-desc" sx={{ width: "100%", height: 350 }}>
               <BarChart
                 yAxis={[{ data: chartAgencies.map((a) => a.agency), scaleType: "band" }]}
                 xAxis={[{ label: "Messages" }]}

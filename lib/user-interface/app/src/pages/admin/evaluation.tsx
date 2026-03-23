@@ -47,8 +47,7 @@ export default function DataPage() {
       } else {
         setLastSyncTime("Unknown");
       }
-    } catch (e) {
-      console.log(e);
+    } catch {
       setLastSyncTime("Error loading sync time");
     }
   };
@@ -59,7 +58,6 @@ export default function DataPage() {
       try {
         const result = await Auth.currentAuthenticatedUser();
         if (!result || Object.keys(result).length === 0) {
-          console.log("Signed out!");
           Auth.signOut();
           return;
         }
@@ -71,8 +69,8 @@ export default function DataPage() {
             setAdmin(true);
           }
         }
-      } catch (e) {
-        console.log(e);
+      } catch {
+        /* not admin or session invalid */
       }
     })();
   }, []);

@@ -36,6 +36,7 @@ export default function Chat(props: { sessionId?: string }) {
   const { abort } = useWebSocketChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
   const [messageHistory, setMessageHistory] = useState<ChatBotHistoryItem[]>([]);
@@ -205,7 +206,11 @@ export default function Chat(props: { sessionId?: string }) {
       )}
       {/* Scrollable message area */}
       <div className={styles.messages_scroll} ref={scrollContainerRef}>
-        <Box aria-live="polite" aria-relevant="additions">
+        <Box
+          aria-live={running ? "off" : "polite"}
+          aria-relevant="additions"
+          aria-busy={running}
+        >
           <Stack direction="column" spacing={2}>
             {isEmpty && (
               <Alert severity="info" sx={{ mb: 1 }}>
@@ -316,18 +321,15 @@ export default function Chat(props: { sessionId?: string }) {
                   key={idx}
                   className={styles.suggestedPromptCard}
                   onClick={() => {
-                    const textarea = document.querySelector(
-                      "textarea"
-                    ) as HTMLTextAreaElement | null;
-                    if (textarea) {
-                      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-                        window.HTMLTextAreaElement.prototype,
-                        "value"
-                      )?.set;
-                      nativeInputValueSetter?.call(textarea, prompt);
-                      textarea.dispatchEvent(new Event("input", { bubbles: true }));
-                      textarea.focus();
-                    }
+                    const textarea = messageInputRef.current;
+                    if (!textarea) return;
+                    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                      window.HTMLTextAreaElement.prototype,
+                      "value"
+                    )?.set;
+                    nativeInputValueSetter?.call(textarea, prompt);
+                    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+                    textarea.focus();
                   }}
                   aria-label={`Suggested question: ${prompt}`}
                 >
@@ -361,6 +363,7 @@ export default function Chat(props: { sessionId?: string }) {
       {/* Input panel — always visible at the bottom */}
       <div className={styles.input_container}>
         <ChatInputPanel
+          ref={messageInputRef}
           session={session}
           running={running}
           setRunning={setRunning}

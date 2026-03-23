@@ -88,6 +88,7 @@ const Heading = styled.h1`
   font-size: clamp(2.5rem, 8vw, 5.5rem);
   font-weight: 700;
   color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
   animation: ${fadeIn} 0.75s ease-out;
   z-index: 2;
   text-align: center;
@@ -103,7 +104,8 @@ const Heading = styled.h1`
 const SubText = styled.button`
   font-size: clamp(1rem, 2.5vw, 1.5rem);
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   margin-top: 16px;
   animation: ${fadeIn} 0.75s ease-out 0.15s both;
   z-index: 2;

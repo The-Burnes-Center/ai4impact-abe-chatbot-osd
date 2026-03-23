@@ -68,6 +68,7 @@ export default function BaseAppLayout({ children, info }: BaseAppLayoutProps) {
             open={mobileOpen}
             onClose={() => setMobileOpen(false)}
             ModalProps={{ keepMounted: true }}
+            PaperProps={{ "aria-label": "Main navigation" }}
             sx={{
               display: { xs: "block", md: "none" },
               "& .MuiDrawer-paper": { width: DRAWER_WIDTH, boxSizing: "border-box" },

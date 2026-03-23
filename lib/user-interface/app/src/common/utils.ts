@@ -19,9 +19,11 @@ export class Utils {
     }
 
     if (crypto && crypto.getRandomValues) {
-      console.log(
-        "crypto.randomUUID is not available using crypto.getRandomValues"
-      );
+      if (import.meta.env.DEV) {
+        console.log(
+          "crypto.randomUUID is not available using crypto.getRandomValues"
+        );
+      }
 
       return ("" + [1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(
         /[018]/g,
@@ -35,7 +37,9 @@ export class Utils {
       );
     }
 
-    console.log("crypto is not available");
+    if (import.meta.env.DEV) {
+      console.log("crypto is not available");
+    }
     let date1 = new Date().getTime();
     let date2 =
       (typeof performance !== "undefined" &&
@@ -142,7 +146,9 @@ export class Utils {
       }
       return token;
     } catch (error) {
-      console.error('Error getting current user session:', error);
+      if (import.meta.env.DEV) {
+        console.error("Error getting current user session:", error);
+      }
       try {
         Auth.federatedSignIn();
       } catch (_) {
@@ -200,7 +206,9 @@ export class Utils {
         timeStyle: 'short',
       }).format(date);
     } catch (error) {
-      console.error('Error formatting timestamp to Eastern Time:', error);
+      if (import.meta.env.DEV) {
+        console.error("Error formatting timestamp to Eastern Time:", error);
+      }
       return 'Invalid date';
     }
   }

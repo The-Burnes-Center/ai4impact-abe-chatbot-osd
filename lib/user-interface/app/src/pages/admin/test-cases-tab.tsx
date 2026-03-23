@@ -24,6 +24,10 @@ const mimeTypes = {
   ".json": "application/json",
 };
 
+function devError(...args: unknown[]) {
+  if (import.meta.env.DEV) console.error(...args);
+}
+
 export interface FileUploadTabProps {
   tabChangeFunction: () => void;
 }
@@ -129,14 +133,14 @@ export default function DataFileUpload(props: FileUploadTabProps) {
           accumulator += file.size;
           setUploadingIndex(Math.min(filesToUpload.length, i + 2));
         } catch (error) {
-          console.error(error);
+          devError(error);
           setUploadingStatus("error");
           hasError = true;
           break;
         }
       } catch (error: any) {
         setGlobalError(Utils.getErrorMessage(error));
-        console.error(Utils.getErrorMessage(error));
+        devError(Utils.getErrorMessage(error));
         setUploadingStatus("error");
         hasError = true;
         break;

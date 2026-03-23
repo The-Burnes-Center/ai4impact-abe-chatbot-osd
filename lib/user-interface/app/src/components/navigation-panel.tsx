@@ -33,6 +33,11 @@ import { Utils } from "../common/utils.js";
 
 const VISIBLE_SESSION_COUNT = 10;
 
+function isNavLinkSelected(pathname: string, href: string) {
+  if (pathname === href) return true;
+  return pathname.startsWith(`${href}/`);
+}
+
 interface SessionItem {
   session_id: string;
   title: string;
@@ -234,6 +239,7 @@ export default function NavigationPanel() {
                         primaryTypographyProps={{
                           noWrap: true,
                           fontSize: "0.8125rem",
+                          title: session.title,
                         }}
                       />
                     </ListItemButton>
@@ -287,7 +293,7 @@ export default function NavigationPanel() {
                         {adminLinks.map((link) => (
                           <ListItem key={link.href} disablePadding>
                             <ListItemButton
-                              selected={location.pathname === link.href}
+                              selected={isNavLinkSelected(location.pathname, link.href)}
                               onClick={() => navigate(link.href)}
                               sx={{ pl: 2 }}
                             >

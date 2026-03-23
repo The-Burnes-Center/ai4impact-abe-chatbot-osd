@@ -35,7 +35,7 @@ export class KnowledgeManagementClient {
       const data = await response.json();
       return data.signedUrl;
     } catch (error) {
-      console.error('Error:', error);
+      if (import.meta.env.DEV) console.error("Error:", error);
       throw error;
     }
   }

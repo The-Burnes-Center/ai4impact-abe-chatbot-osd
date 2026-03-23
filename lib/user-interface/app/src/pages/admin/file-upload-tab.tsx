@@ -16,6 +16,10 @@ import { ApiClient } from "../../common/api-client/api-client";
 import { Utils } from "../../common/utils";
 import { FileUploader } from "../../common/file-uploader";
 
+function devError(...args: unknown[]) {
+  if (import.meta.env.DEV) console.error(...args);
+}
+
 const fileExtensions = new Set([
   ".doc",
   ".docx",
@@ -168,14 +172,14 @@ export default function DataFileUpload({
           accumulator += file.size;
           setUploadingIndex(Math.min(filesToUpload.length, i + 2));
         } catch (error) {
-          console.error(error);
+          devError(error);
           setUploadingStatus("error");
           hasError = true;
           break;
         }
       } catch (error: unknown) {
         setGlobalError(Utils.getErrorMessage(error));
-        console.error(Utils.getErrorMessage(error));
+        devError(Utils.getErrorMessage(error));
         setUploadingStatus("error");
         hasError = true;
         break;

@@ -4,7 +4,6 @@ import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 import BaseAppLayout from "./components/base-app-layout";
 import ErrorBoundary from "./components/error-boundary";
-import { v4 as uuidv4 } from "uuid";
 import "./styles/app.scss";
 
 const Playground = React.lazy(() => import("./pages/chatbot/playground/playground"));
@@ -19,6 +18,7 @@ const HelpPage = React.lazy(() => import("./pages/help/how-to-use"));
 const LandingPage = React.lazy(() => import("./pages/landing-page"));
 const LandingPageInfo = React.lazy(() => import("./pages/landing-page-info"));
 const LandingPageStart = React.lazy(() => import("./pages/landing-page-start"));
+const NotFoundPage = React.lazy(() => import("./pages/not-found"));
 
 function PageLoader() {
   return (
@@ -92,14 +92,23 @@ function App() {
                 </Route>
 
                 <Route path="/help" element={<HelpPage />} />
+                <Route path="/not-found" element={<NotFoundPage />} />
                 {/* Redirect old help paths */}
                 <Route path="/faq-and-guide/*" element={<Navigate to="/help" replace />} />
               </Route>
 
-              {/* Catch-all */}
+              {/* Unknown paths: explicit not-found inside app shell */}
               <Route
                 path="*"
-                element={<Navigate to={`/chatbot/playground/${uuidv4()}`} replace />}
+                element={
+                  <BaseAppLayout>
+                    <ErrorBoundary>
+                      <Suspense fallback={<PageLoader />}>
+                        <NotFoundPage />
+                      </Suspense>
+                    </ErrorBoundary>
+                  </BaseAppLayout>
+                }
               />
             </Routes>
           </Suspense>

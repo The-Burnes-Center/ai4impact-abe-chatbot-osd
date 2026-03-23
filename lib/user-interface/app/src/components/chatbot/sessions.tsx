@@ -21,7 +21,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import AddIcon from "@mui/icons-material/Add";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import DeleteIcon from "@mui/icons-material/Delete";
-import { useState, useEffect, useContext, useCallback, useMemo } from "react";
+import { useState, useEffect, useContext, useCallback, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import { v4 as uuidv4 } from "uuid";
 import { Auth } from 'aws-amplify';
@@ -46,6 +46,7 @@ export default function Sessions(props: SessionsProps) {
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const [order, setOrder] = useState<Order>("desc");
   const [orderBy, setOrderBy] = useState("time_stamp");
+  const refreshAfterDialogRef = useRef<HTMLButtonElement>(null);
 
   const getSessions = useCallback(async () => {
     if (!appContext) return;
@@ -86,6 +87,7 @@ export default function Sessions(props: SessionsProps) {
     setShowModalDelete(false);
     await getSessions();
     setIsLoading(false);
+    requestAnimationFrame(() => refreshAfterDialogRef.current?.focus());
   };
 
   const deleteUserSessions = async () => {
@@ -186,6 +188,7 @@ export default function Sessions(props: SessionsProps) {
             New session
           </RouterButton>
           <Button
+            ref={refreshAfterDialogRef}
             startIcon={<RefreshIcon />}
             onClick={() => getSessions()}
             size="small"

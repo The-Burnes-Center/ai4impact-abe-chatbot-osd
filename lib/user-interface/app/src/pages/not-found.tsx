@@ -1,43 +1,34 @@
-import Typography from "@mui/material/Typography";
+import { Link as RouterLink } from "react-router-dom";
 import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
-import { useNavigate } from "react-router-dom";
+import Stack from "@mui/material/Stack";
 import { v4 as uuidv4 } from "uuid";
+import { useDocumentTitle } from "../common/hooks/use-document-title";
 
-export default function NotFound() {
-  const navigate = useNavigate();
+export default function NotFoundPage() {
+  useDocumentTitle("Page not found");
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        minHeight: "50vh",
-        textAlign: "center",
-        py: 6,
-      }}
-    >
-      <Typography
-        variant="h1"
-        sx={{ fontSize: { xs: "3rem", sm: "4rem" }, color: "text.secondary", mb: 1 }}
-      >
-        404
-      </Typography>
-      <Typography variant="h3" sx={{ mb: 1 }}>
+    <Box sx={{ py: 4, maxWidth: 560 }}>
+      <Typography variant="h1" component="h1" gutterBottom sx={{ fontSize: "1.75rem" }}>
         Page not found
       </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 4, maxWidth: 400 }}>
-        The page you are looking for does not exist or may have been moved.
+      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+        The address may be mistyped, or the page may have moved. You can start a new chat or open
+        the help guide from here.
       </Typography>
-      <Button
-        variant="contained"
-        size="large"
-        onClick={() => navigate(`/chatbot/playground/${uuidv4()}`)}
-      >
-        Go to Chat
-      </Button>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+        <Button variant="contained" component={RouterLink} to={`/chatbot/playground/${uuidv4()}`}>
+          New chat
+        </Button>
+        <Button variant="outlined" component={RouterLink} to="/help">
+          Help &amp; guide
+        </Button>
+        <Button variant="text" component={RouterLink} to="/">
+          Home
+        </Button>
+      </Stack>
     </Box>
   );
 }
