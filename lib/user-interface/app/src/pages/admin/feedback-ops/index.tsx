@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useState, type SyntheticEvent } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import {
   Box,
@@ -148,6 +148,8 @@ export default function FeedbackOpsPage() {
   const [promptData, setPromptData] = useState<PromptData>({ items: [], liveVersionId: null });
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
   const [activityDrawerOpen, setActivityDrawerOpen] = useState(false);
+  /** Tracks last detail-route id so we only clear linked feedback when leaving /user-feedback/:id, not on list views. */
+  const previousDetailFeedbackIdRef = useRef<string | undefined>(undefined);
 
   const apiClient = useMemo(
     () => (appContext ? new ApiClient(appContext) : null),
@@ -272,9 +274,13 @@ export default function FeedbackOpsPage() {
       setTab("queue");
       setSelectedFeedbackIds([feedbackId]);
       loadFeedbackDetail(feedbackId);
+      previousDetailFeedbackIdRef.current = feedbackId;
     } else {
       setSelectedFeedback(null);
-      setSelectedFeedbackIds([]);
+      if (previousDetailFeedbackIdRef.current !== undefined) {
+        setSelectedFeedbackIds([]);
+        previousDetailFeedbackIdRef.current = undefined;
+      }
     }
   }, [feedbackId, loadFeedbackDetail]);
 

@@ -23,6 +23,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import NavigateBeforeIcon from "@mui/icons-material/NavigateBefore";
@@ -58,26 +59,19 @@ const ROOT_CAUSE_CHIPS: Record<string, { label: string; color: "error" | "warnin
 };
 
 
-function getReviewStatusColor(status?: string): "default" | "success" | "info" | "warning" {
-  if (status === "actioned") return "success";
-  if (status === "dismissed") return "default";
-  if (status === "in_review") return "info";
-  return "warning";
+/** Short label for dense card footers; full id in tooltip */
+function promptVersionFootnote(id?: string): string {
+  if (!id) return "";
+  const trimmed = id.replace(/^v-?/i, "");
+  if (trimmed.length <= 22) return trimmed;
+  return `${trimmed.slice(0, 10)}…${trimmed.slice(-8)}`;
 }
 
-function summarizeSources(item: FeedbackItem): { primary: string; secondary: string } {
+function sourceLineForCard(item: FeedbackItem): string {
   const sources = item.sourceTitles || [];
-  if (sources.length === 0) {
-    return { primary: "No source documents captured", secondary: item.promptVersionId ? `Prompt ${item.promptVersionId}` : "Prompt version unavailable" };
-  }
-
-  const [first, ...rest] = sources;
-  return {
-    primary: first,
-    secondary: rest.length > 0
-      ? `+${rest.length} more source${rest.length > 1 ? "s" : ""}${item.promptVersionId ? ` | Prompt ${item.promptVersionId}` : ""}`
-      : item.promptVersionId ? `Prompt ${item.promptVersionId}` : "Single source hit",
-  };
+  if (sources.length === 0) return "No sources recorded for this turn.";
+  if (sources.length === 1) return sources[0];
+  return `${sources[0]} and ${sources.length - 1} other source${sources.length > 2 ? "s" : ""}`;
 }
 
 function itemNeedsTriage(item: FeedbackItem): boolean {
@@ -618,18 +612,23 @@ export default function InboxView(props: InboxViewProps) {
       {feedbackItems.length === 0 ? (
         hasActiveFilters ? <FilteredEmptyInbox /> : <EmptyInbox />
       ) : (
-        <Stack spacing={1.25} sx={{ maxWidth: 900 }} role="list" aria-label="Feedback items">
+        <Stack spacing={2} sx={{ maxWidth: 960 }} role="list" aria-label="Feedback items">
           {pagedItems.map((item) => {
             const positive = isPositive(item);
             const isActive = selectedFeedback?.feedback?.FeedbackId === item.feedbackId;
-            const sourceSummary = summarizeSources(item);
             const rootCauseKey = item.rootCause || (positive ? "positive_signal" : "needs_human_review");
             const rootCauseChip = ROOT_CAUSE_CHIPS[rootCauseKey];
+            const reviewLabel = label(item.reviewStatus || "new");
+            const headline = positive ? "Good answer — save for regression tests?" : "Needs your review";
+            const subhead = positive
+              ? "Users marked this response as helpful."
+              : `Queue status: ${reviewLabel}`;
 
             return (
               <Paper
                 key={item.feedbackId}
                 variant="outlined"
+                component="article"
                 role="listitem"
                 tabIndex={0}
                 onClick={() => handleOpenDetail(item.feedbackId)}
@@ -641,190 +640,313 @@ export default function InboxView(props: InboxViewProps) {
                 }}
                 aria-selected={isActive}
                 aria-current={isActive ? "true" : undefined}
+                aria-label={`${headline}. ${subhead}. Submitted ${formatDate(item.createdAt)}.`}
                 sx={{
                   cursor: "pointer",
-                  borderLeft: "3px solid",
+                  borderRadius: 2,
+                  overflow: "hidden",
+                  borderLeftWidth: 4,
+                  borderLeftStyle: "solid",
                   borderLeftColor: positive ? "primary.main" : "warning.main",
-                  transition: "box-shadow 150ms ease, background-color 150ms ease",
-                  ...(isActive && { bgcolor: "action.selected" }),
+                  transition: "box-shadow 160ms ease, border-color 160ms ease",
+                  ...(isActive && {
+                    boxShadow: (t) => `0 0 0 2px ${alpha(t.palette.primary.main, 0.35)}`,
+                    bgcolor: "action.selected",
+                  }),
                   "&:hover": {
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04)",
+                    boxShadow: (t) => `0 8px 24px ${alpha(t.palette.common.black, 0.08)}`,
                   },
                 }}
               >
-                <Stack sx={{ p: 2, gap: 1.25 }}>
-                  {/* Top bar: signal, status, date */}
-                  <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-                    <Tooltip title={positive ? "Helpful feedback" : "Feedback that needs review"}>
-                      <Stack direction="row" alignItems="center" gap={0.75}>
-                        {positive ? (
-                          <ThumbUpOutlinedIcon sx={{ fontSize: 18, color: "primary.main" }} aria-label="Helpful" />
-                        ) : (
-                          <ThumbDownOutlinedIcon sx={{ fontSize: 18, color: "warning.dark" }} aria-label="Needs attention" />
-                        )}
-                        <Typography variant="body2" sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
-                          {label(item.feedbackKind || "not_helpful")}
-                        </Typography>
-                      </Stack>
-                    </Tooltip>
-                    <Chip
-                      size="small"
-                      label={label(item.reviewStatus || "new")}
-                      color={getReviewStatusColor(item.reviewStatus)}
-                      variant={item.reviewStatus === "actioned" || item.reviewStatus === "dismissed" ? "filled" : "outlined"}
-                      sx={{ height: 22, fontSize: "0.7rem" }}
-                    />
-                    <Box sx={{ flex: 1 }} />
-                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+                {/* Status strip — what to do next, not raw enum labels */}
+                <Box
+                  sx={{
+                    px: 2,
+                    py: 1.25,
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: 1.5,
+                    flexWrap: "wrap",
+                    bgcolor: (t) =>
+                      positive ? alpha(t.palette.primary.main, 0.06) : alpha(t.palette.warning.main, 0.08),
+                    borderBottom: 1,
+                    borderColor: "divider",
+                  }}
+                >
+                  <Stack direction="row" alignItems="flex-start" gap={1.25} sx={{ minWidth: 0, flex: 1 }}>
+                    <Box
+                      sx={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 1,
+                        flexShrink: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        bgcolor: (t) =>
+                          positive ? alpha(t.palette.primary.main, 0.12) : alpha(t.palette.warning.main, 0.15),
+                      }}
+                      aria-hidden
+                    >
+                      {positive ? (
+                        <ThumbUpOutlinedIcon sx={{ fontSize: 20, color: "primary.main" }} />
+                      ) : (
+                        <ThumbDownOutlinedIcon sx={{ fontSize: 20, color: "warning.dark" }} />
+                      )}
+                    </Box>
+                    <Stack spacing={0.25} sx={{ minWidth: 0 }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: "1rem", lineHeight: 1.3 }}>
+                        {headline}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.8125rem", lineHeight: 1.45 }}>
+                        {subhead}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                  <Tooltip title={`Submitted ${formatDate(item.createdAt)}`}>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ fontSize: "0.75rem", whiteSpace: "nowrap", flexShrink: 0, pt: 0.25 }}
+                    >
                       {formatDate(item.createdAt)}
                     </Typography>
-                  </Stack>
+                  </Tooltip>
+                </Box>
 
-                  {/* Q / A — both use AdminMarkdown (react-markdown + GFM, same as detail drawer) */}
-                  <Stack spacing={1} role="group" aria-label="User question and ABE answer preview">
-                    <Stack direction="row" alignItems="flex-start" gap={1}>
-                      <Typography
-                        component="span"
-                        variant="caption"
-                        sx={{
-                          flexShrink: 0,
-                          mt: 0.125,
-                          fontWeight: 700,
-                          fontSize: "0.6875rem",
-                          letterSpacing: 0.5,
-                          color: "primary.main",
-                          lineHeight: 1.5,
-                        }}
-                        aria-label="Question"
-                      >
-                        Q
-                      </Typography>
-                      <Box sx={{ flex: 1, minWidth: 0, maxHeight: 52, overflow: "hidden" }}>
-                        <AdminMarkdown
-                          content={item.userPromptPreview || "No question preview captured."}
-                          compact
-                          sx={{ fontWeight: 600, fontSize: "0.875rem" }}
-                        />
-                      </Box>
-                    </Stack>
-                    <Stack direction="row" alignItems="flex-start" gap={1}>
-                      <Typography
-                        component="span"
-                        variant="caption"
-                        sx={{
-                          flexShrink: 0,
-                          mt: 0.125,
-                          fontWeight: 700,
-                          fontSize: "0.6875rem",
-                          letterSpacing: 0.5,
-                          color: "text.secondary",
-                          lineHeight: 1.5,
-                        }}
-                        aria-label="Answer"
-                      >
-                        A
-                      </Typography>
-                      <Box sx={{ flex: 1, minWidth: 0, maxHeight: 56, overflow: "hidden" }}>
-                        <AdminMarkdown
-                          content={item.answerPreview || "No answer preview captured."}
-                          compact
-                          sx={{ color: "text.secondary", fontSize: "0.8125rem" }}
-                        />
-                      </Box>
-                    </Stack>
-                  </Stack>
+                {/* Conversation — primary scan target */}
+                <Stack sx={{ px: 2, pt: 2, pb: 1.5 }} spacing={2} role="group" aria-label="Question and answer preview">
+                  <Box>
+                    <Typography
+                      variant="overline"
+                      sx={{
+                        display: "block",
+                        fontSize: "0.65rem",
+                        fontWeight: 700,
+                        letterSpacing: "0.08em",
+                        color: "text.secondary",
+                        mb: 1,
+                      }}
+                    >
+                      User asked
+                    </Typography>
+                    <Box
+                      sx={{
+                        borderRadius: 1.5,
+                        px: 1.5,
+                        py: 1.25,
+                        bgcolor: (t) => alpha(t.palette.primary.main, 0.05),
+                        border: 1,
+                        borderColor: (t) => alpha(t.palette.primary.main, 0.12),
+                        minHeight: 48,
+                        maxHeight: 108,
+                        overflow: "hidden",
+                        position: "relative",
+                        "&::after":
+                          item.userPromptPreview && item.userPromptPreview.length > 120
+                            ? {
+                                content: '""',
+                                position: "absolute",
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                height: 28,
+                                background: (t) =>
+                                  `linear-gradient(transparent, ${alpha(t.palette.primary.main, 0.1)})`,
+                                pointerEvents: "none",
+                              }
+                            : undefined,
+                      }}
+                    >
+                      <AdminMarkdown
+                        content={item.userPromptPreview || "No question preview captured."}
+                        compact
+                        sx={{ fontWeight: 600, fontSize: "0.9375rem", lineHeight: 1.5 }}
+                      />
+                    </Box>
+                  </Box>
+                  <Box>
+                    <Typography
+                      variant="overline"
+                      sx={{
+                        display: "block",
+                        fontSize: "0.65rem",
+                        fontWeight: 700,
+                        letterSpacing: "0.08em",
+                        color: "text.secondary",
+                        mb: 1,
+                      }}
+                    >
+                      ABE answered
+                    </Typography>
+                    <Box
+                      sx={{
+                        borderRadius: 1.5,
+                        pl: 1.5,
+                        borderLeft: 3,
+                        borderColor: "divider",
+                        py: 0.25,
+                        minHeight: 40,
+                        maxHeight: 100,
+                        overflow: "hidden",
+                        position: "relative",
+                        "&::after":
+                          item.answerPreview && item.answerPreview.length > 140
+                            ? {
+                                content: '""',
+                                position: "absolute",
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                height: 24,
+                                background: (t) =>
+                                  `linear-gradient(transparent, ${alpha(t.palette.background.paper, 0.97)})`,
+                                pointerEvents: "none",
+                              }
+                            : undefined,
+                      }}
+                    >
+                      <AdminMarkdown
+                        content={item.answerPreview || "No answer preview captured."}
+                        compact
+                        sx={{ color: "text.secondary", fontSize: "0.875rem", lineHeight: 1.55 }}
+                      />
+                    </Box>
+                  </Box>
+                </Stack>
 
-                  {/* Root cause + recurrence chips + analysis summary */}
-                  <Stack direction="row" gap={0.75} flexWrap="wrap" alignItems="center">
+                {/* Classification + AI note — why this row exists */}
+                <Box sx={{ px: 2, pb: 1.5 }}>
+                  <Stack
+                    direction="row"
+                    gap={0.75}
+                    flexWrap="wrap"
+                    alignItems="center"
+                    sx={{ mb: item.summary ? 1 : 0 }}
+                    aria-label="Classification"
+                  >
                     <Chip
                       size="small"
                       label={rootCauseChip ? rootCauseChip.label : label(rootCauseKey)}
                       color={rootCauseChip?.color || "default"}
                       variant="outlined"
-                      sx={{ height: 22, fontSize: "0.7rem" }}
+                      sx={{ height: 26, fontSize: "0.75rem", fontWeight: 600 }}
                     />
                     {item.recurrenceCount && item.recurrenceCount > 1 && (
                       <Chip
                         size="small"
                         variant="outlined"
-                        label={`Seen ${item.recurrenceCount}x`}
-                        sx={{ height: 22, fontSize: "0.7rem" }}
+                        label={`Similar reports · ${item.recurrenceCount}×`}
+                        sx={{ height: 26, fontSize: "0.75rem" }}
+                      />
+                    )}
+                    {!positive && item.disposition && item.disposition !== "pending" && (
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        color="secondary"
+                        label={`Next: ${label(item.disposition)}`}
+                        sx={{ height: 26, fontSize: "0.75rem" }}
                       />
                     )}
                   </Stack>
                   {item.summary && (
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
+                    <Paper
+                      variant="outlined"
                       sx={{
-                        fontSize: "0.8125rem",
-                        display: "-webkit-box",
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: "vertical",
-                        overflow: "hidden",
+                        p: 1.25,
+                        borderRadius: 1,
+                        bgcolor: (t) => alpha(t.palette.text.primary, 0.02),
+                        borderColor: (t) => alpha(t.palette.divider, 0.9),
                       }}
                     >
-                      {item.summary}
-                    </Typography>
-                  )}
-
-                  {/* Footer: sources, disposition, actions */}
-                  <Divider sx={{ mt: 0.25 }} />
-                  <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{
-                        fontSize: "0.75rem",
-                        maxWidth: 260,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                      title={sourceSummary.primary}
-                    >
-                      {sourceSummary.primary}
-                    </Typography>
-                    {sourceSummary.secondary && sourceSummary.primary !== "No source documents captured" && (
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
-                        {sourceSummary.secondary}
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "0.65rem" }}
+                      >
+                        AI summary
                       </Typography>
-                    )}
-                    {!positive && (
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        label={label(item.disposition || "pending")}
-                        sx={{ height: 20, fontSize: "0.675rem" }}
-                      />
-                    )}
-                    <Box sx={{ flex: 1 }} />
-                    <Stack direction="row" gap={0.5} alignItems="center" onClick={(e) => e.stopPropagation()}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ fontSize: "0.8125rem", lineHeight: 1.5, mt: 0.5, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+                      >
+                        {item.summary}
+                      </Typography>
+                    </Paper>
+                  )}
+                </Box>
+
+                {/* Technical context + actions — separated from narrative */}
+                <Box
+                  sx={{
+                    px: 2,
+                    py: 1.5,
+                    bgcolor: (t) => alpha(t.palette.text.primary, 0.025),
+                    borderTop: 1,
+                    borderColor: "divider",
+                  }}
+                >
+                  <Stack
+                    direction={{ xs: "column", sm: "row" }}
+                    spacing={1.5}
+                    alignItems={{ xs: "stretch", sm: "center" }}
+                    justifyContent="space-between"
+                  >
+                    <Stack spacing={0.5} sx={{ minWidth: 0, flex: 1 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem", lineHeight: 1.5 }}>
+                        <Box component="span" sx={{ fontWeight: 600, color: "text.primary" }}>
+                          Sources:{" "}
+                        </Box>
+                        {sourceLineForCard(item)}
+                      </Typography>
+                      {item.promptVersionId && (
+                        <Tooltip title={item.promptVersionId}>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ fontSize: "0.7rem", fontFamily: "ui-monospace, monospace", cursor: "help" }}
+                          >
+                            Prompt version · {promptVersionFootnote(item.promptVersionId)}
+                          </Typography>
+                        </Tooltip>
+                      )}
+                    </Stack>
+                    <Stack
+                      direction="row"
+                      gap={1}
+                      alignItems="center"
+                      justifyContent={{ xs: "flex-end", sm: "flex-end" }}
+                      flexShrink={0}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {positive ? (
                         <Button
-                          size="small"
-                          variant="outlined"
+                          size="medium"
+                          variant="contained"
                           color="primary"
                           onClick={(e) => openConfirmDialog(item, "test_library", e)}
                           disabled={actionLoading}
-                          sx={{ fontSize: "0.75rem", textTransform: "none", whiteSpace: "nowrap", py: 0.25 }}
+                          sx={{ textTransform: "none", fontWeight: 600, px: 2, minHeight: 40 }}
                         >
                           Add to tests
                         </Button>
                       ) : (
                         <Button
-                          size="small"
-                          variant="outlined"
+                          size="medium"
+                          variant="contained"
                           color="warning"
                           onClick={(e) => openConfirmDialog(item, "fix_prompt", e)}
-                          sx={{ fontSize: "0.75rem", textTransform: "none", whiteSpace: "nowrap", py: 0.25 }}
+                          sx={{ textTransform: "none", fontWeight: 600, px: 2, minHeight: 40 }}
                         >
-                          Review
+                          Open review
                         </Button>
                       )}
                       <Tooltip title="Delete">
                         <IconButton
-                          size="small"
+                          size="medium"
                           onClick={(e) => {
                             e.stopPropagation();
                             setDeleteDialog({
@@ -841,7 +963,7 @@ export default function InboxView(props: InboxViewProps) {
                       </Tooltip>
                     </Stack>
                   </Stack>
-                </Stack>
+                </Box>
               </Paper>
             );
           })}
@@ -850,7 +972,7 @@ export default function InboxView(props: InboxViewProps) {
 
       {/* Pagination */}
       {totalPages > 1 && feedbackItems.length > 0 && (
-        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ maxWidth: 900, pt: 0.5 }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ maxWidth: 960, pt: 0.5 }}>
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
             {feedbackItems.length} items &middot; Page {page + 1} of {totalPages}
           </Typography>
