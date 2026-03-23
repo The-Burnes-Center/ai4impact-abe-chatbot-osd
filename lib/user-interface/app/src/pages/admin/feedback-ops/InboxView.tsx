@@ -351,7 +351,7 @@ export default function InboxView(props: InboxViewProps) {
       await onFeedbackUpdated();
       addNotification(
         "success",
-        "Queued for test library. ABE's answer is kept as-is; the question will be lightly edited for evaluations."
+        "Queued for test library. Inline source markers like [1] are removed from the answer; the question is lightly edited for evaluations."
       );
     } catch (error: unknown) {
       addNotification("error", error instanceof Error ? error.message : "Could not add to test library.");
@@ -1027,9 +1027,9 @@ export default function InboxView(props: InboxViewProps) {
                 <AdminMarkdown content={confirmDialog.item.answerPreview || "N/A"} maxHeight={200} sx={{ mt: 0.5 }} />
               </Box>
               <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.8125rem" }}>
-                ABE's answer is saved exactly as shown. The user's question is queued for a light edit so it stands alone
-                without changing meaning—staying as close as possible to what they typed—then written to the evaluation
-                test library (usually within a minute).
+                Inline source markers like [1] are removed from the answer before it is stored. The user's question is
+                queued for a light edit so it stands alone without changing meaning—staying as close as possible to what
+                they typed—then written to the evaluation test library (usually within a minute).
               </Typography>
             </Stack>
           )}

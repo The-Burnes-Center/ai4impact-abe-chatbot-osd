@@ -81,7 +81,7 @@ function describeActivity(entry: ActivityLogEntry): {
       return {
         title: questionPreview || `Feedback ${shortenId(entry.entityId)}`,
         description:
-          "Queued for the evaluation test library. The answer is stored verbatim; the question is lightly edited for standalone use.",
+          "Queued for the evaluation test library. Inline source markers like [1] are stripped from the answer; the question is lightly edited for standalone use.",
         meta: [sessionId ? `Session: ${shortenId(sessionId)}` : "", promptVersionId ? `Prompt: ${promptVersionId}` : ""].filter(
           Boolean
         ),

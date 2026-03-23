@@ -6,6 +6,7 @@ import logging
 import boto3
 from datetime import datetime
 from boto3.dynamodb.conditions import Key
+from abe_utils.text import strip_kb_citation_markers
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -25,7 +26,8 @@ government buyers navigate acquisition regulations, find contracts (GSA Schedule
 identify vendors, and understand compliance requirements.
 
 You will receive the user's exact message (as they typed it) and the chatbot's answer from \
-that turn. The answer will be stored VERBATIM for regression testing. Your ONLY job is to \
+that turn. The answer will be stored for regression testing after removing inline KB citation \
+markers like [1] or [2]. Your ONLY job is to \
 produce a standalone version of the user's question that is still likely to elicit the SAME \
 answer from the same retrieval + model setup.
 
@@ -188,6 +190,7 @@ def lambda_handler(event, context):
             logger.info("Input completion length: %d chars", len(completion))
 
             rewritten_q = rewrite_question(prompt, completion)
+            stored_answer = strip_kb_citation_markers(completion)
 
             logger.info("Original Q: %s", prompt[:300])
             logger.info("Rewritten Q: %s", rewritten_q[:300])
@@ -201,7 +204,7 @@ def lambda_handler(event, context):
                 "feedbackSessionId": body.get("sessionId", ""),
             }
 
-            action, qid = upsert_item(rewritten_q, completion, metadata)
+            action, qid = upsert_item(rewritten_q, stored_answer, metadata)
             logger.info("Processed feedback -> %s: %s", action, qid)
 
         except Exception as e:

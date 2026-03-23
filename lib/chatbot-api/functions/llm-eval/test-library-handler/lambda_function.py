@@ -8,6 +8,7 @@ from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 from datetime import datetime
 from decimal import Decimal
+from abe_utils.text import strip_kb_citation_markers
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -147,7 +148,7 @@ def op_get(data, headers):
 
 def op_create(data, headers):
     question = data.get("question", "").strip()
-    expected_response = data.get("expectedResponse", "").strip()
+    expected_response = strip_kb_citation_markers(data.get("expectedResponse", "").strip())
     if not question or not expected_response:
         return {"statusCode": 400, "headers": headers, "body": json.dumps({"error": "question and expectedResponse required"})}
 
@@ -157,7 +158,7 @@ def op_create(data, headers):
 
 def op_update(data, headers):
     qid = data.get("question_id")
-    expected_response = data.get("expectedResponse", "").strip()
+    expected_response = strip_kb_citation_markers(data.get("expectedResponse", "").strip())
     if not qid or not expected_response:
         return {"statusCode": 400, "headers": headers, "body": json.dumps({"error": "question_id and expectedResponse required"})}
 
@@ -250,7 +251,7 @@ def op_bulk_import(data, headers):
 
     for item in items:
         q = item.get("question", "").strip()
-        er = item.get("expectedResponse", "").strip()
+        er = strip_kb_citation_markers(item.get("expectedResponse", "").strip())
         if not q or not er:
             continue
         action, _ = upsert_item(q, er, source)
