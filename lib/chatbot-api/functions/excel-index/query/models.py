@@ -12,9 +12,16 @@ class QueryIndexRequest(BaseModel):
     index_name: str
     free_text: Optional[str] = None
     filters: Optional[dict[str, Any]] = None
+    date_before: Optional[dict[str, str]] = None
+    date_after: Optional[dict[str, str]] = None
     count_only: bool = False
     count_unique: Optional[str] = None
     group_by: Optional[str] = None
+    distinct_values: Optional[str] = None
+    min_value: Optional[str] = None
+    max_value: Optional[str] = None
+    sort_by: Optional[str] = None
+    sort_order: Literal["asc", "desc"] = "asc"
     columns: Optional[list[str]] = None
     limit: int = Field(default=100, ge=1, le=500)
     offset: int = Field(default=0, ge=0)

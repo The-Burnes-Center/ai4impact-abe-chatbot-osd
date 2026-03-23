@@ -41,9 +41,16 @@ def lambda_handler(event, context):
                 pk=pk,
                 free_text=req.free_text,
                 filters=req.filters,
+                date_before=req.date_before,
+                date_after=req.date_after,
                 count_only=req.count_only,
                 count_unique=req.count_unique,
                 group_by=req.group_by,
+                distinct_values=req.distinct_values,
+                min_value=req.min_value,
+                max_value=req.max_value,
+                sort_by=req.sort_by,
+                sort_order=req.sort_order,
                 columns=req.columns,
                 limit=req.limit,
                 offset=req.offset,
@@ -131,10 +138,31 @@ def _contains(haystack: str, needle: str) -> bool:
     return _norm(needle) in _norm(haystack)
 
 
+_DATE_FORMATS = [
+    "%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y", "%B %d, %Y", "%b %d, %Y",
+    "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ",
+]
+
+def _parse_date(val: str) -> "datetime.date | None":
+    """Try common date formats; return date or None."""
+    import datetime
+    s = str(val).strip()
+    if not s:
+        return None
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
 def _row_matches(
     row: dict[str, Any],
     free_text: str | None,
     filters: dict[str, Any] | None,
+    date_before: dict[str, str] | None = None,
+    date_after: dict[str, str] | None = None,
 ) -> bool:
     if free_text:
         if not any(
@@ -147,6 +175,22 @@ def _row_matches(
         for col, value in filters.items():
             cell = str(row.get(col) or "")
             if not _contains(cell, str(value)):
+                return False
+    if date_before:
+        for col, threshold_str in date_before.items():
+            threshold = _parse_date(threshold_str)
+            cell_date = _parse_date(str(row.get(col) or ""))
+            if threshold is None:
+                continue
+            if cell_date is None or cell_date >= threshold:
+                return False
+    if date_after:
+        for col, threshold_str in date_after.items():
+            threshold = _parse_date(threshold_str)
+            cell_date = _parse_date(str(row.get(col) or ""))
+            if threshold is None:
+                continue
+            if cell_date is None or cell_date <= threshold:
                 return False
     return True
 
@@ -163,26 +207,37 @@ def _do_query(
     pk: str,
     free_text: str | None = None,
     filters: dict[str, Any] | None = None,
+    date_before: dict[str, str] | None = None,
+    date_after: dict[str, str] | None = None,
     count_only: bool = False,
     count_unique: str | None = None,
     group_by: str | None = None,
+    distinct_values: str | None = None,
+    min_value: str | None = None,
+    max_value: str | None = None,
+    sort_by: str | None = None,
+    sort_order: str = "asc",
     columns: list[str] | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> dict:
     """Scan partition and filter in code. Scans all pages for accurate totals."""
     table = DDB.Table(TABLE_NAME)
-    collected: list[dict] = []
+    all_matched: list[dict] = []
     total = 0
-    skipped = 0
     unique_vals: set[str] = set() if count_unique else None
     group_counts: dict[str, int] = {} if group_by else None
+    distinct_set: set[str] = set() if distinct_values else None
+    min_raw: Any = None
+    max_raw: Any = None
+
     scan_kw: dict[str, Any] = {"FilterExpression": Attr("pk").eq(pk) & Attr("sk").ne(SK_META)}
     while True:
         resp = table.scan(**scan_kw)
         for item in resp.get("Items", []):
             row = _item_to_row(item)
-            if _row_matches(row, free_text=free_text, filters=filters):
+            if _row_matches(row, free_text=free_text, filters=filters,
+                            date_before=date_before, date_after=date_after):
                 total += 1
                 if unique_vals is not None:
                     val = str(row.get(count_unique) or "").strip()
@@ -191,19 +246,50 @@ def _do_query(
                 if group_counts is not None:
                     gval = str(row.get(group_by) or "").strip() or "(empty)"
                     group_counts[gval] = group_counts.get(gval, 0) + 1
+                if distinct_set is not None:
+                    dval = str(row.get(distinct_values) or "").strip()
+                    if dval:
+                        distinct_set.add(dval)
+                if min_value is not None:
+                    cell = row.get(min_value)
+                    if cell is not None and str(cell).strip():
+                        cmp = _parse_date(str(cell)) or str(cell).strip()
+                        if min_raw is None or cmp < min_raw:
+                            min_raw = cmp
+                if max_value is not None:
+                    cell = row.get(max_value)
+                    if cell is not None and str(cell).strip():
+                        cmp = _parse_date(str(cell)) or str(cell).strip()
+                        if max_raw is None or cmp > max_raw:
+                            max_raw = cmp
                 if not count_only:
-                    if skipped < offset:
-                        skipped += 1
-                    elif len(collected) < limit:
-                        collected.append(_project_row(row, columns))
+                    all_matched.append(row)
         last_key = resp.get("LastEvaluatedKey")
         if not last_key:
             break
         scan_kw["ExclusiveStartKey"] = last_key
+
+    if sort_by and not count_only and all_matched:
+        def _sort_key(r: dict) -> Any:
+            v = r.get(sort_by)
+            d = _parse_date(str(v)) if v is not None else None
+            if d is not None:
+                return (0, d)
+            try:
+                return (0, float(v))
+            except (ValueError, TypeError):
+                return (1, str(v or "").lower())
+        all_matched.sort(key=_sort_key, reverse=(sort_order == "desc"))
+
+    collected = []
+    if not count_only:
+        page = all_matched[offset:offset + limit]
+        collected = [_project_row(r, columns) for r in page]
+
     result: dict[str, Any] = {
-        "rows": [] if count_only else collected,
+        "rows": collected,
         "total_matches": total,
-        "returned": 0 if count_only else len(collected),
+        "returned": len(collected),
         "offset": offset,
     }
     if unique_vals is not None:
@@ -212,4 +298,12 @@ def _do_query(
     if group_counts is not None:
         result["group_by"] = group_by
         result["groups"] = dict(sorted(group_counts.items()))
+    if distinct_set is not None:
+        result["distinct_values"] = sorted(distinct_set)
+        result["distinct_column"] = distinct_values
+        result["distinct_count"] = len(distinct_set)
+    if min_value is not None and min_raw is not None:
+        result["min"] = {"column": min_value, "value": str(min_raw)}
+    if max_value is not None and max_raw is not None:
+        result["max"] = {"column": max_value, "value": str(max_raw)}
     return result
