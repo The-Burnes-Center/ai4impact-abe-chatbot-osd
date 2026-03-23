@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -39,7 +40,7 @@ import { useNotifications } from "../../../components/notif-manager";
 
 interface PromptWorkspaceProps {
   promptData: PromptData;
-  loading: boolean;
+  loadingMeta: boolean;
   apiClient: ApiClient | null;
   onRefresh: () => Promise<void>;
   selectedFeedbackIds: string[];
@@ -122,7 +123,7 @@ function PromptSkeleton() {
 }
 
 export default function PromptWorkspace(props: PromptWorkspaceProps) {
-  const { promptData, loading, apiClient, onRefresh, selectedFeedbackIds } = props;
+  const { promptData, loadingMeta, apiClient, onRefresh, selectedFeedbackIds } = props;
   const { addNotification } = useNotifications();
 
   const [selectedPromptId, setSelectedPromptId] = useState("");
@@ -286,11 +287,20 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
     }
   };
 
-  if (loading && promptData.items.length === 0) return <PromptSkeleton />;
+  if (loadingMeta && promptData.items.length === 0) return <PromptSkeleton />;
 
   return (
     <>
-      {actionLoading && <LinearProgress sx={{ mb: 1, borderRadius: 1 }} />}
+      {actionLoading && (
+        <Box
+          role="progressbar"
+          aria-label="Prompt workspace loading"
+          aria-busy="true"
+          sx={{ mb: 1, borderRadius: 1 }}
+        >
+          <LinearProgress sx={{ borderRadius: 1 }} />
+        </Box>
+      )}
 
       <Stack direction={{ xs: "column", lg: "row" }} gap={2} sx={{ alignItems: "flex-start" }}>
         {/* Sidebar toggle for small screens / when collapsed */}
@@ -462,10 +472,15 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
               </Stack>
             </Stack>
 
-            {selectedFeedbackIds.length > 0 && (
+            {selectedFeedbackIds.length > 0 ? (
               <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block", fontSize: "0.75rem" }}>
                 {selectedFeedbackIds.length} feedback item(s) linked for AI draft
               </Typography>
+            ) : (
+              <Alert severity="warning" sx={{ mt: 1 }} role="status">
+                No feedback is linked for AI Draft. Open an item in the Review Queue or use Fix prompt on Trends so the AI
+                has context—or run AI Draft anyway for a general pass.
+              </Alert>
             )}
 
             {hasUnsavedChanges && !isLive && (
@@ -787,12 +802,16 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
               value={aiNote}
               onChange={(e) => setAiNote(e.target.value)}
             />
-            {selectedFeedbackIds.length > 0 && (
+            {selectedFeedbackIds.length > 0 ? (
               <Paper variant="outlined" sx={{ p: 1.25, bgcolor: "info.50", borderColor: "info.200" }}>
                 <Typography variant="body2" sx={{ fontSize: "0.8125rem" }}>
                   <strong>{selectedFeedbackIds.length}</strong> feedback item(s) will be sent as context for the AI to analyze.
                 </Typography>
               </Paper>
+            ) : (
+              <Alert severity="warning" role="status">
+                No linked feedback—AI will not receive specific user reports for this run.
+              </Alert>
             )}
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
               If the AI determines no changes are needed, it will explain why and clone the current prompt unchanged.

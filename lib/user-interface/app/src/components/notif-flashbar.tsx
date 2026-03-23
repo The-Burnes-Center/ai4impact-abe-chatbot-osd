@@ -10,17 +10,13 @@ export default function NotificationBar() {
   if (notifications.length === 0) return null;
 
   return (
-    <Stack
-      spacing={1}
-      sx={{ mb: 2 }}
-      role="status"
-      aria-live="polite"
-      aria-label="Notifications"
-    >
+    <Stack spacing={1} sx={{ mb: 2 }} aria-label="Notifications">
       {notifications.map((notif: any) => (
         <Alert
           key={notif.id}
           severity={notif.type === "error" ? "error" : notif.type === "success" ? "success" : "info"}
+          role={notif.type === "error" ? "alert" : "status"}
+          aria-live={notif.type === "error" ? "assertive" : "polite"}
           action={
             notif.dismissible ? (
               <IconButton

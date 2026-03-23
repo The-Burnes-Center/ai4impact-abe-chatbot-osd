@@ -1,5 +1,5 @@
-import { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useCallback, useContext, useEffect, useMemo, useState, type SyntheticEvent } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import {
   Box,
   Button,
@@ -122,11 +122,14 @@ function describeActivity(entry: ActivityLogEntry): {
 export default function FeedbackOpsPage() {
   useDocumentTitle("Feedback Manager");
   const { feedbackId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const appContext = useContext(AppContext);
   const { addNotification } = useNotifications();
 
   const [tab, setTab] = useState<TabValue>("queue");
-  const [loading, setLoading] = useState(false);
+  const [loadingFeedback, setLoadingFeedback] = useState(false);
+  const [loadingMeta, setLoadingMeta] = useState(false);
+  const [activityLogError, setActivityLogError] = useState<string | null>(null);
   const [filters, setFilters] = useState<InboxFilters>({
     feedbackKind: "",
     reviewStatus: "",
@@ -187,13 +190,19 @@ export default function FeedbackOpsPage() {
     try {
       const result = await apiClient.userFeedback.getActivityLog();
       setActivityLog(result.entries || []);
-    } catch {
-      // Activity log is non-critical
+      setActivityLogError(null);
+    } catch (error: unknown) {
+      setActivityLog([]);
+      const message =
+        error instanceof Error ? error.message : "Could not load activity log.";
+      setActivityLogError(message);
+      addNotification("error", message);
     }
-  }, [apiClient]);
+  }, [apiClient, addNotification]);
 
   const refreshAll = useCallback(async () => {
-    setLoading(true);
+    setLoadingFeedback(true);
+    setLoadingMeta(true);
     try {
       await Promise.all([loadFeedback(), loadMonitoring(), loadPrompts(), loadActivityLog()]);
       if (feedbackId) {
@@ -202,7 +211,8 @@ export default function FeedbackOpsPage() {
     } catch (error: unknown) {
       addNotification("error", error instanceof Error ? error.message : "Failed to refresh Feedback Manager.");
     } finally {
-      setLoading(false);
+      setLoadingFeedback(false);
+      setLoadingMeta(false);
     }
   }, [addNotification, feedbackId, loadFeedback, loadFeedbackDetail, loadMonitoring, loadPrompts, loadActivityLog]);
 
@@ -211,16 +221,16 @@ export default function FeedbackOpsPage() {
     if (!apiClient) {
       return undefined;
     }
-    setLoading(true);
+    setLoadingMeta(true);
     Promise.all([loadMonitoring(), loadPrompts(), loadActivityLog()])
       .catch((error: unknown) => {
         if (isActive) {
-          addNotification("error", error instanceof Error ? error.message : "Failed to load Feedback Manager.");
+          addNotification("error", error instanceof Error ? error.message : "Failed to load monitoring or prompts.");
         }
       })
       .finally(() => {
         if (isActive) {
-          setLoading(false);
+          setLoadingMeta(false);
         }
       });
     return () => {
@@ -233,7 +243,7 @@ export default function FeedbackOpsPage() {
     if (!apiClient) {
       return undefined;
     }
-    setLoading(true);
+    setLoadingFeedback(true);
     loadFeedback()
       .catch((error: unknown) => {
         if (isActive) {
@@ -242,7 +252,7 @@ export default function FeedbackOpsPage() {
       })
       .finally(() => {
         if (isActive) {
-          setLoading(false);
+          setLoadingFeedback(false);
         }
       });
     return () => {
@@ -251,28 +261,73 @@ export default function FeedbackOpsPage() {
   }, [addNotification, apiClient, loadFeedback]);
 
   useEffect(() => {
+    const paramTab = searchParams.get("tab");
+    if (!feedbackId && (paramTab === "trends" || paramTab === "prompts" || paramTab === "queue")) {
+      setTab(paramTab);
+    }
+  }, [feedbackId, searchParams]);
+
+  useEffect(() => {
     if (feedbackId) {
       setTab("queue");
+      setSelectedFeedbackIds([feedbackId]);
       loadFeedbackDetail(feedbackId);
     } else {
       setSelectedFeedback(null);
+      setSelectedFeedbackIds([]);
     }
   }, [feedbackId, loadFeedbackDetail]);
+
+  const handleTabChange = useCallback(
+    (_: SyntheticEvent, value: TabValue) => {
+      setTab(value);
+      if (!feedbackId) {
+        setSearchParams(
+          (prev) => {
+            const next = new URLSearchParams(prev);
+            if (value === "queue") {
+              next.delete("tab");
+            } else {
+              next.set("tab", value);
+            }
+            return next;
+          },
+          { replace: true }
+        );
+      }
+    },
+    [feedbackId, setSearchParams]
+  );
 
   const handleFeedbackUpdated = useCallback(async () => {
     await Promise.all([loadFeedback(), loadMonitoring(), loadActivityLog()]);
   }, [loadActivityLog, loadFeedback, loadMonitoring]);
 
-  const handleCreateDraftFromCluster = useCallback((cluster: ClusterSummary) => {
-    if (cluster.sampleFeedbackId) {
-      setSelectedFeedbackIds([cluster.sampleFeedbackId]);
-    }
-    setTab("prompts");
-  }, []);
+  const handleCreateDraftFromCluster = useCallback(
+    (cluster: ClusterSummary) => {
+      if (cluster.sampleFeedbackId) {
+        setSelectedFeedbackIds([cluster.sampleFeedbackId]);
+      }
+      setTab("prompts");
+      if (!feedbackId) {
+        setSearchParams(
+          (prev) => {
+            const next = new URLSearchParams(prev);
+            next.set("tab", "prompts");
+            return next;
+          },
+          { replace: true }
+        );
+      }
+    },
+    [feedbackId, setSearchParams]
+  );
 
   const pendingCount = feedbackItems.filter(
-    (i) => i.feedbackKind !== "helpful" && i.disposition === "pending"
+    (i) => i.feedbackKind !== "helpful" && i.reviewStatus !== "actioned"
   ).length;
+
+  const anyLoading = loadingFeedback || loadingMeta;
 
   return (
     <AdminPageLayout
@@ -295,26 +350,35 @@ export default function FeedbackOpsPage() {
             )}
           </Stack>
           <Stack direction="row" gap={0.5} alignItems="center">
-            {activityLog.length > 0 && (
-              <Tooltip title="View recent activity">
+            <Tooltip
+              title={
+                activityLogError
+                  ? "Activity log failed to load — open for details"
+                  : activityLog.length > 0
+                    ? "View recent activity"
+                    : "No recent activity yet"
+              }
+            >
+              <span>
                 <IconButton
                   size="small"
                   onClick={() => setActivityDrawerOpen(true)}
                   aria-label="View recent activity log"
+                  color={activityLogError ? "warning" : "default"}
                   sx={{ "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 } }}
                 >
                   <TimelineIcon fontSize="small" />
                 </IconButton>
-              </Tooltip>
-            )}
+              </span>
+            </Tooltip>
             <Button
               size="small"
               startIcon={<RefreshIcon />}
               onClick={refreshAll}
-              disabled={loading}
+              disabled={anyLoading}
               sx={{ fontSize: "0.8125rem" }}
             >
-              {loading ? "Refreshing..." : "Refresh"}
+              {anyLoading ? "Refreshing..." : "Refresh"}
             </Button>
           </Stack>
         </Stack>
@@ -323,7 +387,7 @@ export default function FeedbackOpsPage() {
         <Paper variant="outlined" sx={{ borderRadius: 1 }}>
           <Tabs
             value={tab}
-            onChange={(_, v) => setTab(v)}
+            onChange={handleTabChange}
             variant="scrollable"
             scrollButtons="auto"
             aria-label="Feedback Manager sections"
@@ -359,7 +423,8 @@ export default function FeedbackOpsPage() {
             feedbackItems={feedbackItems}
             selectedFeedback={selectedFeedback}
             filters={filters}
-            loading={loading}
+            loadingFeedback={loadingFeedback}
+            loadingMeta={loadingMeta}
             apiClient={apiClient}
             onFiltersChange={setFilters}
             onRefresh={refreshAll}
@@ -373,14 +438,14 @@ export default function FeedbackOpsPage() {
         {tab === "trends" && (
           <TrendsView
             monitoring={monitoring}
-            loading={loading}
+            loadingMeta={loadingMeta}
             onCreateDraftFromCluster={handleCreateDraftFromCluster}
           />
         )}
         {tab === "prompts" && (
           <PromptWorkspace
             promptData={promptData}
-            loading={loading}
+            loadingMeta={loadingMeta}
             apiClient={apiClient}
             onRefresh={async () => {
               await loadPrompts();
@@ -396,7 +461,13 @@ export default function FeedbackOpsPage() {
         anchor="right"
         open={activityDrawerOpen}
         onClose={() => setActivityDrawerOpen(false)}
-        PaperProps={{ sx: { width: { xs: "100%", sm: 400 }, p: 3 } }}
+        PaperProps={{
+          sx: { width: { xs: "100%", sm: 400 }, p: 3 },
+          role: "dialog",
+          "aria-modal": true,
+          "aria-label": "Recent activity",
+        }}
+        slotProps={{ backdrop: { "aria-hidden": true } }}
       >
         <Stack spacing={2}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -411,6 +482,11 @@ export default function FeedbackOpsPage() {
               <CloseIcon fontSize="small" />
             </IconButton>
           </Stack>
+          {activityLogError && (
+            <Typography variant="body2" color="error" role="alert" sx={{ fontSize: "0.875rem" }}>
+              {activityLogError}
+            </Typography>
+          )}
           {activityLog.slice(0, 30).map((entry, i) => {
             const activity = describeActivity(entry);
             return (
@@ -458,7 +534,7 @@ export default function FeedbackOpsPage() {
               </Paper>
             );
           })}
-          {activityLog.length === 0 && (
+          {activityLog.length === 0 && !activityLogError && (
             <Typography variant="body2" color="text.secondary">
               No recent activity.
             </Typography>

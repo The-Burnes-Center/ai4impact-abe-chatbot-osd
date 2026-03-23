@@ -27,7 +27,7 @@ import {
 
 interface TrendsViewProps {
   monitoring: MonitoringData | null;
-  loading: boolean;
+  loadingMeta: boolean;
   onCreateDraftFromCluster?: (cluster: ClusterSummary) => void;
 }
 
@@ -165,10 +165,10 @@ function BreakdownTable({
   );
 }
 
-export default function TrendsView({ monitoring, loading, onCreateDraftFromCluster }: TrendsViewProps) {
+export default function TrendsView({ monitoring, loadingMeta, onCreateDraftFromCluster }: TrendsViewProps) {
   const navigate = useNavigate();
 
-  if (loading && !monitoring) return <TrendsSkeleton />;
+  if (loadingMeta && !monitoring) return <TrendsSkeleton />;
   if (!monitoring) return <EmptyTrends />;
 
   const overview = monitoring.feedbackOverview;
@@ -190,16 +190,23 @@ export default function TrendsView({ monitoring, loading, onCreateDraftFromClust
             <Chip size="small" label={clusters.length} variant="outlined" sx={{ height: 22, fontSize: "0.75rem" }} />
           </Stack>
           <Grid container spacing={2}>
-            {clusters.map((cluster) => (
+            {clusters.map((cluster) => {
+              const canOpenExample = Boolean(cluster.sampleFeedbackId);
+              return (
               <Grid item xs={12} md={6} lg={4} key={cluster.clusterId}>
                 <Paper
                   variant="outlined"
-                  tabIndex={0}
-                  role="button"
+                  tabIndex={canOpenExample ? 0 : -1}
+                  role={canOpenExample ? "button" : "group"}
                   aria-label={`Pattern: ${label(cluster.rootCause || "Unclassified")} - ${cluster.count} reports`}
-                  onClick={() => navigate(`/admin/user-feedback/${cluster.sampleFeedbackId}`)}
+                  aria-disabled={!canOpenExample}
+                  onClick={() => {
+                    if (cluster.sampleFeedbackId) {
+                      navigate(`/admin/user-feedback/${cluster.sampleFeedbackId}`);
+                    }
+                  }}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
+                    if ((e.key === "Enter" || e.key === " ") && cluster.sampleFeedbackId) {
                       e.preventDefault();
                       navigate(`/admin/user-feedback/${cluster.sampleFeedbackId}`);
                     }
@@ -209,10 +216,12 @@ export default function TrendsView({ monitoring, loading, onCreateDraftFromClust
                     height: "100%",
                     display: "flex",
                     flexDirection: "column",
-                    cursor: "pointer",
+                    cursor: canOpenExample ? "pointer" : "default",
                     transition: "box-shadow 0.15s, border-color 0.15s",
-                    "&:hover": { boxShadow: 3, borderColor: "primary.main" },
-                    "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 },
+                    ...(canOpenExample && {
+                      "&:hover": { boxShadow: 3, borderColor: "primary.main" },
+                      "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 },
+                    }),
                   }}
                 >
                   <Stack spacing={1.5} sx={{ flex: 1 }}>
@@ -259,8 +268,11 @@ export default function TrendsView({ monitoring, loading, onCreateDraftFromClust
                           size="small"
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`/admin/user-feedback/${cluster.sampleFeedbackId}`);
+                            if (cluster.sampleFeedbackId) {
+                              navigate(`/admin/user-feedback/${cluster.sampleFeedbackId}`);
+                            }
                           }}
+                          disabled={!cluster.sampleFeedbackId}
                           sx={{ fontSize: "0.75rem", textTransform: "none" }}
                         >
                           View example
@@ -270,7 +282,8 @@ export default function TrendsView({ monitoring, loading, onCreateDraftFromClust
                   </Stack>
                 </Paper>
               </Grid>
-            ))}
+            );
+            })}
           </Grid>
         </Box>
       )}

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 import {
   Box,
   Button,
@@ -14,6 +14,7 @@ import {
   IconButton,
   InputAdornment,
   LinearProgress,
+  Link,
   MenuItem,
   Paper,
   Skeleton,
@@ -79,11 +80,18 @@ function summarizeSources(item: FeedbackItem): { primary: string; secondary: str
   };
 }
 
+function itemNeedsTriage(item: FeedbackItem): boolean {
+  if (item.feedbackKind === "helpful") return false;
+  if (item.reviewStatus === "actioned" || item.reviewStatus === "dismissed") return false;
+  return true;
+}
+
 interface InboxViewProps {
   feedbackItems: FeedbackItem[];
   selectedFeedback: FeedbackDetail | null;
   filters: InboxFilters;
-  loading: boolean;
+  loadingFeedback: boolean;
+  loadingMeta: boolean;
   apiClient: ApiClient | null;
   onFiltersChange: (filters: InboxFilters) => void;
   onRefresh: () => Promise<void>;
@@ -136,13 +144,15 @@ export default function InboxView(props: InboxViewProps) {
     feedbackItems,
     selectedFeedback,
     filters,
-    loading,
+    loadingFeedback,
+    loadingMeta,
     apiClient,
     onFiltersChange,
     onRefresh,
     onSelectFeedback,
     onLoadFeedbackDetail,
     onFeedbackUpdated,
+    onSelectedFeedbackIdsChange,
   } = props;
 
   const navigate = useNavigate();
@@ -166,6 +176,10 @@ export default function InboxView(props: InboxViewProps) {
     question: string;
   }>({ open: false, feedbackId: "", question: "" });
   const [filtersExpanded, setFiltersExpanded] = useState(true);
+  const [searchDraft, setSearchDraft] = useState(filters.search);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
 
   const pageSize = 25;
   const totalPages = Math.ceil(feedbackItems.length / pageSize);
@@ -209,6 +223,25 @@ export default function InboxView(props: InboxViewProps) {
     });
   }, [feedbackItems.length]);
 
+  useEffect(() => {
+    setSearchDraft(filters.search);
+  }, [filters.search]);
+
+  useEffect(() => {
+    if (searchDraft === filtersRef.current.search) {
+      return undefined;
+    }
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      searchDebounceRef.current = null;
+      onFiltersChange({ ...filtersRef.current, search: searchDraft });
+      setPage(0);
+    }, 300);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [searchDraft, onFiltersChange]);
+
   const updateFilter = useCallback(
     (key: keyof InboxFilters, value: string) => {
       const nextFilters = { ...filters, [key]: value };
@@ -245,17 +278,22 @@ export default function InboxView(props: InboxViewProps) {
     [filters]
   );
 
-  const handleOpenDetail = useCallback(async (id: string) => {
-    await onLoadFeedbackDetail(id);
-    setDetailOpen(true);
-    navigate(`/admin/user-feedback/${id}`, { replace: true });
-  }, [onLoadFeedbackDetail, navigate]);
+  const handleOpenDetail = useCallback(
+    async (id: string) => {
+      await onLoadFeedbackDetail(id);
+      setDetailOpen(true);
+      onSelectedFeedbackIdsChange([id]);
+      navigate(`/admin/user-feedback/${id}`, { replace: true });
+    },
+    [onLoadFeedbackDetail, onSelectedFeedbackIdsChange, navigate]
+  );
 
   const handleCloseDetail = useCallback(() => {
     setDetailOpen(false);
     onSelectFeedback(null);
+    onSelectedFeedbackIdsChange([]);
     navigate("/admin/user-feedback", { replace: true });
-  }, [onSelectFeedback, navigate]);
+  }, [onSelectFeedback, onSelectedFeedbackIdsChange, navigate]);
 
   const handleSaveReview = async () => {
     if (!apiClient || !selectedFeedback?.feedback?.FeedbackId) return;
@@ -287,7 +325,7 @@ export default function InboxView(props: InboxViewProps) {
       (i) => i.feedbackId === selectedFeedback?.feedback?.FeedbackId
     );
     const nextUnreviewed = feedbackItems.find(
-      (item, idx) => idx > currentIndex && item.feedbackKind !== "helpful" && item.reviewStatus === "new"
+      (item, idx) => idx > currentIndex && itemNeedsTriage(item)
     );
     if (nextUnreviewed) {
       await handleOpenDetail(nextUnreviewed.feedbackId);
@@ -363,15 +401,26 @@ export default function InboxView(props: InboxViewProps) {
     }
   }, [detailOpen, selectedFeedback]);
 
-  if (loading && feedbackItems.length === 0) {
+  if (loadingFeedback && feedbackItems.length === 0) {
     return <InboxSkeleton />;
   }
+
+  const listBusy = loadingFeedback || loadingMeta || actionLoading;
 
   const isPositive = (item: FeedbackItem) => item.feedbackKind === "helpful";
 
   return (
     <Stack spacing={1.5}>
-      {(loading || actionLoading) && <LinearProgress sx={{ borderRadius: 1 }} />}
+      {listBusy && (
+        <Box
+          role="progressbar"
+          aria-label="Loading feedback queue"
+          aria-busy="true"
+          sx={{ borderRadius: 1 }}
+        >
+          <LinearProgress sx={{ borderRadius: 1 }} />
+        </Box>
+      )}
 
       <Paper variant="outlined" sx={{ p: 1.5 }}>
         <Stack spacing={1.25}>
@@ -419,8 +468,8 @@ export default function InboxView(props: InboxViewProps) {
             <TextField
               size="small"
               label="Search queue"
-              value={filters.search}
-              onChange={(e) => updateFilter("search", e.target.value)}
+              value={searchDraft}
+              onChange={(e) => setSearchDraft(e.target.value)}
               sx={{ flex: 1, minWidth: { xs: "100%", sm: 200 } }}
               inputProps={{ "aria-label": "Search the feedback queue" }}
               InputProps={{
@@ -434,7 +483,7 @@ export default function InboxView(props: InboxViewProps) {
             <Tooltip title="Refresh queue and analytics">
               <IconButton
                 onClick={onRefresh}
-                disabled={loading}
+                disabled={listBusy}
                 size="small"
                 aria-label="Refresh"
                 sx={{ "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 } }}
@@ -476,6 +525,30 @@ export default function InboxView(props: InboxViewProps) {
                   <MenuItem value="actioned">Resolved</MenuItem>
                   <MenuItem value="dismissed">Dismissed</MenuItem>
                 </TextField>
+                <TextField
+                  size="small"
+                  label="Issue tag"
+                  value={filters.issueTag}
+                  onChange={(e) => updateFilter("issueTag", e.target.value)}
+                  sx={{ minWidth: 160 }}
+                  inputProps={{ "aria-label": "Filter by issue tag" }}
+                />
+                <TextField
+                  size="small"
+                  label="Prompt version ID"
+                  value={filters.promptVersionId}
+                  onChange={(e) => updateFilter("promptVersionId", e.target.value)}
+                  sx={{ minWidth: 180 }}
+                  inputProps={{ "aria-label": "Filter by prompt version id" }}
+                />
+                <TextField
+                  size="small"
+                  label="Source title"
+                  value={filters.sourceTitle}
+                  onChange={(e) => updateFilter("sourceTitle", e.target.value)}
+                  sx={{ minWidth: 200, flex: 1 }}
+                  inputProps={{ "aria-label": "Filter by source document title" }}
+                />
               </Stack>
 
               <Stack direction={{ xs: "column", lg: "row" }} gap={1} alignItems={{ lg: "flex-start" }}>
@@ -567,6 +640,7 @@ export default function InboxView(props: InboxViewProps) {
                   }
                 }}
                 aria-selected={isActive}
+                aria-current={isActive ? "true" : undefined}
                 sx={{
                   cursor: "pointer",
                   borderLeft: "3px solid",
@@ -807,6 +881,7 @@ export default function InboxView(props: InboxViewProps) {
         onClose={() => setConfirmDialog({ open: false, item: null, action: "test_library" })}
         maxWidth="sm"
         fullWidth
+        disableRestoreFocus={false}
       >
         <DialogTitle sx={{ fontSize: "1rem", fontWeight: 600 }}>
           Add to test library?
@@ -856,10 +931,14 @@ export default function InboxView(props: InboxViewProps) {
         anchor="right"
         open={detailOpen && selectedFeedback != null}
         onClose={handleCloseDetail}
+        slotProps={{
+          backdrop: { "aria-hidden": true },
+        }}
         PaperProps={{
           sx: { width: { xs: "100%", md: 520 }, p: 0 },
-          role: "complementary",
-          "aria-label": "Feedback detail panel",
+          role: "dialog",
+          "aria-modal": true,
+          "aria-label": "Feedback detail",
         }}
       >
         {selectedFeedback && (
@@ -1025,6 +1104,28 @@ export default function InboxView(props: InboxViewProps) {
                 <TextField
                   fullWidth
                   size="small"
+                  label="Owner"
+                  value={owner}
+                  onChange={(e) => setOwner(e.target.value)}
+                  inputProps={{ "aria-label": "Review owner" }}
+                  helperText="Who is handling this item"
+                  FormHelperTextProps={{ sx: { fontSize: "0.7rem", m: 0, mt: 0.5 } }}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Resolution note"
+                  multiline
+                  minRows={2}
+                  value={resolutionNote}
+                  onChange={(e) => setResolutionNote(e.target.value)}
+                  inputProps={{ "aria-label": "Resolution note" }}
+                  helperText="Summary of what was done or decided"
+                  FormHelperTextProps={{ sx: { fontSize: "0.7rem", m: 0, mt: 0.5 } }}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
                   label="Internal notes"
                   multiline
                   minRows={2}
@@ -1038,6 +1139,16 @@ export default function InboxView(props: InboxViewProps) {
                   Submitted {formatDate(selectedFeedback.feedback?.CreatedAt)}
                   {selectedFeedback.feedback?.PromptVersionId && ` · Prompt: ${selectedFeedback.feedback.PromptVersionId}`}
                 </Typography>
+                {selectedFeedback.trace?.SessionId && (
+                  <Link
+                    component={RouterLink}
+                    to={`/chatbot/playground/${selectedFeedback.trace.SessionId}`}
+                    variant="body2"
+                    sx={{ fontSize: "0.8125rem" }}
+                  >
+                    Open chat session in Playground
+                  </Link>
+                )}
               </Stack>
             </Box>
 
@@ -1130,6 +1241,7 @@ export default function InboxView(props: InboxViewProps) {
         onClose={() => setDeleteDialog({ open: false, feedbackId: "", question: "" })}
         maxWidth="xs"
         fullWidth
+        disableRestoreFocus={false}
       >
         <DialogTitle sx={{ fontSize: "1rem", fontWeight: 600 }}>
           Delete feedback?
