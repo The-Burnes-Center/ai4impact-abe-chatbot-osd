@@ -3,7 +3,7 @@ Pydantic models for generic Excel index query Lambda.
 """
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class QueryIndexRequest(BaseModel):
@@ -17,6 +17,7 @@ class QueryIndexRequest(BaseModel):
     count_only: bool = False
     count_unique: Optional[str] = None
     group_by: Optional[str] = None
+    group_by_value_max: Optional[str] = None
     distinct_values: Optional[str] = None
     min_value: Optional[str] = None
     max_value: Optional[str] = None
@@ -26,6 +27,12 @@ class QueryIndexRequest(BaseModel):
     limit: int = Field(default=100, ge=1, le=500)
     offset: int = Field(default=0, ge=0)
     preview_rows: int = Field(default=10, ge=1, le=50)
+
+    @model_validator(mode="after")
+    def group_max_requires_group(self):
+        if self.group_by_value_max and not self.group_by:
+            raise ValueError("group_by_value_max requires group_by")
+        return self
 
 
 class StatusResponse(BaseModel):

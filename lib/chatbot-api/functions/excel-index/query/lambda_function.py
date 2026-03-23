@@ -46,6 +46,7 @@ def lambda_handler(event, context):
                 count_only=req.count_only,
                 count_unique=req.count_unique,
                 group_by=req.group_by,
+                group_by_value_max=req.group_by_value_max,
                 distinct_values=req.distinct_values,
                 min_value=req.min_value,
                 max_value=req.max_value,
@@ -203,6 +204,22 @@ def _project_row(row: dict[str, Any], columns: list[str] | None) -> dict[str, An
     return {k: v for k, v in row.items() if k in cols_set}
 
 
+def _cmp_for_max(cell: Any) -> tuple | None:
+    """Comparable tuple for max aggregation (dates, numbers, then string)."""
+    if cell is None:
+        return None
+    s = str(cell).strip()
+    if not s:
+        return None
+    d = _parse_date(s)
+    if d is not None:
+        return (0, d)
+    try:
+        return (0, float(cell))
+    except (ValueError, TypeError):
+        return (1, s.lower())
+
+
 def _do_query(
     pk: str,
     free_text: str | None = None,
@@ -212,6 +229,7 @@ def _do_query(
     count_only: bool = False,
     count_unique: str | None = None,
     group_by: str | None = None,
+    group_by_value_max: str | None = None,
     distinct_values: str | None = None,
     min_value: str | None = None,
     max_value: str | None = None,
@@ -222,11 +240,15 @@ def _do_query(
     offset: int = 0,
 ) -> dict:
     """Scan partition and filter in code. Scans all pages for accurate totals."""
+    if group_by_value_max and not group_by:
+        raise ValueError("group_by_value_max requires group_by")
     table = DDB.Table(TABLE_NAME)
     all_matched: list[dict] = []
     total = 0
     unique_vals: set[str] = set() if count_unique else None
     group_counts: dict[str, int] = {} if group_by else None
+    group_max_cmp: dict[str, tuple] = {}
+    group_max_display: dict[str, str] = {}
     distinct_set: set[str] = set() if distinct_values else None
     min_raw: Any = None
     max_raw: Any = None
@@ -246,6 +268,13 @@ def _do_query(
                 if group_counts is not None:
                     gval = str(row.get(group_by) or "").strip() or "(empty)"
                     group_counts[gval] = group_counts.get(gval, 0) + 1
+                    if group_by_value_max:
+                        cmp_v = _cmp_for_max(row.get(group_by_value_max))
+                        if cmp_v is not None:
+                            prev = group_max_cmp.get(gval)
+                            if prev is None or cmp_v > prev:
+                                group_max_cmp[gval] = cmp_v
+                                group_max_display[gval] = str(row.get(group_by_value_max) or "").strip()
                 if distinct_set is not None:
                     dval = str(row.get(distinct_values) or "").strip()
                     if dval:
@@ -298,6 +327,9 @@ def _do_query(
     if group_counts is not None:
         result["group_by"] = group_by
         result["groups"] = dict(sorted(group_counts.items()))
+    if group_by_value_max and group_max_display:
+        result["group_by_value_max_column"] = group_by_value_max
+        result["group_max_values"] = dict(sorted(group_max_display.items()))
     if distinct_set is not None:
         result["distinct_values"] = sorted(distinct_set)
         result["distinct_column"] = distinct_values
