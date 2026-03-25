@@ -94,11 +94,6 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes typingDot {
-  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
-  30% { opacity: 1; transform: translateY(-4px); }
-}
-
 .skeleton {
   background: linear-gradient(
     90deg,

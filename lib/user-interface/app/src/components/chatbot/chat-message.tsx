@@ -476,10 +476,11 @@ export default function ChatMessage(props: ChatMessageProps) {
               }}
             >
               {content.length === 0 && !props.streamingStatus?.active ? (
-                <div className={styles.typingIndicator} aria-label="ABE is typing" role="status">
-                  <span className={styles.typingDot} />
-                  <span className={styles.typingDot} />
-                  <span className={styles.typingDot} />
+                <div className={styles.statusIndicator} role="status" aria-live="polite">
+                  <CircularProgress size={14} sx={{ color: "primary.main" }} />
+                  <Typography variant="body2" sx={{ color: "text.secondary", fontStyle: "italic" }}>
+                    Thinking…
+                  </Typography>
                 </div>
               ) : null}
 
