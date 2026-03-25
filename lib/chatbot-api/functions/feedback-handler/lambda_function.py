@@ -842,6 +842,7 @@ def serialize_prompt_item(item: dict[str, Any]) -> dict[str, Any]:
         "createdBy": item.get("CreatedBy", ""),
         "publishedAt": item.get("PublishedAt", ""),
         "aiSummary": item.get("AiSummary", ""),
+        "isSystemDefault": item.get("VersionId") == "system-default",
     }
 
 
@@ -901,6 +902,8 @@ def create_prompt(event: dict[str, Any]):
 
 
 def update_prompt(event: dict[str, Any], version_id: str):
+    if version_id == "system-default":
+        return json_response(400, {"error": "validation_error", "message": "The system default prompt can only be changed via code deployment."})
     payload = parse_json_body(event)
     item = get_prompt_table_item(version_id)
     if not item or item.get("ItemType") != "PromptVersion":
@@ -947,6 +950,8 @@ def publish_prompt(event: dict[str, Any], version_id: str):
 
 
 def delete_prompt(event: dict[str, Any], version_id: str):
+    if version_id == "system-default":
+        return json_response(400, {"error": "validation_error", "message": "The system default prompt cannot be deleted."})
     item = get_prompt_table_item(version_id)
     if not item or item.get("ItemType") != "PromptVersion":
         return json_response(404, {"error": "not_found", "message": "Prompt version not found"})

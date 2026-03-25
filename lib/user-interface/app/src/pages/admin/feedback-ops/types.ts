@@ -90,6 +90,7 @@ export interface PromptItem {
   createdBy?: string;
   publishedAt?: string;
   aiSummary?: string;
+  isSystemDefault?: boolean;
 }
 
 export interface PromptData {

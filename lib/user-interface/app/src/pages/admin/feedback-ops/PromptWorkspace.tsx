@@ -184,15 +184,17 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
   const previewText = useMemo(() => renderPreview(draft.template), [draft.template]);
 
   const isLive = selectedPromptId === promptData.liveVersionId;
+  const isSystemDefault = currentPrompt?.isSystemDefault === true;
+  const isReadOnly = isLive || isSystemDefault;
 
   const handleSelectPrompt = useCallback((versionId: string) => {
-    if (hasUnsavedChanges && !isLive) {
+    if (hasUnsavedChanges && !isReadOnly) {
       setPendingPromptId(versionId);
       setShowUnsavedDialog(true);
     } else {
       setSelectedPromptId(versionId);
     }
-  }, [hasUnsavedChanges, isLive]);
+  }, [hasUnsavedChanges, isReadOnly]);
 
   const handleDiscardAndSwitch = () => {
     setShowUnsavedDialog(false);
@@ -346,6 +348,7 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
               <List dense disablePadding sx={{ maxHeight: 520, overflow: "auto" }}>
                 {promptData.items.map((item) => {
                   const isItemLive = item.versionId === promptData.liveVersionId;
+                  const isItemDefault = item.isSystemDefault === true;
                   return (
                     <ListItemButton
                       key={item.versionId}
@@ -362,10 +365,13 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
                       </ListItemIcon>
                       <ListItemText
                         primary={
-                          <Stack direction="row" gap={1} alignItems="center">
+                          <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
                             <Typography variant="body2" fontWeight={isItemLive ? 700 : 400} noWrap sx={{ fontSize: "0.8125rem" }}>
                               {item.title || item.versionId}
                             </Typography>
+                            {isItemDefault && (
+                              <Chip size="small" label="Code Default" variant="outlined" sx={{ height: 20, fontSize: "0.7rem" }} />
+                            )}
                             {isItemLive && (
                               <Chip size="small" label="LIVE" color="success" sx={{ height: 20, fontSize: "0.75rem" }} />
                             )}
@@ -373,7 +379,7 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
                         }
                         secondary={
                           <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
-                            {item.status} · {formatDate(item.updatedAt || item.createdAt)}
+                            {isItemDefault ? "read-only" : item.status} · {formatDate(item.updatedAt || item.createdAt)}
                           </Typography>
                         }
                       />
@@ -391,7 +397,12 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
             {/* Header: title + actions */}
             <Stack direction={{ xs: "column", md: "row" }} gap={1.5} justifyContent="space-between" alignItems={{ md: "flex-start" }}>
               <Stack sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="h6" sx={{ fontSize: "1.125rem" }}>{currentPrompt?.title || "Select a prompt"}</Typography>
+                <Stack direction="row" gap={1} alignItems="center">
+                  <Typography variant="h6" sx={{ fontSize: "1.125rem" }}>{currentPrompt?.title || "Select a prompt"}</Typography>
+                  {isSystemDefault && (
+                    <Chip size="small" label="Code Default" variant="outlined" sx={{ height: 22, fontSize: "0.75rem" }} />
+                  )}
+                </Stack>
 
                 {/* AI reasoning block */}
                 {currentPrompt?.aiSummary && (
@@ -447,19 +458,21 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
                 <Button
                   size="small"
                   onClick={handleSave}
-                  disabled={!selectedPromptId || isLive || actionLoading}
+                  disabled={!selectedPromptId || isReadOnly || actionLoading}
                 >
                   Save Draft
                 </Button>
-                <Button
-                  size="small"
-                  color="error"
-                  startIcon={<DeleteOutlineIcon />}
-                  onClick={() => setShowDeleteDialog(true)}
-                  disabled={!selectedPromptId || isLive || actionLoading}
-                >
-                  Delete
-                </Button>
+                {!isSystemDefault && (
+                  <Button
+                    size="small"
+                    color="error"
+                    startIcon={<DeleteOutlineIcon />}
+                    onClick={() => setShowDeleteDialog(true)}
+                    disabled={!selectedPromptId || isReadOnly || actionLoading}
+                  >
+                    Delete
+                  </Button>
+                )}
                 <Button
                   size="small"
                   variant="contained"
@@ -467,7 +480,7 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
                   onClick={() => setShowPublishDialog(true)}
                   disabled={!selectedPromptId || actionLoading}
                 >
-                  Publish
+                  {isSystemDefault && !isLive ? "Restore as Live" : "Publish"}
                 </Button>
               </Stack>
             </Stack>
@@ -483,7 +496,7 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
               </Alert>
             )}
 
-            {hasUnsavedChanges && !isLive && (
+            {hasUnsavedChanges && !isReadOnly && (
               <Stack direction="row" gap={0.75} alignItems="center" sx={{ mt: 1 }}>
                 <WarningAmberIcon sx={{ fontSize: 16, color: "warning.main" }} />
                 <Typography variant="caption" color="warning.dark" sx={{ fontSize: "0.75rem", fontWeight: 600 }}>
@@ -567,7 +580,7 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
               sx={{ mt: 1 }}
               value={draft.title}
               onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
-              disabled={isLive}
+              disabled={isReadOnly}
             />
             <TextField
               fullWidth
@@ -576,7 +589,7 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
               sx={{ mt: 1.5 }}
               value={draft.notes}
               onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
-              disabled={isLive}
+              disabled={isReadOnly}
             />
 
             {viewMode === "edit" && (
@@ -589,7 +602,7 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
                 sx={{ mt: 1.5 }}
                 value={draft.template}
                 onChange={(e) => setDraft((d) => ({ ...d, template: e.target.value }))}
-                disabled={isLive}
+                disabled={isReadOnly}
               />
             )}
 
