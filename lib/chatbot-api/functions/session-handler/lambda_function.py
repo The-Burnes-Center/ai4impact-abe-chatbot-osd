@@ -177,6 +177,19 @@ def delete_user_sessions(user_id):
     return json_response(200, deleted)
 
 
+def update_context_summary(session_id, user_id, context_summary):
+    try:
+        table.update_item(
+            Key={"user_id": user_id, "session_id": session_id},
+            UpdateExpression="SET context_summary = :summary",
+            ExpressionAttributeValues={":summary": context_summary},
+        )
+        return json_response(200, {"updated": True})
+    except ClientError:
+        logger.exception("DynamoDB error while saving context summary")
+        return json_response(500, "Failed to save context summary")
+
+
 def fetch_metadata(filter_key=None):
     try:
         s3 = boto3.client("s3")
@@ -211,6 +224,8 @@ def lambda_handler(event, context):
     title = data.get("title")
     filter_key = data.get("filter_key")
 
+    if operation == "update_context_summary":
+        return update_context_summary(session_id, user_id, data.get("context_summary", ""))
     if operation == "fetch_metadata":
         return fetch_metadata(filter_key)
     if operation == "add_session":

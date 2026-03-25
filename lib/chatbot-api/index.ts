@@ -153,6 +153,14 @@ export class ChatBotApi extends Construct {
       resources: [lambdaFunctions.faqClassifierFunction.functionArn],
     }));
 
+    lambdaFunctions.chatFunction.addEnvironment(
+      "CONTEXT_SUMMARIZER_FUNCTION", lambdaFunctions.contextSummarizerFunction.functionName)
+    lambdaFunctions.chatFunction.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['lambda:InvokeFunction'],
+      resources: [lambdaFunctions.contextSummarizerFunction.functionArn],
+    }));
+
     const feedbackAPIIntegration = new HttpLambdaIntegration('FeedbackAPIIntegration', lambdaFunctions.feedbackFunction);
     restBackend.restAPI.addRoutes({
       path: "/user-feedback",

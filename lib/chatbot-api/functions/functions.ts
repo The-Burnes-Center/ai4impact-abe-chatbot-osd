@@ -56,6 +56,7 @@ export class LambdaFunctionStack extends Construct {
   public readonly handleEvalResultsFunction: lambda.Function;
   public readonly metricsHandlerFunction: lambda.Function;
   public readonly faqClassifierFunction: lambda.Function;
+  public readonly contextSummarizerFunction: lambda.Function;
   public readonly excelIndexParserFunction: lambda.Function;
   public readonly excelIndexQueryFunction: lambda.Function;
   public readonly excelIndexApiFunction: lambda.Function;
@@ -569,6 +570,38 @@ faqClassifierFunction.addToRolePolicy(new iam.PolicyStatement({
 }));
 
 this.faqClassifierFunction = faqClassifierFunction;
+
+const contextSummarizerFunction = new lambda.Function(scope, 'ContextSummarizerFunction', {
+  ...LAMBDA_DEFAULTS,
+  runtime: lambda.Runtime.PYTHON_3_12,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'context-summarizer'), {
+    bundling: {
+      image: lambda.Runtime.PYTHON_3_12.bundlingImage,
+      platform: 'linux/amd64',
+      command: [
+        'bash', '-c',
+        'pip install --platform manylinux2014_aarch64 --implementation cp --python-version 3.12 --only-binary=:all: -r requirements.txt -t /asset-output && cp -au . /asset-output',
+      ],
+    },
+  }),
+  handler: 'lambda_function.lambda_handler',
+  layers: [pythonCommonLayer],
+  environment: {
+    "FAST_MODEL_ID": process.env.FAST_MODEL_ID || "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+  },
+  timeout: cdk.Duration.seconds(60),
+});
+
+contextSummarizerFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['bedrock:InvokeModel'],
+  resources: [
+    `arn:aws:bedrock:*::foundation-model/anthropic.*`,
+    `arn:aws:bedrock:*:${cdk.Stack.of(this).account}:inference-profile/*`,
+  ],
+}));
+
+this.contextSummarizerFunction = contextSummarizerFunction;
 
 // Generic Excel Index: one parser, one query, one API Lambda for all indexes
 const excelIndexParserFunction = new lambda.Function(scope, 'ExcelIndexParserFunction', {
