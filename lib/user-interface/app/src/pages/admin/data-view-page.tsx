@@ -12,11 +12,13 @@ import { useState, useEffect, useContext } from "react";
 import { useDocumentTitle } from "../../common/hooks/use-document-title";
 import DocumentsTab from "./documents-tab";
 import DataIndexesTab from "./data-indexes-tab";
+import AutomationTab from "./automation-tab";
 import { ApiClient } from "../../common/api-client/api-client";
 import { AppContext } from "../../common/app-context";
 import { Utils } from "../../common/utils";
 import AdminPageLayout from "../../components/admin-page-layout";
 import StatusChip, { type StatusVariant } from "./status-chip";
+import type { SyncSchedule } from "../../common/api-client/sync-client";
 
 export default function DataPage() {
   useDocumentTitle("Data Management");
@@ -30,6 +32,7 @@ export default function DataPage() {
     completedAt: string | null;
   } | null>(null);
   const [showUnsyncedAlert, setShowUnsyncedAlert] = useState(false);
+  const [syncSchedule, setSyncSchedule] = useState<SyncSchedule | null>(null);
 
   const refreshSyncTime = async () => {
     try {
@@ -50,6 +53,7 @@ export default function DataPage() {
 
   useEffect(() => {
     refreshSyncTime();
+    apiClient.sync.getSyncSchedule().then(setSyncSchedule).catch(() => {});
   }, []);
 
   const kbChipVariant = (): StatusVariant => {
@@ -73,6 +77,23 @@ export default function DataPage() {
     return lastSyncTime || "";
   };
 
+  const autoSyncChipVariant = (): StatusVariant => {
+    if (!syncSchedule) return "empty";
+    if (syncSchedule.enabled) return "ready";
+    return "empty";
+  };
+
+  const autoSyncChipLabel = (): string => {
+    if (!syncSchedule) return "Loading";
+    if (syncSchedule.state === "NOT_FOUND") return "Not configured";
+    return syncSchedule.enabled ? "Scheduled" : "Disabled";
+  };
+
+  const autoSyncDetail = (): string => {
+    if (!syncSchedule) return "";
+    return syncSchedule.humanReadable ?? "";
+  };
+
   return (
     <AdminPageLayout
       title="Data Dashboard"
@@ -89,6 +110,12 @@ export default function DataPage() {
           detail={kbDetail()}
           chipVariant={kbChipVariant()}
           chipLabel={kbChipLabel()}
+        />
+        <StatusCard
+          title="Auto-Sync"
+          detail={autoSyncDetail()}
+          chipVariant={autoSyncChipVariant()}
+          chipLabel={autoSyncChipLabel()}
         />
       </Stack>
 
@@ -111,6 +138,7 @@ export default function DataPage() {
         >
           <Tab label="Documents" />
           <Tab label="Data Indexes" />
+          <Tab label="Automation" />
         </Tabs>
         <Box sx={{ pt: 2 }}>
           {activeTab === 0 && (
@@ -122,6 +150,7 @@ export default function DataPage() {
             />
           )}
           {activeTab === 1 && <DataIndexesTab />}
+          {activeTab === 2 && <AutomationTab />}
         </Box>
       </Box>
     </AdminPageLayout>

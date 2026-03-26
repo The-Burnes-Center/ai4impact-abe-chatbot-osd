@@ -9,6 +9,7 @@ export class S3BucketStack extends Construct {
   public readonly evalTestCasesBucket: s3.Bucket;
   public readonly ragasDependenciesBucket: s3.Bucket;
   public readonly contractIndexBucket: s3.Bucket;
+  public readonly dataStagingBucket: s3.Bucket;
 
   constructor(scope: Construct, id: string) {
     super(scope, id);
@@ -82,6 +83,19 @@ export class S3BucketStack extends Construct {
     });
 
     this.contractIndexBucket = new s3.Bucket(scope, 'ContractIndexBucket', {
+      versioned: false,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      enforceSSL: true,
+      cors: [{
+        allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.GET, s3.HttpMethods.HEAD],
+        allowedOrigins: ['*'],
+        allowedHeaders: ['*'],
+      }],
+    });
+
+    this.dataStagingBucket = new s3.Bucket(scope, 'DataStagingBucket', {
       versioned: false,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,

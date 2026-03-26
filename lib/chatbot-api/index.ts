@@ -103,6 +103,8 @@ export class ChatBotApi extends Construct {
         indexRegistryTable: tables.indexRegistryTable,
         testLibraryTable: tables.testLibraryTable,
         feedbackToTestLibraryQueue: tables.feedbackToTestLibraryQueue,
+        dataStagingBucket: buckets.dataStagingBucket,
+        syncHistoryTable: tables.syncHistoryTable,
       })
 
     const wsAuthorizer = new WebSocketLambdaAuthorizer('WebSocketAuthorizer', props.authentication.lambdaAuthorizer, {identitySource: ['route.request.querystring.Authorization']});
@@ -378,6 +380,55 @@ export class ChatBotApi extends Construct {
       path: "/admin/indexes/{indexId}",
       methods: [apigwv2.HttpMethod.DELETE, apigwv2.HttpMethod.PUT],
       integration: excelIndexApiIntegration,
+      authorizer: httpAuthorizer,
+    });
+
+    // ── Sync automation routes ──
+    const syncScheduleIntegration = new HttpLambdaIntegration('SyncScheduleIntegration', lambdaFunctions.syncScheduleFunction);
+    const syncOrchestratorIntegration = new HttpLambdaIntegration('SyncOrchestratorIntegration', lambdaFunctions.syncScheduleFunction);
+
+    restBackend.restAPI.addRoutes({
+      path: "/admin/sync-schedule",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/sync-schedule",
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.PUT],
+      integration: syncScheduleIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/sync-destinations",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/sync-destinations",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: syncScheduleIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/sync-history",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/sync-history",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: syncScheduleIntegration,
+      authorizer: httpAuthorizer,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/sync-now",
+      methods: [apigwv2.HttpMethod.OPTIONS],
+      integration: corsHandlerIntegration,
+    });
+    restBackend.restAPI.addRoutes({
+      path: "/admin/sync-now",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: syncOrchestratorIntegration,
       authorizer: httpAuthorizer,
     });
 

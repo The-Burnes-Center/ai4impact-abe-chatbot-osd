@@ -16,6 +16,7 @@ export class TableStack extends Construct {
   public readonly excelIndexDataTable: Table;
   public readonly indexRegistryTable: Table;
   public readonly testLibraryTable: Table;
+  public readonly syncHistoryTable: Table;
   public readonly feedbackToTestLibraryQueue: sqs.Queue;
   public readonly feedbackToTestLibraryDLQ: sqs.Queue;
 
@@ -235,6 +236,16 @@ export class TableStack extends Construct {
     });
 
     this.testLibraryTable = testLibraryTable;
+
+    const syncHistoryTable = new Table(scope, 'SyncHistoryTable', {
+      partitionKey: { name: 'pk', type: AttributeType.STRING },
+      sortKey: { name: 'sk', type: AttributeType.STRING },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      timeToLiveAttribute: 'expiresAt',
+    });
+    this.syncHistoryTable = syncHistoryTable;
 
     const feedbackToTestLibraryDLQ = new sqs.Queue(scope, 'FeedbackToTestLibraryDLQ', {
       retentionPeriod: cdk.Duration.days(14),

@@ -7,6 +7,7 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import { Table } from 'aws-cdk-lib/aws-dynamodb';
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as bedrock from "aws-cdk-lib/aws-bedrock";
+import * as scheduler from 'aws-cdk-lib/aws-scheduler';
 import { S3EventSource, SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import { StepFunctionsStack } from './step-functions/step-functions';
@@ -33,6 +34,8 @@ interface LambdaFunctionStackProps {
   readonly indexRegistryTable: Table;
   readonly testLibraryTable: Table;
   readonly feedbackToTestLibraryQueue: sqs.Queue;
+  readonly dataStagingBucket: s3.Bucket;
+  readonly syncHistoryTable: Table;
 }
 
 const LAMBDA_DEFAULTS: Partial<lambda.FunctionProps> = {
@@ -64,6 +67,8 @@ export class LambdaFunctionStack extends Construct {
   public readonly feedbackToTestLibraryEnqueueFunction: lambda.Function;
   public readonly feedbackToTestLibraryProcessFunction: lambda.Function;
   public readonly sourcePresignFunction: lambda.Function;
+  public readonly syncOrchestratorFunction: lambda.Function;
+  public readonly syncScheduleFunction: lambda.Function;
 
   constructor(scope: Construct, id: string, props: LambdaFunctionStackProps) {
     super(scope, id);
@@ -887,5 +892,130 @@ evalResultsAPIHandlerFunction.addToRolePolicy(
 );
 
 // Step Functions DescribeExecution / GetExecutionHistory granted in index.ts
+
+// ── Sync Orchestrator Lambda ──
+const syncOrchestratorFunction = new lambda.Function(scope, 'SyncOrchestratorFunction', {
+  ...LAMBDA_DEFAULTS,
+  runtime: lambda.Runtime.PYTHON_3_12,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'sync-orchestrator')),
+  handler: 'lambda_function.lambda_handler',
+  layers: [pythonCommonLayer],
+  environment: {
+    STAGING_BUCKET: props.dataStagingBucket.bucketName,
+    KB_BUCKET: props.knowledgeBucket.bucketName,
+    INDEX_BUCKET: props.contractIndexBucket.bucketName,
+    KB_ID: props.knowledgeBase.attrKnowledgeBaseId,
+    KB_DATA_SOURCE_ID: props.knowledgeBaseSource.attrDataSourceId,
+    SYNC_HISTORY_TABLE: props.syncHistoryTable.tableName,
+  },
+  timeout: cdk.Duration.minutes(5),
+  memorySize: 256,
+});
+syncOrchestratorFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['s3:ListBucket', 's3:GetObject', 's3:DeleteObject'],
+  resources: [props.dataStagingBucket.bucketArn, props.dataStagingBucket.bucketArn + '/*'],
+}));
+syncOrchestratorFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['s3:PutObject'],
+  resources: [props.knowledgeBucket.bucketArn + '/*', props.contractIndexBucket.bucketArn + '/*'],
+}));
+syncOrchestratorFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['bedrock:StartIngestionJob', 'bedrock:ListIngestionJobs'],
+  resources: [props.knowledgeBase.attrKnowledgeBaseArn],
+}));
+syncOrchestratorFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['dynamodb:PutItem'],
+  resources: [props.syncHistoryTable.tableArn],
+}));
+this.syncOrchestratorFunction = syncOrchestratorFunction;
+
+// ── EventBridge Scheduler for weekly sync ──
+const schedulerRole = new iam.Role(scope, 'SyncSchedulerRole', {
+  assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
+});
+schedulerRole.addToPolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['lambda:InvokeFunction'],
+  resources: [syncOrchestratorFunction.functionArn],
+}));
+
+const scheduleGroup = new scheduler.CfnScheduleGroup(scope, 'ABESyncScheduleGroup', {
+  name: `${cdk.Stack.of(scope).stackName}-SyncScheduleGroup`,
+});
+
+const syncSchedule = new scheduler.CfnSchedule(scope, 'WeeklySyncSchedule', {
+  name: `${cdk.Stack.of(scope).stackName}-WeeklySyncSchedule`,
+  groupName: scheduleGroup.name!,
+  scheduleExpression: 'cron(0 6 ? * SUN *)',
+  scheduleExpressionTimezone: 'UTC',
+  state: 'ENABLED',
+  flexibleTimeWindow: { mode: 'OFF' },
+  target: {
+    arn: syncOrchestratorFunction.functionArn,
+    roleArn: schedulerRole.roleArn,
+  },
+});
+syncSchedule.addDependency(scheduleGroup);
+
+// ── Sync Schedule API Lambda ──
+const syncScheduleFunction = new lambda.Function(scope, 'SyncScheduleFunction', {
+  ...LAMBDA_DEFAULTS,
+  runtime: lambda.Runtime.PYTHON_3_12,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'sync-schedule')),
+  handler: 'lambda_function.lambda_handler',
+  layers: [pythonCommonLayer],
+  environment: {
+    SCHEDULE_NAME: syncSchedule.name!,
+    SCHEDULE_GROUP: scheduleGroup.name!,
+    STAGING_BUCKET: props.dataStagingBucket.bucketName,
+    INDEX_REGISTRY_TABLE: props.indexRegistryTable.tableName,
+    SYNC_HISTORY_TABLE: props.syncHistoryTable.tableName,
+    ORCHESTRATOR_LAMBDA_ARN: syncOrchestratorFunction.functionArn,
+  },
+  timeout: cdk.Duration.seconds(30),
+});
+const scheduleArn = cdk.Fn.join('', [
+  'arn:aws:scheduler:',
+  cdk.Stack.of(scope).region,
+  ':',
+  cdk.Stack.of(scope).account,
+  ':schedule/',
+  scheduleGroup.name!,
+  '/',
+  syncSchedule.name!,
+]);
+syncScheduleFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['scheduler:GetSchedule', 'scheduler:UpdateSchedule'],
+  resources: [scheduleArn],
+}));
+syncScheduleFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['iam:PassRole'],
+  resources: [schedulerRole.roleArn],
+}));
+syncScheduleFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['dynamodb:Query', 'dynamodb:Scan'],
+  resources: [
+    props.syncHistoryTable.tableArn,
+    props.indexRegistryTable.tableArn,
+  ],
+}));
+syncScheduleFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['s3:ListBucket'],
+  resources: [props.dataStagingBucket.bucketArn],
+}));
+syncScheduleFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['lambda:InvokeFunction'],
+  resources: [syncOrchestratorFunction.functionArn],
+}));
+this.syncScheduleFunction = syncScheduleFunction;
 }
 }

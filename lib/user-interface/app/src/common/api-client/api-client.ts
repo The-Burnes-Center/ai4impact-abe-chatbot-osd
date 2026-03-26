@@ -5,6 +5,7 @@ import { UserFeedbackClient } from "./user-feedback-client";
 import { MetricClient } from "./metrics-client";
 import { EvaluationsClient } from "./evaluations-client";
 import { ExcelIndexClient } from "./excel-index-client";
+import { SyncClient } from "./sync-client";
 
 export class ApiClient {
 
@@ -15,6 +16,7 @@ export class ApiClient {
   private _metricClient: MetricClient | undefined;
   private _evaluationsClient: EvaluationsClient | undefined;
   private _excelIndexClient: ExcelIndexClient | undefined;
+  private _syncClient: SyncClient | undefined;
 
  
 
@@ -66,6 +68,13 @@ export class ApiClient {
       this._excelIndexClient = new ExcelIndexClient(this._appConfig);
     }
     return this._excelIndexClient;
+  }
+
+  public get sync() {
+    if (!this._syncClient) {
+      this._syncClient = new SyncClient(this._appConfig);
+    }
+    return this._syncClient;
   }
 
   constructor(protected _appConfig: AppConfig) {}
