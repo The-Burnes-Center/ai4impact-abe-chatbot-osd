@@ -322,8 +322,9 @@ export default function ChatMessage(props: ChatMessageProps) {
     return (props.message.metadata.Sources as any[]);
   }, [props.message.metadata?.Sources]);
 
-  const showSources = sourcesArray.length > 0;
-  const sourceGroups = useMemo(() => groupSources(sourcesArray), [sourcesArray]);
+  const citedSources = useMemo(() => sourcesArray.filter(s => s.cited === true), [sourcesArray]);
+  const showSources = citedSources.length > 0;
+  const sourceGroups = useMemo(() => groupSources(citedSources), [citedSources]);
 
   const scrollToChunk = useCallback((chunkIndex: number) => {
     const el = sourcesListRef.current?.querySelector(`[data-chunk-indices~="${chunkIndex}"]`) as HTMLElement | null;
@@ -752,14 +753,10 @@ export default function ChatMessage(props: ChatMessageProps) {
                                 </span>
                               )}
                               <div className={styles.sourceCardInfo}>
-                                {card.cited && <CitedIndicator />}
                                 {card.page != null && (
-                                  <>
-                                    {card.cited && <span className={styles.metaDivider}>·</span>}
-                                    <Typography variant="caption" sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
-                                      Page {card.page}
-                                    </Typography>
-                                  </>
+                                  <Typography variant="caption" sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
+                                    Page {card.page}
+                                  </Typography>
                                 )}
                               </div>
                             </div>
