@@ -72,7 +72,11 @@ function statusChipColor(
   return "default";
 }
 
-export default function AutomationTab() {
+interface AutomationTabProps {
+  onScheduleChange?: (schedule: SyncSchedule) => void;
+}
+
+export default function AutomationTab({ onScheduleChange }: AutomationTabProps) {
   const appContext = useContext(AppContext);
   const apiClient = useMemo(() => new ApiClient(appContext), [appContext]);
   const { addNotification } = useNotifications();
@@ -133,6 +137,7 @@ export default function AutomationTab() {
         true
       );
       setSchedule(updated);
+      onScheduleChange?.(updated);
       setEditOpen(false);
       addNotification("success", "Sync schedule updated");
     } catch (e) {

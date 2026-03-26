@@ -149,16 +149,28 @@ def handle_put_schedule(event):
 
 
 def handle_get_destinations(event):
+    """Registry items use pk=TOOLS and sk=<index_name> (see excel-index/parser/tool_registry.py)."""
     indexes = []
     try:
-        resp = registry_table.scan(
-            FilterExpression=Key("sk").eq("META"),
+        items = []
+        resp = registry_table.query(
+            KeyConditionExpression=Key("pk").eq("TOOLS"),
         )
-        for item in resp.get("Items", []):
+        items.extend(resp.get("Items", []))
+        while resp.get("LastEvaluatedKey"):
+            resp = registry_table.query(
+                KeyConditionExpression=Key("pk").eq("TOOLS"),
+                ExclusiveStartKey=resp["LastEvaluatedKey"],
+            )
+            items.extend(resp.get("Items", []))
+        for item in items:
+            idx_name = item.get("index_name") or item.get("sk", "")
+            if not idx_name:
+                continue
             indexes.append({
-                "indexName": item["pk"],
-                "displayName": item.get("display_name", item["pk"]),
-                "path": f"s3://{STAGING_BUCKET}/indexes/{item['pk']}/latest.xlsx",
+                "indexName": idx_name,
+                "displayName": item.get("display_name", idx_name),
+                "path": f"s3://{STAGING_BUCKET}/indexes/{idx_name}/latest.xlsx",
             })
     except Exception as e:
         logger.error("Error reading index registry: %s", e, exc_info=True)

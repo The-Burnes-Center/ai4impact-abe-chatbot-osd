@@ -150,7 +150,7 @@ export default function DataPage() {
             />
           )}
           {activeTab === 1 && <DataIndexesTab />}
-          {activeTab === 2 && <AutomationTab />}
+          {activeTab === 2 && <AutomationTab onScheduleChange={setSyncSchedule} />}
         </Box>
       </Box>
     </AdminPageLayout>
