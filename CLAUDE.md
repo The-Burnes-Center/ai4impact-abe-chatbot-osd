@@ -45,7 +45,8 @@ npx cdk deploy ABEStackNonProd -c alarmEmail=you@example.com  # With alerts
 2. Message → `getChatbotResponse` route → Chat Lambda ([index.mjs](lib/chatbot-api/functions/websocket-chat/index.mjs))
 3. Agentic loop: Claude calls tools → Lambda processes → Claude refines → repeat until done
 4. Available tools:
-   - `query_db` — Bedrock KB semantic search (PDFs, policies)
+   - `query_db` — Bedrock KB semantic search (PDFs, policies, CUGs)
+   - `retrieve_full_document` — Full-document retrieval from KB by filename (all chunks, no truncation)
    - `fetch_metadata` — S3 metadata.txt
    - `query_excel_index` — Structured DynamoDB queries (vendor/contract data)
 5. Response streamed back via WebSocket; UI renders incrementally

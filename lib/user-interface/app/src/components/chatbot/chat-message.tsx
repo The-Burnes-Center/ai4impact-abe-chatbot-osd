@@ -762,22 +762,6 @@ export default function ChatMessage(props: ChatMessageProps) {
                                   </>
                                 )}
                               </div>
-                              {(group.s3Key || card.uri) && (
-                                <button
-                                  type="button"
-                                  className={styles.sourceCardLink}
-                                  aria-label={`Open ${group.documentTitle}`}
-                                  onClick={() => {
-                                    if (group.s3Key && props.onOpenSource) {
-                                      props.onOpenSource(group.s3Key);
-                                    } else if (card.uri) {
-                                      window.open(card.uri, "_blank", "noopener,noreferrer");
-                                    }
-                                  }}
-                                >
-                                  <OpenInNewIcon sx={{ fontSize: 12 }} />
-                                </button>
-                              )}
                             </div>
                             {card.excerpt && (
                               <Typography variant="body2" className={styles.sourceCardExcerpt}>
