@@ -260,7 +260,7 @@ function groupSources(sources: SourceItem[]): SourceGroup[] {
 
     const cards: MergedCard[] = [];
     for (const items of pageMap.values()) {
-      const indices = items.map((i) => i.chunkIndex).filter((i): i is number => i != null);
+      const indices = [...new Set(items.map((i) => i.chunkIndex).filter((i): i is number => i != null))].sort((a, b) => a - b);
       const bestScore = items.reduce<number | null>((best, i) => {
         if (i.score == null) return best;
         return best == null || i.score > best ? i.score : best;

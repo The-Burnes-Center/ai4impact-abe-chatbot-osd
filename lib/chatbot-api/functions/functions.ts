@@ -432,6 +432,7 @@ metadataRetrievalFunction.addToRolePolicy(new iam.PolicyStatement({
 }));
 
 websocketAPIFunction.addEnvironment("METADATA_RETRIEVAL_FUNCTION", metadataRetrievalFunction.functionArn);
+websocketAPIFunction.addEnvironment("KNOWLEDGE_BUCKET", props.knowledgeBucket.bucketName);
 websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
   actions: [

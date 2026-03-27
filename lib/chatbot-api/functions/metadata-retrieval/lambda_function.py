@@ -30,7 +30,7 @@ def filter_metadata(metadata_content, category="memos"):
         return {}
 
 def lambda_handler(event, context):
-    filter_key = event.get('filter_key', 'memos')  # Default to 'memos' if no filter provided
+    filter_key = event.get('filter_key', None)
     try:
         response = s3.get_object(Bucket=BUCKET, Key='metadata.txt')
         metadata_content = response['Body'].read().decode('utf-8')
