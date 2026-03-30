@@ -180,6 +180,14 @@ function buildMarkdownComponents(sources: SourceItem[], onCitationClick?: (chunk
   return {
     p: wrapChildren("p"),
     li: wrapChildren("li"),
+    h1: wrapChildren("h1"),
+    h2: wrapChildren("h2"),
+    h3: wrapChildren("h3"),
+    h4: wrapChildren("h4"),
+    h5: wrapChildren("h5"),
+    h6: wrapChildren("h6"),
+    strong: wrapChildren("strong"),
+    em: wrapChildren("em"),
     td(props: any) {
       const { children, node, ...rest } = props;
       return (
