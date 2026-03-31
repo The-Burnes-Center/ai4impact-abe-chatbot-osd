@@ -39,6 +39,11 @@ export class OpenSearchStack extends Construct {
       type: 'encryption',
     });
 
+    // AllowFromPublic is required: Bedrock Knowledge Base accesses OpenSearch Serverless
+    // from AWS-managed infrastructure (not from a Lambda in this account). There is no
+    // VPC in this stack, and Bedrock does not support VPC endpoint-only AOSS access in
+    // this configuration. Data-plane access is controlled by the IAM data access policy
+    // below — only specific roles can read/write the collection.
     const networkPolicy = new opensearchserverless.CfnSecurityPolicy(scope, "OSSNetworkPolicy", {
       name: `${prefix}-oss-network-policy`,
       type: "network",
@@ -85,7 +90,7 @@ export class OpenSearchStack extends Construct {
               ],
             },
           ],
-          "Principal": [indexFunctionRole.roleArn, new iam.AccountPrincipal(stack.account).arn, knowledgeBaseRole.roleArn],
+          "Principal": [indexFunctionRole.roleArn, knowledgeBaseRole.roleArn],
         },
       ]),
     });
