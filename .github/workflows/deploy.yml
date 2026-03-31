@@ -50,6 +50,36 @@ jobs:
         npm test
     - name: Bootstrap AWS environment
       run: npx cdk bootstrap || true
+    - name: Wait for stack to reach stable state
+      run: |
+        STATUS=$(aws cloudformation describe-stacks --stack-name ABEStackNonProd --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+        echo "Current stack status: $STATUS"
+        case "$STATUS" in
+          *_IN_PROGRESS)
+            echo "Stack is in progress ($STATUS), waiting for it to stabilize..."
+            aws cloudformation wait stack-exists --stack-name ABEStackNonProd
+            # Wait for any in-progress operation to complete (up to 30 min)
+            timeout 1800 bash -c '
+              while true; do
+                S=$(aws cloudformation describe-stacks --stack-name ABEStackNonProd --query "Stacks[0].StackStatus" --output text)
+                echo "  status: $S"
+                case "$S" in *_IN_PROGRESS) sleep 15 ;; *) break ;; esac
+              done
+            '
+            FINAL=$(aws cloudformation describe-stacks --stack-name ABEStackNonProd --query "Stacks[0].StackStatus" --output text)
+            echo "Stack settled at: $FINAL"
+            # Fail the deploy if the previous operation ended in a failed state
+            case "$FINAL" in
+              *_FAILED|ROLLBACK_COMPLETE) echo "Stack is in a failed state: $FINAL"; exit 1 ;;
+            esac
+            ;;
+          DOES_NOT_EXIST)
+            echo "Stack does not exist yet, proceeding with fresh deploy."
+            ;;
+          *)
+            echo "Stack is stable ($STATUS), proceeding."
+            ;;
+        esac
     - name: Deploy CDK stack
       run: |
         ALARM_FLAG=""
