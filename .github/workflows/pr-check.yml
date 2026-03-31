@@ -48,6 +48,7 @@ jobs:
             lib/chatbot-api/functions/metadata-retrieval/test_metadata_cache.py \
             lib/authorization/websocket-api-authorizer/test_jwt_authorizer.py \
             lib/chatbot-api/functions/metadata-handler/test_metadata_handler.py \
+            lib/chatbot-api/functions/session-handler/test_session_handler.py \
             --cov --cov-report=term-missing --cov-report=xml:coverage-python.xml \
             -v
 
