@@ -11,7 +11,7 @@ export class S3BucketStack extends Construct {
   public readonly contractIndexBucket: s3.Bucket;
   public readonly dataStagingBucket: s3.Bucket;
 
-  constructor(scope: Construct, id: string) {
+  constructor(scope: Construct, id: string, allowedOrigin: string) {
     super(scope, id);
 
     // Resources use `scope` (not `this`) to preserve existing CloudFormation
@@ -25,7 +25,7 @@ export class S3BucketStack extends Construct {
       enforceSSL: true,
       cors: [{
         allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.POST, s3.HttpMethods.PUT, s3.HttpMethods.DELETE],
-        allowedOrigins: ['*'],
+        allowedOrigins: [allowedOrigin],
         allowedHeaders: ['*'],
       }],
     });
@@ -38,7 +38,7 @@ export class S3BucketStack extends Construct {
       enforceSSL: true,
       cors: [{
         allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.POST, s3.HttpMethods.PUT, s3.HttpMethods.DELETE],
-        allowedOrigins: ['*'],
+        allowedOrigins: [allowedOrigin],
         allowedHeaders: ['*'],
       }],
     });
@@ -51,7 +51,7 @@ export class S3BucketStack extends Construct {
       enforceSSL: true,
       cors: [{
         allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.POST, s3.HttpMethods.PUT, s3.HttpMethods.DELETE],
-        allowedOrigins: ['*'],
+        allowedOrigins: [allowedOrigin],
         allowedHeaders: ['*'],
       }],
     });
@@ -64,7 +64,7 @@ export class S3BucketStack extends Construct {
       enforceSSL: true,
       cors: [{
         allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.POST, s3.HttpMethods.PUT, s3.HttpMethods.DELETE],
-        allowedOrigins: ['*'],
+        allowedOrigins: [allowedOrigin],
         allowedHeaders: ['*'],
       }],
     });
@@ -77,7 +77,7 @@ export class S3BucketStack extends Construct {
       enforceSSL: true,
       cors: [{
         allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.POST, s3.HttpMethods.PUT, s3.HttpMethods.DELETE],
-        allowedOrigins: ['*'],
+        allowedOrigins: [allowedOrigin],
         allowedHeaders: ['*'],
       }],
     });
@@ -90,7 +90,7 @@ export class S3BucketStack extends Construct {
       enforceSSL: true,
       cors: [{
         allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.GET, s3.HttpMethods.HEAD],
-        allowedOrigins: ['*'],
+        allowedOrigins: [allowedOrigin],
         allowedHeaders: ['*'],
       }],
     });
@@ -103,7 +103,7 @@ export class S3BucketStack extends Construct {
       enforceSSL: true,
       cors: [{
         allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.GET, s3.HttpMethods.HEAD],
-        allowedOrigins: ['*'],
+        allowedOrigins: [allowedOrigin],
         allowedHeaders: ['*'],
       }],
     });

@@ -12,13 +12,21 @@ export class GenAiMvpStack extends cdk.Stack {
 
     const authentication = new AuthorizationStack(this, "Authorization");
     const alarmEmail = this.node.tryGetContext('alarmEmail') as string | undefined;
-    const chatbotAPI = new ChatBotApi(this, "ChatbotAPI", { authentication, alarmEmail });
+
+    // CloudFront is created inside UserInterface (after ChatBotApi), so we use a Lazy token
+    // to defer CORS origin resolution until CDK synth — by then the distribution domain is set.
+    const cfOriginRef = { value: '*' };
+    const allowedOrigin = cdk.Lazy.string({ produce: () => cfOriginRef.value });
+
+    const chatbotAPI = new ChatBotApi(this, "ChatbotAPI", { authentication, alarmEmail, allowedOrigin });
     const userInterface = new UserInterface(this, "UserInterface", {
       userPoolId: authentication.userPool.userPoolId,
       userPoolClientId: authentication.userPoolClient.userPoolClientId,
       cognitoDomain: cognitoDomainName,
       api: chatbotAPI,
     });
+    // Populate after construction — the Lazy producer reads this during app.synth()
+    cfOriginRef.value = `https://${userInterface.distribution.distributionDomainName}`;
 
     this.addNagSuppressions();
   }

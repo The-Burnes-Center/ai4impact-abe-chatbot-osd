@@ -21,6 +21,7 @@ import { MonitoringConstruct } from "./monitoring/monitoring";
 export interface ChatBotApiProps {
   readonly authentication: AuthorizationStack;
   readonly alarmEmail?: string;
+  readonly allowedOrigin: string;
 }
 
 export class ChatBotApi extends Construct {
@@ -37,13 +38,16 @@ export class ChatBotApi extends Construct {
     const corsHandler = new lambda.Function(this, 'OptionsHandler', {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'index.handler',
+      environment: {
+        ALLOWED_ORIGIN: props.allowedOrigin,
+      },
       code: lambda.Code.fromInline(`
         exports.handler = async () => ({
           statusCode: 200,
           headers: {
             "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
             "Access-Control-Allow-Methods": "OPTIONS,POST,GET,PUT,DELETE",
-            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Origin": process.env.ALLOWED_ORIGIN || "*",
             "Access-Control-Max-Age": "86400"
           },
           body: "",
@@ -65,13 +69,13 @@ export class ChatBotApi extends Construct {
     });
 
     const tables = new TableStack(this, "TableStack");
-    const buckets = new S3BucketStack(this, "BucketStack");
+    const buckets = new S3BucketStack(this, "BucketStack", props.allowedOrigin);
     
     const openSearch = new OpenSearchStack(this,"OpenSearchStack",{})
     const knowledgeBase = new KnowledgeBaseStack(this,"KnowledgeBaseStack",{ openSearch : openSearch,
       s3bucket : buckets.knowledgeBucket})
 
-    const restBackend = new RestBackendAPI(this, "RestBackend", {})
+    const restBackend = new RestBackendAPI(this, "RestBackend", { allowedOrigin: props.allowedOrigin })
     this.httpAPI = restBackend;
     const websocketBackend = new WebsocketBackendAPI(this, "WebsocketBackend", {})
     this.wsAPI = websocketBackend;

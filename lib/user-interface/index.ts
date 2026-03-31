@@ -23,6 +23,8 @@ export interface UserInterfaceProps {
 }
 
 export class UserInterface extends Construct {
+  public readonly distribution: cf.Distribution;
+
   constructor(scope: Construct, id: string, props: UserInterfaceProps) {
     super(scope, id);
 
@@ -47,10 +49,9 @@ export class UserInterface extends Construct {
     // Deploy either Private (only accessible within VPC) or Public facing website
     let apiEndpoint: string;
     let websocketEndpoint: string;
-    let distribution;
 
     const publicWebsite = new Website(this, "Website", { ...props, websiteBucket: websiteBucket });
-    distribution = publicWebsite.distribution
+    this.distribution = publicWebsite.distribution
 
 
 
@@ -62,8 +63,8 @@ export class UserInterface extends Construct {
         oauth: {
           domain: props.cognitoDomain.concat(`.auth.${cdk.Aws.REGION}.amazoncognito.com`),
           scope: ["aws.cognito.signin.user.admin","email", "openid", "profile"],
-          redirectSignIn: "https://" + distribution.distributionDomainName,
-          redirectSignOut: "https://" + distribution.distributionDomainName,
+          redirectSignIn: "https://" + this.distribution.distributionDomainName,
+          redirectSignOut: "https://" + this.distribution.distributionDomainName,
           responseType: "code"
         }
       },
@@ -114,7 +115,7 @@ export class UserInterface extends Construct {
       prune: false,
       sources: [asset, exportsAsset],
       destinationBucket: websiteBucket,
-      distribution: distribution
+      distribution: this.distribution
     });
 
 
