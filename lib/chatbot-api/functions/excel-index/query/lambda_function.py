@@ -255,11 +255,12 @@ def _do_query(
 
     scan_kw: dict[str, Any] = {
         "KeyConditionExpression": Key("pk").eq(pk),
-        "FilterExpression": Attr("sk").ne(SK_META),
     }
     while True:
         resp = table.query(**scan_kw)
         for item in resp.get("Items", []):
+            if item.get("sk") == SK_META:
+                continue
             row = _item_to_row(item)
             if _row_matches(row, free_text=free_text, filters=filters,
                             date_before=date_before, date_after=date_after):
