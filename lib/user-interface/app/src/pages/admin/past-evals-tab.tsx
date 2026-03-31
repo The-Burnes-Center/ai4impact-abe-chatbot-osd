@@ -37,7 +37,7 @@ import { useNavigate } from "react-router-dom";
 
 export default function PastEvalsTab() {
   const appContext = useContext(AppContext);
-  const apiClient = useMemo(() => new ApiClient(appContext), [appContext]);
+  const apiClient = useMemo(() => new ApiClient(appContext!), [appContext]);
   const [loading, setLoading] = useState(true);
   const [currentPageIndex, setCurrentPageIndex] = useState(1);
   const [pages, setPages] = useState<any[]>([]);

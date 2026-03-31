@@ -58,7 +58,7 @@ const adminLinkDefinitions: AdminLink[] = [
 
 export default function NavigationPanel() {
   const appContext = useContext(AppContext);
-  const apiClient = new ApiClient(appContext);
+  const apiClient = new ApiClient(appContext!);
   const navigate = useNavigate();
   const location = useLocation();
   const [sessions, setSessions] = useState<SessionItem[]>([]);

@@ -660,7 +660,7 @@ export default function MetricsPage() {
   const [error, setError] = useState<string | null>(null);
   const [tabIndex, setTabIndex] = useState(0);
   const appContext = useContext(AppContext);
-  const apiClient = new ApiClient(appContext);
+  const apiClient = new ApiClient(appContext!);
 
   const loadAllData = async () => {
     try {

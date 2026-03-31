@@ -76,7 +76,7 @@ export default function DataFileUpload({
   onUploadComplete,
 }: FileUploadTabProps) {
   const appContext = useContext(AppContext);
-  const apiClient = new ApiClient(appContext);
+  const apiClient = new ApiClient(appContext!);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [filesToUpload, setFilesToUpload] = useState<File[]>([]);

@@ -49,7 +49,7 @@ interface EvalStep {
 
 export default function NewEvalTab({ onComplete }: RunEvalTabProps) {
   const appContext = useContext(AppContext);
-  const apiClient = useMemo(() => new ApiClient(appContext), [appContext]);
+  const apiClient = useMemo(() => new ApiClient(appContext!), [appContext]);
   const { addNotification } = useNotifications();
 
   const [sourceType, setSourceType] = useState<SourceType>("upload");

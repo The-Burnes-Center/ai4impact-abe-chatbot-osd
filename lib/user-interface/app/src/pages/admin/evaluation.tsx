@@ -24,7 +24,7 @@ export default function DataPage() {
   const [admin, setAdmin] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState(0);
   const appContext = useContext(AppContext);
-  const apiClient = new ApiClient(appContext);
+  const apiClient = new ApiClient(appContext!);
   const [lastSyncTime, setLastSyncTime] = useState<string>("");
   const [lastSyncData, setLastSyncData] = useState<{
     status: string;

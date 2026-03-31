@@ -48,7 +48,7 @@ import { TruncatedTextCell } from "../../components/truncated-text-call";
 
 export default function TestLibraryTab() {
   const appContext = useContext(AppContext);
-  const apiClient = useMemo(() => new ApiClient(appContext), [appContext]);
+  const apiClient = useMemo(() => new ApiClient(appContext!), [appContext]);
   const { addNotification } = useNotifications();
 
   const [items, setItems] = useState<any[]>([]);

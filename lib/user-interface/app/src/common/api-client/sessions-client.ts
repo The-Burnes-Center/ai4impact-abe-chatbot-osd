@@ -95,6 +95,7 @@ export class SessionsClient {
         errorMessage = await response.json()
         break;
       }
+      if (!response.body) throw new Error("Response body is null");
       const reader = response.body.getReader();
       let received = new Uint8Array(0);
 

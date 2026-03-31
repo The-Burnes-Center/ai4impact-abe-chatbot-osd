@@ -97,7 +97,7 @@ function DetailedEvaluationPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const appContext = useContext(AppContext);
-  const apiClient = new ApiClient(appContext);
+  const apiClient = new ApiClient(appContext!);
   const [loading, setLoading] = useState(true);
   const { addNotification } = useNotifications();
   const [evaluationName, setEvaluationName] = useState(searchParams.get("name") || "");

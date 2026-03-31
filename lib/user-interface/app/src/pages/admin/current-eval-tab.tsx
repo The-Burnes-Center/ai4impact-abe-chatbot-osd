@@ -90,7 +90,7 @@ function ScoreCard({
 
 export default function CurrentEvalTab({ onRunEval, onViewLibrary }: DashboardProps) {
   const appContext = useContext(AppContext);
-  const apiClient = useMemo(() => new ApiClient(appContext), [appContext]);
+  const apiClient = useMemo(() => new ApiClient(appContext!), [appContext]);
   const [evaluations, setEvaluations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [runningEval, setRunningEval] = useState<any>(null);

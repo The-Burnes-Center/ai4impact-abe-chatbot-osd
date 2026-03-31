@@ -6,7 +6,7 @@ export interface SessionRefreshType {
   setNeedsRefresh : React.Dispatch<React.SetStateAction<SessionRefreshType['needsRefresh']>>;
 }
 // set the defaults
-export const SessionRefreshContext = createContext<SessionRefreshType | null>({
+export const SessionRefreshContext = createContext<SessionRefreshType>({
   needsRefresh: true,
   setNeedsRefresh: () => {}
 });

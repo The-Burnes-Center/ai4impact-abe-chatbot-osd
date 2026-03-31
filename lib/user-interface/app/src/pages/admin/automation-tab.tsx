@@ -78,7 +78,7 @@ interface AutomationTabProps {
 
 export default function AutomationTab({ onScheduleChange }: AutomationTabProps) {
   const appContext = useContext(AppContext);
-  const apiClient = useMemo(() => new ApiClient(appContext), [appContext]);
+  const apiClient = useMemo(() => new ApiClient(appContext!), [appContext]);
   const { addNotification } = useNotifications();
 
   const [schedule, setSchedule] = useState<SyncSchedule | null>(null);

@@ -44,7 +44,7 @@ export interface DocumentsTabProps {
 
 export default function DocumentsTab(props: DocumentsTabProps) {
   const appContext = useContext(AppContext);
-  const apiClient = new ApiClient(appContext);
+  const apiClient = new ApiClient(appContext!);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [currentPageIndex, setCurrentPageIndex] = useState(1);
@@ -151,7 +151,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     setLoading(true);
     setShowModalDelete(false);
 
-    const apiClient = new ApiClient(appContext);
+    const apiClient = new ApiClient(appContext!);
     try {
       await Promise.all(
         selectedItems.map((s) =>
@@ -170,7 +170,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
 
   useEffect(() => {
     if (!appContext) return undefined;
-    const apiClient = new ApiClient(appContext);
+    const apiClient = new ApiClient(appContext!);
     let intervalId: NodeJS.Timeout | null = null;
 
     const getStatus = async () => {

@@ -149,6 +149,7 @@ export class MetricClient {
         a.href = url;
 
         // readable dates yyyy-mm-dd
+        if (!startTime) throw new Error("startTime is required for download filename");
         const [startYear, startMonth, startDayTime] = startTime.split('-');
         const startDay = startDayTime.split('T')[0];
         const newStart = `${startYear}-${startMonth}-${startDay}`;

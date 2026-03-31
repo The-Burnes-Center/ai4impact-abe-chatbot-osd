@@ -36,7 +36,7 @@ type UploadStatus = "idle" | "in-progress" | "success" | "error";
 
 export default function DataFileUpload(props: FileUploadTabProps) {
   const appContext = useContext(AppContext);
-  const apiClient = new ApiClient(appContext);
+  const apiClient = new ApiClient(appContext!);
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);

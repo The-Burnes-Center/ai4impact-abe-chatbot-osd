@@ -59,7 +59,7 @@ function IndexCardSkeleton() {
 
 export default function DataIndexesTab() {
   const appContext = useContext(AppContext);
-  const apiClient = useMemo(() => new ApiClient(appContext), [appContext]);
+  const apiClient = useMemo(() => new ApiClient(appContext!), [appContext]);
 
   const [indexes, setIndexes] = useState<IndexInfo[]>([]);
   const [loading, setLoading] = useState(true);

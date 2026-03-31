@@ -20,7 +20,7 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "noImplicitAny": false,
-    "strictNullChecks": false,
+    "strictNullChecks": true,
     "strictFunctionTypes": true,
     "strictBindCallApply": true,
     "noImplicitReturns": true,
