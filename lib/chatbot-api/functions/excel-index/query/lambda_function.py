@@ -253,9 +253,12 @@ def _do_query(
     min_raw: Any = None
     max_raw: Any = None
 
-    scan_kw: dict[str, Any] = {"FilterExpression": Attr("pk").eq(pk) & Attr("sk").ne(SK_META)}
+    scan_kw: dict[str, Any] = {
+        "KeyConditionExpression": Key("pk").eq(pk),
+        "FilterExpression": Attr("sk").ne(SK_META),
+    }
     while True:
-        resp = table.scan(**scan_kw)
+        resp = table.query(**scan_kw)
         for item in resp.get("Items", []):
             row = _item_to_row(item)
             if _row_matches(row, free_text=free_text, filters=filters,
@@ -296,7 +299,7 @@ def _do_query(
         last_key = resp.get("LastEvaluatedKey")
         if not last_key:
             break
-        scan_kw["ExclusiveStartKey"] = last_key
+        scan_kw["ExclusiveStartKey"] = last_key  # pagination works identically for query()
 
     if sort_by and not count_only and all_matched:
         def _sort_key(r: dict) -> Any:
