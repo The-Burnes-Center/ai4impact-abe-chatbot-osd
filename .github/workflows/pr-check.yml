@@ -39,12 +39,13 @@ jobs:
           python-version: '3.12'
 
       - name: Install Python test dependencies
-        run: pip install pytest pytest-cov moto boto3 pydantic python-jose requests cryptography
+        run: pip install pytest pytest-cov moto boto3 pydantic openpyxl python-jose requests cryptography
 
       - name: Run Python Lambda tests
         run: |
           python3 -m pytest \
             lib/chatbot-api/functions/excel-index/query/test_excel_query.py \
+            lib/chatbot-api/functions/excel-index/parser/test_excel_parser.py \
             lib/chatbot-api/functions/metadata-retrieval/test_metadata_cache.py \
             lib/authorization/websocket-api-authorizer/test_jwt_authorizer.py \
             lib/chatbot-api/functions/metadata-handler/test_metadata_handler.py \
