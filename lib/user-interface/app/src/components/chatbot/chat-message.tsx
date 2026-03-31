@@ -301,7 +301,7 @@ export interface ChatMessageProps {
   onOpenSource?: (s3Key: string) => void;
 }
 
-export default function ChatMessage(props: ChatMessageProps) {
+function ChatMessage(props: ChatMessageProps) {
   const [selectedIcon, setSelectedIcon] = useState<1 | 0 | null>(null);
   const { addNotification } = useNotifications();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -808,3 +808,15 @@ export default function ChatMessage(props: ChatMessageProps) {
     </div>
   );
 }
+
+// Re-render only when the message object itself changes (streaming appends a new
+// object for the last message), or when the streaming status/flag changes.
+// Callback props are intentionally excluded from comparison — they reference
+// stable functions and don't affect render output for completed messages.
+export default React.memo(ChatMessage, (prev, next) => {
+  return (
+    prev.message === next.message &&
+    prev.isLastAiMessage === next.isLastAiMessage &&
+    prev.streamingStatus === next.streamingStatus
+  );
+});
