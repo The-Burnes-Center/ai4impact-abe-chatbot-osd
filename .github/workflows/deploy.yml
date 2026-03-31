@@ -28,6 +28,8 @@ jobs:
       run: |
         cd lib/user-interface/app
         npm install
+    - name: Run backend Lambda tests
+      run: npm run test:lambda
     - name: Run frontend tests
       run: |
         cd lib/user-interface/app
