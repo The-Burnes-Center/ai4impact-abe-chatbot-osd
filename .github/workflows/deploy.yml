@@ -30,6 +30,20 @@ jobs:
         npm install
     - name: Run backend Lambda tests
       run: npm run test:lambda
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install Python test dependencies
+      run: pip install pytest moto boto3 pydantic python-jose requests cryptography
+    - name: Run Python Lambda tests
+      run: |
+        python3 -m pytest \
+          lib/chatbot-api/functions/excel-index/query/test_excel_query.py \
+          lib/chatbot-api/functions/metadata-retrieval/test_metadata_cache.py \
+          lib/authorization/websocket-api-authorizer/test_jwt_authorizer.py \
+          lib/chatbot-api/functions/metadata-handler/test_metadata_handler.py \
+          -v
     - name: Run frontend tests
       run: |
         cd lib/user-interface/app
