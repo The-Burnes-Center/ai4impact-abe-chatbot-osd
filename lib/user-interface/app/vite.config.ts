@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from "vite";
 import fs from "fs";
 import path from "path";
@@ -64,5 +65,11 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+  },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./src/test/setup.ts"],
+    css: false,
   },
 });

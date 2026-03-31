@@ -9,7 +9,9 @@
     "build:dev": "tsc && cross-env NODE_ENV=development vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "format": "npx prettier --ignore-path .gitignore --write \"**/*.+(tsx|js|ts|json)\""
+    "format": "npx prettier --ignore-path .gitignore --write \"**/*.+(tsx|js|ts|json)\"",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@aws-amplify/ui-react": "^5.3.2",
@@ -33,6 +35,9 @@
     "uuid": "^9.0.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/luxon": "^3.3.2",
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",
@@ -45,9 +50,11 @@
     "eslint": "^8.45.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.3",
+    "jsdom": "^29.0.1",
     "postcss": "^8.4.27",
     "sass": "^1.65.1",
     "typescript": "^5.0.2",
-    "vite": "^6.2.1"
+    "vite": "^6.2.1",
+    "vitest": "^4.1.2"
   }
 }
