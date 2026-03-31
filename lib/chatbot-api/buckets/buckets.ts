@@ -19,8 +19,7 @@ export class S3BucketStack extends Construct {
 
     this.knowledgeBucket = new s3.Bucket(scope, 'KnowledgeSourceBucket', {
       versioned: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
       cors: [{
@@ -32,8 +31,7 @@ export class S3BucketStack extends Construct {
 
     this.feedbackBucket = new s3.Bucket(scope, 'FeedbackDownloadBucket', {
       versioned: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
       cors: [{
@@ -45,8 +43,7 @@ export class S3BucketStack extends Construct {
 
     this.evalResultsBucket = new s3.Bucket(scope, 'EvalResultsBucket', {
       versioned: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
       cors: [{
@@ -58,8 +55,7 @@ export class S3BucketStack extends Construct {
 
     this.evalTestCasesBucket = new s3.Bucket(scope, 'EvalTestCasesBucket', {
       versioned: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
       cors: [{
@@ -71,8 +67,7 @@ export class S3BucketStack extends Construct {
 
     this.ragasDependenciesBucket = new s3.Bucket(scope, 'RagasDependenciesBucket', {
       versioned: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
       cors: [{
@@ -84,8 +79,7 @@ export class S3BucketStack extends Construct {
 
     this.contractIndexBucket = new s3.Bucket(scope, 'ContractIndexBucket', {
       versioned: false,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
       cors: [{
@@ -97,8 +91,7 @@ export class S3BucketStack extends Construct {
 
     this.dataStagingBucket = new s3.Bucket(scope, 'DataStagingBucket', {
       versioned: false,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
       cors: [{

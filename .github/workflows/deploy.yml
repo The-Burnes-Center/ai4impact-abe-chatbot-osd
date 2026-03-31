@@ -15,7 +15,7 @@ jobs:
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20'
+        node-version: '20.x'
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -28,6 +28,10 @@ jobs:
       run: |
         cd lib/user-interface/app
         npm install
+    - name: Run frontend tests
+      run: |
+        cd lib/user-interface/app
+        npm test
     - name: Bootstrap AWS environment
       run: npx cdk bootstrap || true
     - name: Deploy CDK stack

@@ -4,6 +4,8 @@ import React from "react";
 import { useWebSocketChat } from "./useWebSocketChat";
 import { AppContext } from "../common/app-context";
 import type { AppConfig } from "../common/types";
+import type { ChatBotHistoryItem } from "../components/chatbot/types";
+import type { StreamingStatus } from "./useWebSocketChat";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -95,7 +97,19 @@ const mockAppConfig: AppConfig = {
 const wrapper = ({ children }: { children: React.ReactNode }) =>
   React.createElement(AppContext.Provider, { value: mockAppConfig }, children);
 
-function makeOpts(overrides: Partial<ReturnType<typeof makeOpts>> = {}) {
+interface SendOpts {
+  userMessage: string;
+  userId: string;
+  sessionId: string;
+  messageHistory: ChatBotHistoryItem[];
+  onStreamChunk: (accumulated: string) => void;
+  onStatusChange: (status: StreamingStatus) => void;
+  onSources: (sources: Record<string, any>) => void;
+  onComplete: (firstMessage: boolean) => void;
+  onError: (msg: string) => void;
+}
+
+function makeOpts(overrides: Partial<SendOpts> = {}): SendOpts {
   return {
     userMessage: "Hello ABE",
     userId: "user-123",

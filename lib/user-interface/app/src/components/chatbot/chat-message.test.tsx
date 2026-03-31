@@ -25,7 +25,19 @@ function makeHumanMessage(content: string) {
   };
 }
 
-function makeSource(overrides: Partial<ReturnType<typeof makeSource>> = {}) {
+interface Source {
+  chunkIndex: number;
+  title: string;
+  uri: string | null;
+  excerpt: string;
+  score: number;
+  page: number | null;
+  s3Key: string | null;
+  sourceType: "knowledgeBase";
+  cited: boolean;
+}
+
+function makeSource(overrides: Partial<Source> = {}): Source {
   return {
     chunkIndex: 1,
     title: "Test Document",
@@ -34,7 +46,7 @@ function makeSource(overrides: Partial<ReturnType<typeof makeSource>> = {}) {
     score: 0.9,
     page: null,
     s3Key: null,
-    sourceType: "knowledgeBase" as const,
+    sourceType: "knowledgeBase",
     cited: true,
     ...overrides,
   };

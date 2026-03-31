@@ -28,6 +28,12 @@ export class GenAiMvpStack extends cdk.Stack {
     // Populate after construction — the Lazy producer reads this during app.synth()
     cfOriginRef.value = `https://${userInterface.distribution.distributionDomainName}`;
 
+    // Resource tags applied to every taggable resource in the stack
+    cdk.Tags.of(this).add('Project', 'ABE');
+    cdk.Tags.of(this).add('Environment', id); // e.g. ABEStackNonProd
+    cdk.Tags.of(this).add('ManagedBy', 'CDK');
+    cdk.Tags.of(this).add('DataClass', 'Sensitive'); // government procurement data
+
     this.addNagSuppressions();
   }
 

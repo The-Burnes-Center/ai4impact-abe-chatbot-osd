@@ -76,7 +76,7 @@ export class UserInterface extends Construct {
     const asset = s3deploy.Source.asset(appPath, {
       bundling: {
         image: cdk.DockerImage.fromRegistry(
-          "public.ecr.aws/sam/build-nodejs18.x:latest"
+          "public.ecr.aws/sam/build-nodejs20.x:latest"
         ),
         command: [
           "sh",

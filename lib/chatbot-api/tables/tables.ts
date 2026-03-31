@@ -31,7 +31,7 @@ export class TableStack extends Construct {
       sortKey: { name: 'session_id', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     chatHistoryTable.addGlobalSecondaryIndex({
@@ -48,7 +48,7 @@ export class TableStack extends Construct {
       sortKey: { name: 'CreatedAt', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     userFeedbackTable.addGlobalSecondaryIndex({
@@ -70,7 +70,7 @@ export class TableStack extends Construct {
       partitionKey: { name: 'FeedbackId', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     feedbackRecordsTable.addGlobalSecondaryIndex({
@@ -114,7 +114,7 @@ export class TableStack extends Construct {
       partitionKey: { name: 'MessageId', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     responseTraceTable.addGlobalSecondaryIndex({
@@ -131,7 +131,7 @@ export class TableStack extends Construct {
       sortKey: { name: 'VersionId', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     this.promptRegistryTable = promptRegistryTable;
@@ -141,7 +141,7 @@ export class TableStack extends Construct {
       sortKey: { name: 'CaseId', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     monitoringCasesTable.addGlobalSecondaryIndex({
@@ -158,7 +158,7 @@ export class TableStack extends Construct {
       sortKey: { name: 'Timestamp', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
     this.evalSummaryTable = evalSummariesTable;
 
@@ -167,7 +167,7 @@ export class TableStack extends Construct {
       sortKey: { name: 'QuestionId', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     evalResultsTable.addGlobalSecondaryIndex({
@@ -183,7 +183,7 @@ export class TableStack extends Construct {
       sortKey: { name: 'timestamp', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     analyticsTable.addGlobalSecondaryIndex({
@@ -207,7 +207,7 @@ export class TableStack extends Construct {
       sortKey: { name: 'sk', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
     this.excelIndexDataTable = excelIndexDataTable;
 
@@ -216,7 +216,7 @@ export class TableStack extends Construct {
       sortKey: { name: 'sk', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
     this.indexRegistryTable = indexRegistryTable;
 
@@ -225,7 +225,7 @@ export class TableStack extends Construct {
       sortKey: { name: 'QuestionId', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     testLibraryTable.addGlobalSecondaryIndex({
@@ -242,7 +242,7 @@ export class TableStack extends Construct {
       sortKey: { name: 'sk', type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
       timeToLiveAttribute: 'expiresAt',
     });
     this.syncHistoryTable = syncHistoryTable;
@@ -250,7 +250,7 @@ export class TableStack extends Construct {
     const feedbackToTestLibraryDLQ = new sqs.Queue(scope, 'FeedbackToTestLibraryDLQ', {
       retentionPeriod: cdk.Duration.days(14),
       enforceSSL: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
     this.feedbackToTestLibraryDLQ = feedbackToTestLibraryDLQ;
 
@@ -262,7 +262,7 @@ export class TableStack extends Construct {
         queue: feedbackToTestLibraryDLQ,
         maxReceiveCount: 3,
       },
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
     this.feedbackToTestLibraryQueue = feedbackToTestLibraryQueue;
   }

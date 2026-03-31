@@ -1,0 +1,79 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write   # needed to post the cdk diff comment
+
+jobs:
+  test-and-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Install backend dependencies
+        run: npm install
+
+      - name: Install frontend dependencies
+        run: |
+          cd lib/user-interface/app
+          npm install
+
+      - name: Run frontend tests
+        run: |
+          cd lib/user-interface/app
+          npm test
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+          role-session-name: pr-diff-${{ github.event.pull_request.number }}
+
+      - name: CDK diff
+        id: diff
+        run: |
+          npx cdk diff ABEStackNonProd 2>&1 | head -300 > cdk-diff.txt || true
+
+      - name: Post CDK diff as PR comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const diff = fs.readFileSync('cdk-diff.txt', 'utf8').trim();
+            const body = diff.length > 0
+              ? `## CDK Diff\n\`\`\`\n${diff}\n\`\`\``
+              : `## CDK Diff\nNo infrastructure changes detected.`;
+
+            // Delete previous diff comment from this bot on the same PR
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo,
+              issue_number: context.issue.number,
+            });
+            for (const comment of comments) {
+              if (comment.user.login === 'github-actions[bot]' && comment.body.startsWith('## CDK Diff')) {
+                await github.rest.issues.deleteComment({
+                  ...context.repo,
+                  comment_id: comment.id,
+                });
+              }
+            }
+
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: context.issue.number,
+              body,
+            });
