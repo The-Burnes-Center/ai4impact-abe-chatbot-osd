@@ -45,8 +45,8 @@ export const CHATBOT_NAME = "ABE - Assistive Buyer Engine";
 export const WELCOME_PAGE = "What can I help you with?";
 
 export const SUGGESTED_PROMPTS = [
-  "How do I find a statewide contract?",
-  "What are the bidding thresholds for procurement?",
-  "How do I add a new vendor?",
-  "What forms do I need for a sole source purchase?",
+  "Where do I find a list of Statewide Contracts?",
+  "How do I know if my procurement need is within the scope of a Statewide Contract?",
+  "How do I know if my procurement qualifies for an exception?",
+  "How do I make a purchase under a Statewide Contract?",
 ];
