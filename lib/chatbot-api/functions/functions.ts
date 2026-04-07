@@ -121,8 +121,8 @@ export class LambdaFunctionStack extends Construct {
             'KB_ID': props.knowledgeBase.attrKnowledgeBaseId,
             'GUARDRAIL_ID': process.env.GUARDRAIL_ID || '',
             'GUARDRAIL_VERSION': process.env.GUARDRAIL_VERSION || '1',
-            'PRIMARY_MODEL_ID': process.env.PRIMARY_MODEL_ID || 'us.anthropic.claude-sonnet-4-20250514-v1:0',
-            'FAST_MODEL_ID': process.env.FAST_MODEL_ID || 'us.anthropic.claude-3-5-haiku-20241022-v1:0',
+            'PRIMARY_MODEL_ID': process.env.PRIMARY_MODEL_ID || 'us.anthropic.claude-opus-4-6-v1',
+            'FAST_MODEL_ID': process.env.FAST_MODEL_ID || 'us.anthropic.claude-sonnet-4-6',
             'PROMPT_REGISTRY_TABLE': props.promptRegistryTable.tableName,
             'RESPONSE_TRACE_TABLE': props.responseTraceTable.tableName,
             'PROMPT_FAMILY': 'ABE_CHAT',
@@ -199,8 +199,8 @@ export class LambdaFunctionStack extends Construct {
         "PROMPT_REGISTRY_TABLE": props.promptRegistryTable.tableName,
         "MONITORING_CASES_TABLE": props.monitoringCasesTable.tableName,
         "PROMPT_FAMILY": "ABE_CHAT",
-        "FEEDBACK_ANALYSIS_MODEL_ID": process.env.FAST_MODEL_ID || "us.anthropic.claude-3-5-haiku-20241022-v1:0",
-        "PROMPT_REWRITE_MODEL_ID": process.env.PRIMARY_MODEL_ID || "us.anthropic.claude-sonnet-4-20250514-v1:0",
+        "FEEDBACK_ANALYSIS_MODEL_ID": process.env.FAST_MODEL_ID || "us.anthropic.claude-sonnet-4-6",
+        "PROMPT_REWRITE_MODEL_ID": process.env.PRIMARY_MODEL_ID || "us.anthropic.claude-opus-4-6-v1",
         "FEEDBACK_TO_TEST_LIBRARY_QUEUE_URL": props.feedbackToTestLibraryQueue.queueUrl,
       },
       timeout: cdk.Duration.seconds(30),
@@ -362,7 +362,7 @@ export class LambdaFunctionStack extends Construct {
       environment: {
         "BUCKET": props.knowledgeBucket.bucketName,
         "KB_ID": props.knowledgeBase.attrKnowledgeBaseId,
-        "FAST_MODEL_ID": process.env.FAST_MODEL_ID || "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+        "FAST_MODEL_ID": process.env.FAST_MODEL_ID || "us.anthropic.claude-sonnet-4-6",
       },
     });
 
@@ -555,7 +555,7 @@ const faqClassifierFunction = new lambda.Function(scope, 'FAQClassifierFunction'
   layers: [pythonCommonLayer],
   environment: {
     "ANALYTICS_TABLE_NAME": props.analyticsTable.tableName,
-    "FAST_MODEL_ID": process.env.FAST_MODEL_ID || "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+    "FAST_MODEL_ID": process.env.FAST_MODEL_ID || "us.anthropic.claude-sonnet-4-6",
   },
   timeout: cdk.Duration.seconds(30),
 });
@@ -593,7 +593,7 @@ const contextSummarizerFunction = new lambda.Function(scope, 'ContextSummarizerF
   handler: 'lambda_function.lambda_handler',
   layers: [pythonCommonLayer],
   environment: {
-    "FAST_MODEL_ID": process.env.FAST_MODEL_ID || "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+    "FAST_MODEL_ID": process.env.FAST_MODEL_ID || "us.anthropic.claude-sonnet-4-6",
   },
   timeout: cdk.Duration.seconds(60),
 });
@@ -629,7 +629,7 @@ const excelIndexParserFunction = new lambda.Function(scope, 'ExcelIndexParserFun
     BUCKET: props.contractIndexBucket.bucketName,
     TABLE_NAME: props.excelIndexDataTable.tableName,
     INDEX_REGISTRY_TABLE: props.indexRegistryTable.tableName,
-    PRIMARY_MODEL_ID: process.env.PRIMARY_MODEL_ID || 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+    PRIMARY_MODEL_ID: process.env.PRIMARY_MODEL_ID || 'us.anthropic.claude-opus-4-6-v1',
   },
   timeout: cdk.Duration.minutes(2),
   memorySize: 512,
@@ -653,8 +653,8 @@ excelIndexParserFunction.addToRolePolicy(new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
   actions: ['bedrock:InvokeModel'],
   resources: [
-    `arn:aws:bedrock:us-east-1:${cdk.Aws.ACCOUNT_ID}:inference-profile/us.anthropic.claude-sonnet-4-20250514-v1:0`,
-    'arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-20250514-v1:0',
+    `arn:aws:bedrock:us-east-1:${cdk.Aws.ACCOUNT_ID}:inference-profile/us.anthropic.claude-opus-4-6-v1`,
+    'arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-4-6-v1',
   ],
 }));
 excelIndexParserFunction.addEventSource(new S3EventSource(props.contractIndexBucket, {
@@ -789,7 +789,7 @@ const feedbackToTestLibraryProcessFunction = new lambda.Function(scope, 'Feedbac
   layers: [pythonCommonLayer],
   environment: {
     "TEST_LIBRARY_TABLE": props.testLibraryTable.tableName,
-    "MODEL_ID": process.env.PRIMARY_MODEL_ID || "us.anthropic.claude-sonnet-4-20250514-v1:0",
+    "MODEL_ID": process.env.PRIMARY_MODEL_ID || "us.anthropic.claude-opus-4-6-v1",
   },
   timeout: cdk.Duration.seconds(90),
   memorySize: 256,

@@ -102,8 +102,8 @@ npx cdk deploy ABEStackNonProd -c alarmEmail=you@example.com  # With alerts
 ### Lambda (set by CDK, override in console for testing)
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `PRIMARY_MODEL_ID` | `us.anthropic.claude-sonnet-4-20250514-v1:0` | Chat + eval model |
-| `FAST_MODEL_ID` | `us.anthropic.claude-3-5-haiku-20241022-v1:0` | Titles, metadata, FAQ |
+| `PRIMARY_MODEL_ID` | `us.anthropic.claude-opus-4-6-v1` | Chat + eval model |
+| `FAST_MODEL_ID` | `us.anthropic.claude-sonnet-4-6` | Titles, metadata, FAQ |
 | `GUARDRAIL_ID` | *(unset = disabled)* | Bedrock Guardrail |
 | `KB_ID` | *(set by CDK)* | Knowledge Base ID |
 | `TABLE_NAME` | *(set by CDK)* | Excel index DynamoDB table |
