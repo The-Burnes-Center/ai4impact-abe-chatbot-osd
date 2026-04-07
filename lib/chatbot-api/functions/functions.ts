@@ -1,3 +1,48 @@
+/**
+ * Lambda functions, event sources, and IAM policies for the ABE chatbot.
+ *
+ * Functions are grouped by domain:
+ *
+ *   Chat (core conversation)
+ *     - ChatHandlerFunction             — WebSocket chat handler (Node.js, agentic tool loop)
+ *     - SessionHandlerFunction          — CRUD for chat sessions/history
+ *     - MetadataRetrievalFunction       — Fetches metadata.txt from KB bucket (invoked by chat)
+ *     - SourcePresignFunction           — Generates pre-signed S3 URLs for source citations
+ *     - FAQClassifierFunction           — Classifies questions by topic/agency for analytics
+ *     - ContextSummarizerFunction       — Summarizes conversation context for long sessions
+ *
+ *   Knowledge Management
+ *     - GetS3FilesHandlerFunction       — Lists/reads KB bucket contents for admin UI
+ *     - UploadS3FilesHandlerFunction    — Handles admin file uploads to KB bucket
+ *     - DeleteS3FilesHandlerFunction    — Handles admin file deletions from KB bucket
+ *     - SyncKBHandlerFunction           — Triggers Bedrock KB ingestion job
+ *     - MetadataHandlerFunction         — S3 event-driven: auto-generates metadata on upload/delete
+ *
+ *   Feedback
+ *     - FeedbackHandlerFunction         — CRUD for feedback records + LLM analysis
+ *
+ *   Evaluation Pipeline
+ *     - GetS3TestCasesFilesHandlerFunction  — Lists/reads test case files
+ *     - UploadS3TestCasesFilesHandlerFunction — Uploads test case files
+ *     - EvalResultsHandlerFunction      — Reads/manages evaluation results + can stop runs
+ *     - TestLibraryHandlerFunction      — CRUD for reusable test cases
+ *     - FeedbackToTestLibraryEnqueue    — Enqueues positive feedback for test case generation
+ *     - FeedbackToTestLibraryProcess    — SQS consumer: LLM-rewrites feedback into test cases
+ *     - StepFunctionsStack              — Orchestrates batch RAGAS evaluation
+ *
+ *   Excel Index (structured contract/vendor data)
+ *     - ExcelIndexParserFunction        — S3 event-driven: parses .xlsx into DynamoDB
+ *     - ExcelIndexQueryFunction         — DynamoDB query engine (filters, counts, sorts)
+ *     - ExcelIndexApiFunction           — REST API gateway for index management
+ *
+ *   Sync (automated data pipeline)
+ *     - SyncOrchestratorFunction        — Moves staged files to KB/index buckets + triggers ingestion
+ *     - SyncScheduleFunction            — API for managing the EventBridge weekly schedule
+ *     - WeeklySyncSchedule              — EventBridge cron (Sundays 6 AM UTC)
+ *
+ *   Metrics
+ *     - MetricsHandlerFunction          — Reads session/analytics tables for admin dashboards
+ */
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as path from 'path';
@@ -38,6 +83,15 @@ interface LambdaFunctionStackProps {
   readonly syncHistoryTable: Table;
 }
 
+/**
+ * Shared defaults applied to every Lambda via spread: `...LAMBDA_DEFAULTS`.
+ *   - ARM_64: Graviton — ~20% cheaper and faster for most workloads.
+ *   - ACTIVE tracing: X-Ray enabled for end-to-end request tracing.
+ *   - ONE_MONTH log retention: balances debuggability with cost; older logs
+ *     are auto-deleted by CloudWatch.
+ *
+ * Individual functions override timeout and memorySize as needed.
+ */
 const LAMBDA_DEFAULTS: Partial<lambda.FunctionProps> = {
   architecture: lambda.Architecture.ARM_64,
   tracing: lambda.Tracing.ACTIVE,
@@ -76,12 +130,16 @@ export class LambdaFunctionStack extends Construct {
     // Resources use `scope` (not `this`) to preserve existing CloudFormation
     // logical IDs. Switching to `this` would change IDs and recreate functions.
 
+    // Shared Python layer: auth helpers, structured logging, JSON response builders.
     const pythonCommonLayer = new lambda.LayerVersion(scope, 'PythonCommonLayer', {
       code: lambda.Code.fromAsset(path.join(__dirname, 'layers/python-common')),
       compatibleRuntimes: [lambda.Runtime.PYTHON_3_12],
       description: 'Shared Python utilities for ABE Lambda handlers',
     });
 
+    // ─── Chat Domain ────────────────────────────────────────────────────
+
+    // Session CRUD: list, get, delete chat sessions for the sidebar.
     const sessionAPIHandlerFunction = new lambda.Function(scope, 'SessionHandlerFunction', {
       ...LAMBDA_DEFAULTS,
       runtime: lambda.Runtime.PYTHON_3_12,
@@ -110,6 +168,10 @@ export class LambdaFunctionStack extends Construct {
 
     this.sessionFunction = sessionAPIHandlerFunction;
 
+        // Core chat handler: receives WebSocket messages, runs the agentic
+        // tool-use loop (query_db, query_excel_index, fetch_metadata, etc.),
+        // and streams responses back. 512 MB memory for large KB retrieval
+        // payloads. 5-min timeout accommodates multi-turn tool loops.
         const websocketAPIFunction = new lambda.Function(scope, 'ChatHandlerFunction', {
           ...LAMBDA_DEFAULTS,
           runtime: lambda.Runtime.NODEJS_20_X,
@@ -184,6 +246,10 @@ export class LambdaFunctionStack extends Construct {
 
         this.chatFunction = websocketAPIFunction;
 
+    // ─── Feedback Domain ─────────────────────────────────────────────────
+
+    // Feedback CRUD, LLM-powered analysis, CSV export, and SQS enqueue
+    // for the feedback-to-test-library pipeline. 256 MB for LLM payloads.
     const feedbackAPIHandlerFunction = new lambda.Function(scope, 'FeedbackHandlerFunction', {
       ...LAMBDA_DEFAULTS,
       runtime: lambda.Runtime.PYTHON_3_12,
@@ -257,6 +323,9 @@ export class LambdaFunctionStack extends Construct {
 
     this.feedbackFunction = feedbackAPIHandlerFunction;
     
+    // ─── Knowledge Management Domain ──────────────────────────────────
+
+    // Admin UI file operations on the Knowledge Base source bucket.
     const deleteS3APIHandlerFunction = new lambda.Function(scope, 'DeleteS3FilesHandlerFunction', {
       ...LAMBDA_DEFAULTS,
       runtime: lambda.Runtime.PYTHON_3_12,
@@ -352,6 +421,9 @@ export class LambdaFunctionStack extends Construct {
 
 
 
+    // S3 event-driven: fires on every upload/delete in the KB bucket.
+    // Regenerates metadata.txt (LLM-summarized file inventory) used by
+    // the chat handler's fetch_metadata tool.
     const metadataHandlerFunction = new lambda.Function(scope, 'MetadataHandlerFunction', {
       ...LAMBDA_DEFAULTS,
       runtime: lambda.Runtime.PYTHON_3_12,
@@ -413,6 +485,8 @@ export class LambdaFunctionStack extends Construct {
         events: [s3.EventType.OBJECT_CREATED, s3.EventType.OBJECT_REMOVED],
       }));
 
+// Lightweight function that returns metadata.txt content; invoked by the
+// chat Lambda as a tool call rather than reading S3 directly.
 const metadataRetrievalFunction = new lambda.Function(scope, 'MetadataRetrievalFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,
@@ -442,6 +516,8 @@ websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
     metadataRetrievalFunction.functionArn,
   ],
 }));
+
+// ─── Evaluation Pipeline Domain ──────────────────────────────────────
 
 const getS3TestCasesFunction = new lambda.Function(scope, 'GetS3TestCasesFilesHandlerFunction', {
   ...LAMBDA_DEFAULTS,
@@ -487,6 +563,8 @@ uploadS3TestCasesFunction.addToRolePolicy(new iam.PolicyStatement({
 this.uploadS3TestCasesFunction = uploadS3TestCasesFunction;
 
 
+// Eval results CRUD + ability to stop running evaluations.
+// 60s timeout: aggregation queries can scan large result sets.
 const evalResultsAPIHandlerFunction = new lambda.Function(scope, 'EvalResultsHandlerFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,
@@ -518,6 +596,10 @@ this.handleEvalResultsFunction = evalResultsAPIHandlerFunction;
 props.evalResutlsTable.grantReadWriteData(evalResultsAPIHandlerFunction);
 props.evalSummariesTable.grantReadWriteData(evalResultsAPIHandlerFunction);
 
+// ─── Metrics / Analytics Domain ──────────────────────────────────────
+
+// Reads session and analytics tables for admin dashboard aggregations.
+// 60s timeout: full-table scans can be slow on large datasets.
 const metricsHandlerFunction = new lambda.Function(scope, 'MetricsHandlerFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,
@@ -547,6 +629,8 @@ metricsHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
 
 this.metricsHandlerFunction = metricsHandlerFunction;
 
+// Classifies each user question by topic and agency using the fast model.
+// Results are written to the analytics table for dashboard reporting.
 const faqClassifierFunction = new lambda.Function(scope, 'FAQClassifierFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,
@@ -577,6 +661,9 @@ faqClassifierFunction.addToRolePolicy(new iam.PolicyStatement({
 
 this.faqClassifierFunction = faqClassifierFunction;
 
+// Summarizes long conversation context to fit within the model's context
+// window. Bundles its own Python dependencies (not in the common layer).
+// 60s timeout: LLM summarization of large contexts can be slow.
 const contextSummarizerFunction = new lambda.Function(scope, 'ContextSummarizerFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,
@@ -609,7 +696,11 @@ contextSummarizerFunction.addToRolePolicy(new iam.PolicyStatement({
 
 this.contextSummarizerFunction = contextSummarizerFunction;
 
-// Generic Excel Index: one parser, one query, one API Lambda for all indexes
+// ─── Excel Index Domain ──────────────────────────────────────────────
+
+// S3 event-driven parser: triggered on .xlsx upload/delete under indexes/.
+// Reads the spreadsheet, uses LLM to generate column descriptions, and
+// writes rows to DynamoDB. 2-min timeout + 512 MB for large spreadsheets.
 const excelIndexParserFunction = new lambda.Function(scope, 'ExcelIndexParserFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,
@@ -663,6 +754,8 @@ excelIndexParserFunction.addEventSource(new S3EventSource(props.contractIndexBuc
 }));
 this.excelIndexParserFunction = excelIndexParserFunction;
 
+// DynamoDB query engine invoked by the chat Lambda's query_excel_index tool.
+// Supports filters, counts, sorts, distinct values. 256 MB for large result sets.
 const excelIndexQueryFunction = new lambda.Function(scope, 'ExcelIndexQueryFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,
@@ -691,6 +784,8 @@ excelIndexQueryFunction.addToRolePolicy(new iam.PolicyStatement({
 }));
 this.excelIndexQueryFunction = excelIndexQueryFunction;
 
+// REST API for admin index management: create, list, delete indexes.
+// Delegates actual queries to the query function via Lambda invoke.
 const excelIndexApiFunction = new lambda.Function(scope, 'ExcelIndexApiFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.NODEJS_20_X,
@@ -739,6 +834,7 @@ websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
   resources: [props.indexRegistryTable.tableArn],
 }));
 
+// CRUD for the reusable test case library (eval pipeline).
 const testLibraryFunction = new lambda.Function(scope, 'TestLibraryHandlerFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,
@@ -763,6 +859,8 @@ testLibraryFunction.addToRolePolicy(new iam.PolicyStatement({
 }));
 this.testLibraryFunction = testLibraryFunction;
 
+// Feedback-to-test-library pipeline: two Lambdas connected by SQS.
+// Enqueue: sends positive feedback messages to the SQS queue.
 const feedbackToTestLibraryEnqueueFunction = new lambda.Function(scope, 'FeedbackToTestLibraryEnqueueFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,
@@ -781,6 +879,9 @@ feedbackToTestLibraryEnqueueFunction.addToRolePolicy(new iam.PolicyStatement({
 }));
 this.feedbackToTestLibraryEnqueueFunction = feedbackToTestLibraryEnqueueFunction;
 
+// Process: SQS consumer that rewrites the Q&A pair via LLM and inserts
+// into TestLibraryTable. 90s timeout for LLM calls; 256 MB for payloads.
+// Batch size 1 ensures each feedback item gets individual LLM attention.
 const feedbackToTestLibraryProcessFunction = new lambda.Function(scope, 'FeedbackToTestLibraryProcessFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,
@@ -817,6 +918,8 @@ feedbackToTestLibraryProcessFunction.addEventSource(new SqsEventSource(props.fee
 }));
 this.feedbackToTestLibraryProcessFunction = feedbackToTestLibraryProcessFunction;
 
+// Generates pre-signed S3 URLs so the frontend can link directly to
+// source documents. Short 10s timeout — just signs a URL, no I/O.
 const sourcePresignFunction = new lambda.Function(scope, 'SourcePresignFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.NODEJS_20_X,
@@ -894,7 +997,12 @@ evalResultsAPIHandlerFunction.addToRolePolicy(
 
 // Step Functions DescribeExecution / GetExecutionHistory granted in index.ts
 
-// ── Sync Orchestrator Lambda ──
+// ─── Sync Domain ────────────────────────────────────────────────────
+
+// Orchestrator: reads from the staging bucket, copies files to the
+// appropriate destination (KB bucket or index bucket), triggers a
+// Bedrock KB ingestion job, and logs the run to SyncHistoryTable.
+// 5-min timeout + 256 MB: may copy many files and wait for ingestion.
 const syncOrchestratorFunction = new lambda.Function(scope, 'SyncOrchestratorFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,
@@ -934,7 +1042,7 @@ syncOrchestratorFunction.addToRolePolicy(new iam.PolicyStatement({
 }));
 this.syncOrchestratorFunction = syncOrchestratorFunction;
 
-// ── EventBridge Scheduler for weekly sync ──
+// EventBridge Scheduler: runs the sync orchestrator every Sunday at 6 AM UTC.
 const schedulerRole = new iam.Role(scope, 'SyncSchedulerRole', {
   assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
 });
@@ -962,7 +1070,8 @@ const syncSchedule = new scheduler.CfnSchedule(scope, 'WeeklySyncSchedule', {
 });
 syncSchedule.addDependency(scheduleGroup);
 
-// ── Sync Schedule API Lambda ──
+// Admin API for viewing/updating the sync schedule (enable, disable,
+// change cron expression) and viewing sync history.
 const syncScheduleFunction = new lambda.Function(scope, 'SyncScheduleFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,

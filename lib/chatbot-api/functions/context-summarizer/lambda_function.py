@@ -1,3 +1,23 @@
+"""
+Context Summarizer Lambda -- compresses long chat histories into structured summaries.
+
+Called when a conversation exceeds the context window budget. Uses a fast LLM
+(Claude Haiku by default) to distill the conversation into a structured JSON
+summary covering key facts, questions answered, data retrieved, and the user's
+active topic.
+
+Summarization strategy (two-tier fallback):
+  1. **Structured** (primary): asks the LLM to return JSON conforming to the
+     ``ConversationSummary`` Pydantic schema. The response is parsed and
+     validated. If Pydantic validation fails (e.g., the LLM returns malformed
+     JSON or missing fields), falls through to the unstructured path.
+  2. **Unstructured** (fallback): asks the LLM for a plain-text summary with
+     no schema constraints. This always produces usable output even if the
+     structured parse failed, at the cost of losing typed fields.
+
+The structured summary is converted to a human-readable text block by
+``format_summary`` before being injected back into the conversation context.
+"""
 import json
 import os
 
@@ -31,6 +51,11 @@ SYSTEM_PROMPT = (
 
 
 def summarize(conversation_text: str) -> dict:
+    """Invoke the LLM to produce a structured ConversationSummary.
+
+    Raises ``ValidationError`` if the LLM response cannot be parsed into the
+    expected schema (caller handles the fallback).
+    """
     body = json.dumps(
         {
             "anthropic_version": "bedrock-2023-05-31",
@@ -56,6 +81,7 @@ def summarize(conversation_text: str) -> dict:
 
 
 def format_summary(data: dict) -> str:
+    """Convert a structured summary dict into a readable multi-line text block."""
     lines = []
     if data.get("active_topic"):
         lines.append(f"Current focus: {data['active_topic']}")
@@ -75,6 +101,15 @@ def format_summary(data: dict) -> str:
 
 
 def lambda_handler(event, context):
+    """Summarize a conversation, falling back to unstructured if structured parsing fails.
+
+    Expects ``event.conversation_text`` (the raw conversation string).
+
+    Returns:
+        200 with ``summary_data`` (structured dict or None) and ``summary_text``
+        (always a string, from either the structured or fallback path).
+        400 if no conversation text is provided; 500 on unrecoverable errors.
+    """
     try:
         conversation_text = event.get("conversation_text", "")
         if not conversation_text:
@@ -110,6 +145,12 @@ def lambda_handler(event, context):
 
 
 def _fallback_summarize(conversation_text: str) -> str:
+    """Produce a plain-text summary without schema constraints.
+
+    Used when the primary structured summarization fails Pydantic validation.
+    Omits the system prompt and schema requirement so the LLM can return
+    free-form text, which is more resilient to edge-case conversations.
+    """
     body = json.dumps(
         {
             "anthropic_version": "bedrock-2023-05-31",

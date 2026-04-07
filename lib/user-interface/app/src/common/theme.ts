@@ -1,8 +1,44 @@
+/**
+ * theme.ts -- Design-token system and MUI theme factory for ABE.
+ *
+ * All visual primitives (colors, radii, shadows, transitions) are
+ * defined in the `tokens` object as a single source of truth. The
+ * tokens cover both `light` and `dark` palettes so theme switching
+ * requires no additional lookups.
+ *
+ * ## CSS variable injection
+ *
+ * Every time the theme is built via `buildTheme()`, the helper
+ * `applyTokensAsCSSVars()` writes the active token values onto
+ * `document.documentElement` as CSS custom properties prefixed with
+ * `--abe-` (e.g. `--abe-primary`, `--abe-radius-sm`). This allows
+ * non-MUI code (plain CSS, Amplify UI, third-party components) to
+ * consume the same palette without importing this module.
+ *
+ * ## Usage
+ *
+ * ```ts
+ * const muiTheme = buildTheme("light"); // or "dark"
+ * <MuiThemeProvider theme={muiTheme}>...</MuiThemeProvider>
+ * ```
+ *
+ * The returned MUI `Theme` wires tokens into `palette`, `typography`,
+ * `shadows`, `shape`, and per-component style overrides so that
+ * standard MUI components render consistently with the ABE design.
+ */
 import { createTheme, type Theme } from "@mui/material/styles";
 import type { ThemeMode } from "./helpers/storage-helper";
 
+/** Width (px) of the navigation drawer, shared between theme and layout. */
 export const DRAWER_WIDTH = 280;
 
+/**
+ * Design tokens -- the single source of truth for all visual primitives.
+ *
+ * Organized by category (radii, shadows, transitions, colors). The
+ * `colors` branch is keyed by `light` / `dark` so that palette lookups
+ * are a simple property access: `tokens.colors[mode].primary`.
+ */
 export const tokens = {
   radii: {
     xs: 4,
@@ -112,6 +148,16 @@ export const tokens = {
   },
 } as const;
 
+/**
+ * Write the active design tokens onto `<html>` as CSS custom properties.
+ *
+ * Called internally by `buildTheme()` every time the mode changes. This
+ * makes the palette available to plain CSS and non-React components via
+ * variables like `var(--abe-primary)`, `var(--abe-radius-sm)`, etc.
+ *
+ * Only color, radius, shadow, and transition tokens are injected -- the
+ * full typography scale lives exclusively in the MUI theme object.
+ */
 function applyTokensAsCSSVars(mode: ThemeMode) {
   const c = tokens.colors[mode];
   const root = document.documentElement;
@@ -131,6 +177,16 @@ function applyTokensAsCSSVars(mode: ThemeMode) {
   root.style.setProperty("--abe-transition-normal", tokens.transitions.normal);
 }
 
+/**
+ * Build a complete MUI theme for the given color mode.
+ *
+ * Injects CSS custom properties (via `applyTokensAsCSSVars`), then
+ * returns a `Theme` with palette, typography, shadow, shape, and
+ * per-component style overrides all derived from the shared `tokens`.
+ *
+ * @param mode - `"light"` or `"dark"`.
+ * @returns A fully configured MUI `Theme` ready for `<ThemeProvider>`.
+ */
 export function buildTheme(mode: ThemeMode): Theme {
   applyTokensAsCSSVars(mode);
   const c = tokens.colors[mode];

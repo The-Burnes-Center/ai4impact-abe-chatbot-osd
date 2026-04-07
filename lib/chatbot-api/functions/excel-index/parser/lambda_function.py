@@ -1,8 +1,31 @@
 """
-Generic Excel Index Parser Lambda.
-Triggered on S3 events under the indexes/ prefix. Derives index_id from
-the S3 key path (indexes/{index_id}/latest.xlsx), writes rows to a shared
-DynamoDB table with pk=index_id, and writes metadata to the registry.
+Excel Index Parser Lambda -- S3 event-driven ingestion of .xlsx files into DynamoDB.
+
+Triggered automatically by S3 notifications when a file is created or deleted
+under the ``indexes/`` prefix. The S3 key must follow the convention
+``indexes/{index_id}/latest.xlsx``; other paths are silently ignored.
+
+Processing pipeline:
+  1. Extract ``index_id`` from the S3 key.
+  2. For delete events: clear all data rows and remove the tool-registry entry.
+  3. For create/update events:
+     a. Download and parse the Excel file with openpyxl.
+     b. Validate that at least 2 header columns exist.
+     c. Write a PROCESSING status to the META item.
+     d. Clear stale rows from any previous version of this index.
+     e. Batch-write all new rows to DynamoDB.
+     f. Update the META item with COMPLETE status, row count, and column list.
+     g. Register the index in the tool registry so the chat agent can discover
+        and query it. The registry call triggers AI-generated descriptions of
+        the index contents based on column names and sample rows.
+
+DynamoDB layout (shared table, partitioned by index_id):
+  - ``pk=index_id, sk=META`` -- status, row_count, last_updated, column list
+  - ``pk=index_id, sk=0..N`` -- one item per Excel row
+
+The META item is intentionally preserved during ``_clear_index`` so that the
+UI can display status/error information even while the index is being
+reprocessed. It is overwritten (not deleted) once the new parse completes.
 """
 import io
 import json
@@ -38,7 +61,12 @@ def _index_id_to_display_name(index_id: str) -> str:
 
 
 def _clear_index(table, index_id: str) -> None:
-    """Delete all row items for the given index_id; keep META for status."""
+    """Delete all data-row items for the given index_id, preserving the META item.
+
+    The META item (sk=META) is kept so the UI can still display index status
+    and error information during reprocessing. It will be overwritten by
+    ``_put_meta`` once parsing completes or fails.
+    """
     keys_to_delete = []
     paginator = boto3.client("dynamodb").get_paginator("query")
     for page in paginator.paginate(
@@ -59,6 +87,7 @@ def _clear_index(table, index_id: str) -> None:
 
 def _put_meta(table, index_id: str, row_count: int, last_updated: str,
               error: str | None = None, status: str | None = None) -> None:
+    """Write or overwrite the META item for an index with current status info."""
     item: dict = {"pk": index_id, "sk": SK_META, "row_count": row_count, "last_updated": last_updated}
     if status is not None:
         item["status"] = status
@@ -68,12 +97,23 @@ def _put_meta(table, index_id: str, row_count: int, last_updated: str,
 
 
 def _serialize_value(v) -> str:
+    """Convert any cell value to a string for DynamoDB storage (None becomes empty string)."""
     if v is None:
         return ""
     return str(v)
 
 
 def lambda_handler(event, context):
+    """Process S3 event records for Excel index files.
+
+    Handles both ObjectCreated and ObjectRemoved events. For each record:
+      - ObjectRemoved: clears the index data and deregisters the tool.
+      - ObjectCreated: downloads the .xlsx, parses it, writes rows to DynamoDB,
+        and registers the index in the tool registry (which triggers AI
+        description generation from column names and sample rows).
+
+    Returns a 200 response with status details for the last processed record.
+    """
     table = DDB.Table(TABLE_NAME)
     for record in event.get("Records", []):
         event_name = record.get("eventName", "")

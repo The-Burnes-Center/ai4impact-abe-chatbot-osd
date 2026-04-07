@@ -1,3 +1,45 @@
+/**
+ * useWebSocketChat -- React hook for streaming chat over a WebSocket.
+ *
+ * Opens a one-shot WebSocket to the API Gateway `$default` stage, sends
+ * the user message via the `getChatbotResponse` action, and streams the
+ * response back through a series of callback props.
+ *
+ * ## Wire protocol
+ *
+ * The Lambda handler sends frames as plain-text strings. Three sentinel
+ * prefixes are used to distinguish control frames from content:
+ *
+ *  - `STATUS_PREFIX` (`!<|STATUS|>!`)  -- followed by a human-readable
+ *    status string (e.g. "Searching knowledge base..."). The UI shows
+ *    this as a progress indicator while the agentic loop is running.
+ *
+ *  - `EOF_MARKER` (`!<|EOF_STREAM|>!`) -- signals the end of the
+ *    assistant's text. Everything received *after* this marker is
+ *    treated as JSON metadata (sources / citations).
+ *
+ *  - `ERROR_PREFIX` (`<!ERROR!>:`)     -- followed by an error message.
+ *    The connection is closed immediately after.
+ *
+ * Any frame that does not match a sentinel is appended to the
+ * accumulated response text and forwarded via `onStreamChunk`.
+ *
+ * ## Reconnection strategy
+ *
+ * If the socket closes unexpectedly (code other than 1000/1001) before
+ * the `EOF_MARKER` is received, the hook retries up to
+ * `MAX_RECONNECT_ATTEMPTS` (3) times with exponential back-off:
+ *   attempt 0 -> 1 s, attempt 1 -> 2 s, attempt 2 -> 4 s.
+ * Each retry re-authenticates (fetches a fresh Cognito token) before
+ * opening the new socket.
+ *
+ * ## Timeout
+ *
+ * A 90-second inactivity timer (`TIMEOUT_MS`) runs while no response
+ * text has been received. If no data arrives within that window the
+ * socket is closed and the user sees a timeout error. The timer is
+ * polled every 5 seconds via `setInterval`.
+ */
 import { useRef, useCallback, useContext } from "react";
 import { AppContext } from "../common/app-context";
 import { Utils } from "../common/utils";
@@ -7,30 +49,52 @@ import {
 } from "../components/chatbot/types";
 import { assembleHistory } from "../components/chatbot/utils";
 
+/** Prefix for status/progress frames sent during the agentic tool-use loop. */
 const STATUS_PREFIX = "!<|STATUS|>!";
+/** Marks the end of the assistant's streamed text; metadata follows. */
 const EOF_MARKER = "!<|EOF_STREAM|>!";
+/** Prefix for error frames; the socket is closed immediately after. */
 const ERROR_PREFIX = "<!ERROR!>:";
+/** Inactivity timeout (ms) before the request is considered stalled. */
 const TIMEOUT_MS = 90_000;
+/** Maximum number of automatic reconnection attempts on unexpected close. */
 const MAX_RECONNECT_ATTEMPTS = 3;
+/** Base delay (ms) for exponential back-off between reconnection attempts. */
 const RECONNECT_BASE_DELAY_MS = 1_000;
 
+/** Represents the current streaming progress indicator shown in the UI. */
 export interface StreamingStatus {
+  /** Human-readable status text (e.g. "Searching knowledge base..."), or empty when idle. */
   text: string;
+  /** True while the agentic loop is actively processing (spinner visible). */
   active: boolean;
 }
 
+/** Options passed to the `send` function to initiate a chat request. */
 interface SendOptions {
+  /** The user's message text. */
   userMessage: string;
+  /** Cognito user ID for session attribution. */
   userId: string;
+  /** Optional display name sent to the backend for logging. */
   displayName?: string;
+  /** Optional agency identifier for the user's organization. */
   agency?: string;
+  /** Chat session ID used to maintain conversation continuity. */
   sessionId: string;
+  /** Full conversation history; the last entries are sent as context. */
   messageHistory: ChatBotHistoryItem[];
+  /** Retrieval source hint (defaults to "kb" for Knowledge Base). */
   retrievalSource?: string;
+  /** Called on each text frame with the *accumulated* response so far. */
   onStreamChunk: (accumulated: string) => void;
+  /** Called when the backend sends a status update or clears the status. */
   onStatusChange: (status: StreamingStatus) => void;
+  /** Called once after EOF with parsed citation/source metadata. */
   onSources: (sources: Record<string, any>) => void;
+  /** Called on successful completion; `firstMessage` is true for new sessions. */
   onComplete: (firstMessage: boolean) => void;
+  /** Called on any error (timeout, auth failure, server error). */
   onError: (message: string) => void;
 }
 
@@ -45,6 +109,17 @@ export function useWebSocketChat() {
     }
   }, []);
 
+  /**
+   * Send a chat message over a new WebSocket connection.
+   *
+   * Opens a WebSocket to the API Gateway endpoint, authenticates via a
+   * Cognito JWT in the query string, sends the `getChatbotResponse`
+   * action, and streams the response through the provided callbacks.
+   *
+   * The connection is automatically retried up to 3 times on unexpected
+   * closure (see reconnection strategy in the file-level doc). Call
+   * `abort()` to cancel an in-flight request.
+   */
   const send = useCallback(
     async (opts: SendOptions) => {
       if (!appContext) {

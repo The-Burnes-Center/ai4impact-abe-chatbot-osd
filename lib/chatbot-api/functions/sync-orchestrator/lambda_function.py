@@ -1,3 +1,22 @@
+"""
+Sync Orchestrator Lambda -- moves staged files to their target buckets and triggers KB ingestion.
+
+Invoked by the admin UI "Sync data now" action. Performs three steps:
+
+  1. **Documents**: copies all files from ``staging/documents/`` to the Knowledge
+     Base source bucket, then deletes them from staging. These become available
+     to the Bedrock Knowledge Base after ingestion completes.
+  2. **Index files**: copies all files from ``staging/indexes/`` to the Excel
+     index bucket (preserving the ``indexes/{id}/latest.xlsx`` key structure),
+     then deletes from staging. The index bucket has its own S3 event trigger
+     that automatically invokes the Excel parser Lambda.
+  3. **KB ingestion**: starts a Bedrock Knowledge Base ingestion job (unless
+     one is already running or starting) so newly uploaded documents are
+     indexed into OpenSearch.
+
+A history record is written to DynamoDB on every run with status, file counts,
+duration, and a 90-day TTL for automatic cleanup.
+"""
 import json
 import os
 import time
@@ -42,6 +61,7 @@ def _list_all_objects(bucket: str, prefix: str) -> list[dict]:
 
 
 def _copy_and_delete(source_bucket: str, dest_bucket: str, key: str, dest_key: str | None = None):
+    """Atomically move an S3 object by copying to the destination then deleting the source."""
     target = dest_key or key
     s3.copy_object(
         Bucket=dest_bucket,
@@ -52,6 +72,11 @@ def _copy_and_delete(source_bucket: str, dest_bucket: str, key: str, dest_key: s
 
 
 def _start_kb_ingestion():
+    """Start a Bedrock KB ingestion job if none is currently running or starting.
+
+    Checks for IN_PROGRESS and STARTING jobs first to avoid launching duplicate
+    ingestion runs, which would waste resources and could cause race conditions.
+    """
     running = bedrock_agent.list_ingestion_jobs(
         dataSourceId=KB_DATA_SOURCE_ID,
         knowledgeBaseId=KB_ID,
@@ -77,6 +102,7 @@ def _start_kb_ingestion():
 
 
 def _record_history(status: str, kb_docs: int, index_files: int, duration_ms: int, error: str | None = None):
+    """Write a sync-run history record to DynamoDB with a 90-day TTL."""
     now = datetime.now(timezone.utc)
     expires = now + timedelta(days=90)
     item = {
@@ -94,6 +120,12 @@ def _record_history(status: str, kb_docs: int, index_files: int, duration_ms: in
 
 
 def lambda_handler(event, context):
+    """Orchestrate a full sync: move staged files and trigger KB ingestion.
+
+    Returns a 200 response with counts of moved documents and index files,
+    or a 500 with the error message if any step fails. A history record is
+    written regardless of outcome.
+    """
     logger.info("Sync orchestrator invoked")
     start = time.time()
     kb_docs_moved = 0

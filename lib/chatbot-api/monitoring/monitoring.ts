@@ -1,3 +1,23 @@
+/**
+ * Operational monitoring for the ABE chatbot stack.
+ *
+ * Creates an SNS alert topic, CloudWatch alarms, and an operations dashboard.
+ *
+ * Alarms (all fire to the SNS topic):
+ *   Lambda       — errors >= 3 and throttles >= 1 per function (5-min windows)
+ *   Chat Lambda  — avg duration > 60s (dedicated, since it has the longest timeout)
+ *   DynamoDB     — read/write throttles >= 5 per table
+ *   HTTP API     — 5xx >= 10, 4xx >= 50
+ *   WebSocket    — zero connections for 15 min (possible outage)
+ *   Step Fns     — any eval pipeline failure
+ *
+ * Dashboard layout (5 rows, each 24 units wide):
+ *   Row 1: Lambda invocations + errors (key functions)
+ *   Row 2: Chat Lambda latency (avg + p99) + throttles
+ *   Row 3: HTTP API requests/errors + latency
+ *   Row 4: WebSocket connections/messages + DynamoDB throttles
+ *   Row 5: Eval pipeline executions + active alarm summary
+ */
 import * as cdk from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as cw_actions from "aws-cdk-lib/aws-cloudwatch-actions";
@@ -43,6 +63,11 @@ export class MonitoringConstruct extends Construct {
     const alarmAction = new cw_actions.SnsAction(this.alarmTopic);
 
     // ─── Lambda Alarms ───
+    // Threshold rationale:
+    //   errors >= 3 in 2 consecutive 5-min periods — filters out transient
+    //   single-invocation failures while catching sustained error patterns.
+    //   throttles >= 1 — any throttle is abnormal under PAY_PER_REQUEST and
+    //   likely indicates a concurrency limit or account-level issue.
     const lambdaWidgets: cloudwatch.IWidget[] = [];
 
     for (const fn of props.lambdaFunctions) {
@@ -67,7 +92,10 @@ export class MonitoringConstruct extends Construct {
       throttleAlarm.addAlarmAction(alarmAction);
     }
 
-    // Chat function gets a dedicated duration alarm (5-min timeout, alert at 60s avg)
+    // Chat function gets a dedicated duration alarm. The Lambda has a 5-min
+    // timeout, but healthy responses complete in ~10-30s. Alerting at 60s avg
+    // over 3 periods (15 min) catches Bedrock latency regressions before users
+    // start seeing timeouts.
     const chatDurationAlarm = new cloudwatch.Alarm(this, "ChatDurationHigh", {
       metric: props.chatFunction.metricDuration({
         period: cdk.Duration.minutes(5),
@@ -82,6 +110,10 @@ export class MonitoringConstruct extends Construct {
     chatDurationAlarm.addAlarmAction(alarmAction);
 
     // ─── DynamoDB Alarms ───
+    // Threshold rationale: >= 5 throttles in 2 consecutive 5-min periods.
+    // All tables use PAY_PER_REQUEST so throttles should be rare. A small
+    // threshold avoids noise from occasional burst-mode warm-up while still
+    // catching sustained hot-partition or GSI back-pressure issues.
     for (const table of props.tables) {
       const readThrottle = new cloudwatch.Alarm(this, `${table.node.id}ReadThrottle`, {
         metric: table.metricThrottledRequestsForOperations({
@@ -111,6 +143,10 @@ export class MonitoringConstruct extends Construct {
     }
 
     // ─── API Gateway Alarms ───
+    // 5xx >= 10 (2 periods): server errors indicate Lambda crashes or integration
+    // failures — low threshold because any 5xx is user-visible.
+    // 4xx >= 50 (3 periods): higher threshold + longer evaluation window to
+    // tolerate normal auth failures while catching abuse or misconfigured clients.
     const httpApiId = props.restApi.httpApiId;
 
     const http5xxAlarm = new cloudwatch.Alarm(this, "HttpApi5xx", {
@@ -145,6 +181,9 @@ export class MonitoringConstruct extends Construct {
     });
     http4xxAlarm.addAlarmAction(alarmAction);
 
+    // WebSocket zero-connection alarm: if no client connects for 3 consecutive
+    // 5-min periods (15 min total), something is likely broken — DNS, the
+    // authorizer, or the API itself. Uses LESS_THAN_OR_EQUAL to 0.
     const wsApiId = props.webSocketApi.apiId;
 
     const wsConnectErrorAlarm = new cloudwatch.Alarm(this, "WsApiConnectErrors", {
@@ -164,6 +203,8 @@ export class MonitoringConstruct extends Construct {
     wsConnectErrorAlarm.addAlarmAction(alarmAction);
 
     // ─── Step Functions Alarms ───
+    // Any single failure is worth investigating — eval runs are infrequent
+    // (admin-triggered) and expensive, so threshold is 1 with 1 eval period.
     const sfnFailedAlarm = new cloudwatch.Alarm(this, "EvalSfnFailed", {
       metric: props.evalStateMachine.metricFailed({
         period: cdk.Duration.minutes(5),
