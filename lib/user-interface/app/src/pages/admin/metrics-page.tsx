@@ -50,6 +50,13 @@ interface MetricsData {
     sessions: number;
     messages: number;
     unique_users: number;
+    users?: Array<{
+      user_id: string;
+      display_name: string;
+      agency: string;
+      sessions: number;
+      messages: number;
+    }>;
   }>;
 }
 
@@ -128,6 +135,79 @@ function KPICard({
         </Stack>
       </CardContent>
     </Card>
+  );
+}
+
+function DailyRow({ day }: { day: MetricsData["daily_breakdown"][0] }) {
+  const [open, setOpen] = useState(false);
+  const hasUsers = !!day.users && day.users.length > 0;
+
+  return (
+    <React.Fragment>
+      <TableRow
+        hover
+        sx={{ cursor: hasUsers ? "pointer" : "default" }}
+        onClick={() => hasUsers && setOpen((v) => !v)}
+        onKeyDown={(e: React.KeyboardEvent) => {
+          if (hasUsers && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            setOpen((v) => !v);
+          }
+        }}
+        tabIndex={hasUsers ? 0 : undefined}
+        aria-expanded={hasUsers ? open : undefined}
+        aria-controls={hasUsers ? `daily-users-${day.date}` : undefined}
+      >
+        <TableCell width={50}>
+          {hasUsers && (
+            <IconButton size="small" aria-label={open ? "Collapse" : "Expand"}>
+              {open ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            </IconButton>
+          )}
+        </TableCell>
+        <TableCell>{day.date}</TableCell>
+        <TableCell align="right">{day.sessions.toLocaleString()}</TableCell>
+        <TableCell align="right">{day.messages.toLocaleString()}</TableCell>
+        <TableCell align="right">{day.unique_users.toLocaleString()}</TableCell>
+      </TableRow>
+      {hasUsers && (
+        <TableRow>
+          <TableCell colSpan={5} sx={{ py: 0, borderBottom: open ? undefined : "none" }}>
+            <Collapse in={open} timeout={200} unmountOnExit id={`daily-users-${day.date}`}>
+              <Box sx={{ py: 1, pl: 7, pr: 2, pb: 1.5 }}>
+                <Table size="small" aria-label={`Users for ${day.date}`}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>User (Email)</TableCell>
+                      <TableCell>Agency</TableCell>
+                      <TableCell align="right">Sessions</TableCell>
+                      <TableCell align="right">Messages</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {day.users!.map((u) => (
+                      <TableRow key={u.user_id}>
+                        <TableCell>
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                            <PersonIcon fontSize="small" color="action" />
+                            <Typography variant="body2">{u.display_name}</Typography>
+                          </Stack>
+                        </TableCell>
+                        <TableCell>
+                          <Chip label={u.agency} size="small" variant="outlined" />
+                        </TableCell>
+                        <TableCell align="right">{u.sessions}</TableCell>
+                        <TableCell align="right">{u.messages}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Box>
+            </Collapse>
+          </TableCell>
+        </TableRow>
+      )}
+    </React.Fragment>
   );
 }
 
@@ -213,6 +293,7 @@ function OverviewTab({ metrics }: { metrics: MetricsData }) {
             <Table size="small" aria-label="Daily breakdown">
               <TableHead>
                 <TableRow>
+                  <TableCell width={50} />
                   <TableCell>Date</TableCell>
                   <TableCell align="right">Sessions</TableCell>
                   <TableCell align="right">Messages</TableCell>
@@ -223,12 +304,7 @@ function OverviewTab({ metrics }: { metrics: MetricsData }) {
                 {[...metrics.daily_breakdown]
                   .sort((a, b) => b.date.localeCompare(a.date))
                   .map((day) => (
-                    <TableRow key={day.date} hover>
-                      <TableCell>{day.date}</TableCell>
-                      <TableCell align="right">{day.sessions.toLocaleString()}</TableCell>
-                      <TableCell align="right">{day.messages.toLocaleString()}</TableCell>
-                      <TableCell align="right">{day.unique_users.toLocaleString()}</TableCell>
-                    </TableRow>
+                    <DailyRow key={day.date} day={day} />
                   ))}
               </TableBody>
             </Table>

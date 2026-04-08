@@ -29,12 +29,38 @@ def parse_timestamp(timestamp_str):
         return None
 
 
+def get_user_display_map():
+    """Scan AnalyticsTable to build user_id -> {display_name, agency} mapping."""
+    if not analytics_table:
+        return {}
+    user_map = {}
+    last_key = None
+    while True:
+        params = {"ProjectionExpression": "user_id, display_name, agency"}
+        if last_key:
+            params["ExclusiveStartKey"] = last_key
+        response = analytics_table.scan(**params)
+        for item in response.get("Items", []):
+            uid = item.get("user_id")
+            if uid and uid not in user_map:
+                dn = item.get("display_name", "")
+                ag = item.get("agency", "")
+                if dn or ag:
+                    user_map[uid] = {"display_name": dn, "agency": ag}
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            break
+    return user_map
+
+
 def summarize_session_metrics():
     unique_users = set()
     total_sessions = 0
     total_messages = 0
     daily_stats = defaultdict(lambda: {"sessions": 0, "messages": 0})
     unique_users_daily = defaultdict(set)
+    daily_user_sessions = defaultdict(lambda: defaultdict(int))
+    daily_user_messages = defaultdict(lambda: defaultdict(int))
     hourly_counts = defaultdict(int)
     session_msg_counts = []
 
@@ -64,21 +90,36 @@ def summarize_session_metrics():
             daily_stats[date_key]["messages"] += message_count
             if user_id:
                 unique_users_daily[date_key].add(user_id)
+                daily_user_sessions[date_key][user_id] += 1
+                daily_user_messages[date_key][user_id] += message_count
             hourly_counts[dt.hour] += 1
 
         last_evaluated_key = response.get("LastEvaluatedKey")
         if not last_evaluated_key:
             break
 
-    daily_breakdown = [
-        {
+    user_display_map = get_user_display_map()
+
+    daily_breakdown = []
+    for date, stats in sorted(daily_stats.items()):
+        day_users = []
+        for uid in unique_users_daily[date]:
+            info = user_display_map.get(uid, {})
+            day_users.append({
+                "user_id": uid,
+                "display_name": info.get("display_name") or uid,
+                "agency": info.get("agency") or "Unknown",
+                "sessions": daily_user_sessions[date][uid],
+                "messages": daily_user_messages[date][uid],
+            })
+        day_users.sort(key=lambda u: u["messages"], reverse=True)
+        daily_breakdown.append({
             "date": date,
             "sessions": stats["sessions"],
             "messages": stats["messages"],
             "unique_users": len(unique_users_daily[date]),
-        }
-        for date, stats in sorted(daily_stats.items())
-    ]
+            "users": day_users,
+        })
 
     avg_messages_per_session = (
         round(sum(session_msg_counts) / len(session_msg_counts), 1)
