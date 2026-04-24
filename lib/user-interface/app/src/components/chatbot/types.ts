@@ -10,9 +10,20 @@ export interface MessageTraceMetadata {
   turnIndex?: number;
 }
 
+/** Server-reported context-window usage for the most recent response. */
+export interface ContextUsage {
+  estimatedTokens: number;
+  maxTokens: number;
+  /** 0-100 inclusive. */
+  percent: number;
+  /** Number of in-session compaction rounds applied so far this conversation. */
+  compactionRounds: number;
+}
+
 export interface ChatMessageMetadata {
   Sources?: any[];
   Trace?: MessageTraceMetadata;
+  ContextUsage?: ContextUsage;
   [key: string]: any;
 }
 

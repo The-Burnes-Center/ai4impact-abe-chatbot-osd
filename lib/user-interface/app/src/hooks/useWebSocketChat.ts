@@ -21,15 +21,14 @@
  *  - `ERROR_PREFIX` (`<!ERROR!>:`)     -- followed by an error message.
  *    The connection is closed immediately after.
  *
- *  - `SESSION_FULL_PREFIX` (`<!SESSION_FULL!>:`) -- terminal frame meaning the
- *    model context for this session is exhausted. Triggers `onSessionExhausted`
- *    so the UI can redirect to a fresh chat session and replay the unsent
- *    user message there. The same callback is fired by the client-side
- *    pre-flight when the outbound payload would exceed API Gateway's
- *    WebSocket message size limit, or by a 1009 close code as a safety net.
- *
  * Any frame that does not match a sentinel is appended to the
  * accumulated response text and forwarded via `onStreamChunk`.
+ *
+ * The metadata frame after `EOF_MARKER` is JSON shaped as
+ * `{ Sources, Trace, ContextUsage }`. ContextUsage carries
+ * `{ estimatedTokens, maxTokens, percent, compactionRounds }` so the chat
+ * UI can render a live memory-usage indicator. The whole object is forwarded
+ * to `onSources` so the existing callback wiring continues to work.
  *
  * ## Reconnection strategy
  *
@@ -62,25 +61,12 @@ const STATUS_PREFIX = "!<|STATUS|>!";
 const EOF_MARKER = "!<|EOF_STREAM|>!";
 /** Prefix for error frames; the socket is closed immediately after. */
 const ERROR_PREFIX = "<!ERROR!>:";
-/**
- * Prefix for terminal frames signaling the model context is exhausted (server)
- * OR the outbound payload would exceed the API Gateway WebSocket message limit
- * (client pre-flight). Triggers an auto-redirect to a fresh chat session.
- */
-const SESSION_FULL_PREFIX = "<!SESSION_FULL!>:";
 /** Inactivity timeout (ms) before the request is considered stalled. */
 const TIMEOUT_MS = 90_000;
 /** Maximum number of automatic reconnection attempts on unexpected close. */
 const MAX_RECONNECT_ATTEMPTS = 3;
 /** Base delay (ms) for exponential back-off between reconnection attempts. */
 const RECONNECT_BASE_DELAY_MS = 1_000;
-/**
- * Soft cap on the outbound WebSocket payload size (bytes) before we abort the
- * send and surface a "session full" signal instead of letting API Gateway
- * close the connection. API Gateway WebSocket has a 128 KB total message
- * limit; 100 KB leaves headroom for protocol overhead and JSON expansion.
- */
-const MAX_OUTBOUND_PAYLOAD_BYTES = 100_000;
 
 /** Represents the current streaming progress indicator shown in the UI. */
 export interface StreamingStatus {
@@ -116,15 +102,6 @@ interface SendOptions {
   onComplete: (firstMessage: boolean) => void;
   /** Called on any error (timeout, auth failure, server error). */
   onError: (message: string) => void;
-  /**
-   * Called when the conversation cannot continue in this session because:
-   *   - the server signaled context exhaustion (`<!SESSION_FULL!>:` frame), or
-   *   - the assembled payload would exceed API Gateway's WebSocket message
-   *     limit (client-side pre-flight check).
-   * The handler should redirect the user to a fresh session and may re-send
-   * `unsentMessage` there. If omitted, the hook falls back to `onError`.
-   */
-  onSessionExhausted?: (info: { reason: "context" | "payload"; message: string; unsentMessage: string }) => void;
 }
 
 export function useWebSocketChat() {
@@ -159,12 +136,10 @@ export function useWebSocketChat() {
       const wsUrl = appContext.wsEndpoint + "/";
       const firstMessage = opts.messageHistory.length < 3;
 
-      // --- Pre-flight payload size check ---
-      // Build the exact frame we'd send and measure its UTF-8 byte size. If it
-      // exceeds the API Gateway WebSocket limit, surface a session-full signal
-      // instead of attempting a send that would be rejected with an opaque
-      // close code (1009). Carries the user's message forward so the caller
-      // can replay it in a fresh session.
+      // The outbound history is capped client-side by `assembleHistory`
+      // (see lib/user-interface/app/src/components/chatbot/utils.ts) to match
+      // the backend sliding window, which keeps us comfortably under API
+      // Gateway's 128 KB per-frame limit even on long sessions.
       const outboundFrame = JSON.stringify({
         action: "getChatbotResponse",
         data: {
@@ -177,21 +152,6 @@ export function useWebSocketChat() {
           retrievalSource: opts.retrievalSource ?? "kb",
         },
       });
-      const outboundBytes = new Blob([outboundFrame]).size;
-      if (outboundBytes > MAX_OUTBOUND_PAYLOAD_BYTES) {
-        const message =
-          "This conversation has gotten too long to send. Starting a fresh conversation so we can keep going.";
-        if (opts.onSessionExhausted) {
-          opts.onSessionExhausted({
-            reason: "payload",
-            message,
-            unsentMessage: opts.userMessage,
-          });
-        } else {
-          opts.onError(message);
-        }
-        return;
-      }
 
       const connect = async (attempt: number) => {
         let token: string;
@@ -239,24 +199,6 @@ export function useWebSocketChat() {
           }
 
           lastActivity = Date.now();
-
-          if (raw.startsWith(SESSION_FULL_PREFIX)) {
-            clearInterval(timeoutId);
-            terminalHandled = true;
-            const message = raw.slice(SESSION_FULL_PREFIX.length).trim()
-              || "This conversation has reached its memory limit. Starting a fresh conversation so we can keep going.";
-            if (opts.onSessionExhausted) {
-              opts.onSessionExhausted({
-                reason: "context",
-                message,
-                unsentMessage: opts.userMessage,
-              });
-            } else {
-              opts.onError(message);
-            }
-            ws.close(1000, "session full");
-            return;
-          }
 
           if (raw.startsWith(ERROR_PREFIX)) {
             clearInterval(timeoutId);
@@ -337,23 +279,10 @@ export function useWebSocketChat() {
             return;
           }
 
-          // A terminal callback (error / session-full) already fired; the close
-          // that follows our explicit ws.close() is expected and must not
-          // double-fire onError.
+          // A terminal callback (error frame) already fired; the close that
+          // follows our explicit ws.close() is expected and must not
+          // double-fire onError as "connection lost".
           if (terminalHandled) {
-            return;
-          }
-
-          // Safety net: if the server (or API Gateway) closed with code 1009
-          // (Message Too Big) the pre-flight check missed something. Treat as
-          // session-full so the UI redirects instead of showing a generic error.
-          if (event.code === 1009) {
-            const message = "This conversation has gotten too long to send. Starting a fresh conversation so we can keep going.";
-            if (opts.onSessionExhausted) {
-              opts.onSessionExhausted({ reason: "payload", message, unsentMessage: opts.userMessage });
-            } else {
-              opts.onError(message);
-            }
             return;
           }
 

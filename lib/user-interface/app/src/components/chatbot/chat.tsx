@@ -1,8 +1,8 @@
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 import {
   ChatBotHistoryItem,
   ChatBotMessageType,
+  ContextUsage,
   FeedbackSubmission,
 } from "./types";
 import { Auth } from "aws-amplify";
@@ -25,10 +25,18 @@ import { useNotifications } from "../notif-manager";
 import { Utils } from "../../common/utils";
 import { useWebSocketChat, StreamingStatus } from "../../hooks/useWebSocketChat";
 
+/** Defensive JSON parse: backend persists `metadata` as a JSON string, but
+ *  some legacy entries may already be objects. Returns `null` on any failure. */
+function safeParseJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 export default function Chat(props: { sessionId?: string }) {
   const appContext = useContext(AppContext);
-  const navigate = useNavigate();
-  const location = useLocation();
   const [running, setRunning] = useState<boolean>(true);
   const [session, setSession] = useState<{ id: string; loading: boolean }>({
     id: props.sessionId ?? uuidv4(),
@@ -48,37 +56,18 @@ export default function Chat(props: { sessionId?: string }) {
     text: "",
     active: false,
   });
-  // If we landed here as part of a session-full redirect, replay the unsent
-  // user message in this fresh session. The state shape is `{ pendingMessage }`
-  // and is consumed exactly once by clearing the router state right after.
-  const [queuedPrompt, setQueuedPrompt] = useState<string | null>(
-    () => (location.state as { pendingMessage?: string } | null)?.pendingMessage ?? null
-  );
-
-  useEffect(() => {
-    const pending =
-      (location.state as { pendingMessage?: string } | null)?.pendingMessage ?? null;
-    if (pending) {
-      setQueuedPrompt(pending);
-      // Clear the one-shot router state so a refresh doesn't replay the message.
-      navigate(location.pathname, { replace: true, state: {} });
-    }
-  }, [location.pathname, location.state, navigate]);
-
-  const handleSessionExhausted = useCallback(
-    (info: { reason: "context" | "payload"; message: string; unsentMessage: string }) => {
-      addNotification("info", info.message);
-      const newSessionId = uuidv4();
-      navigate(`/chatbot/playground/${newSessionId}`, {
-        state: { pendingMessage: info.unsentMessage },
-      });
-    },
-    [addNotification, navigate]
-  );
+  const [queuedPrompt, setQueuedPrompt] = useState<string | null>(null);
+  /**
+   * Latest context-window usage reported by the backend. Drives the
+   * memory-usage ring rendered next to the input toolbar. Reset whenever the
+   * session changes so a fresh chat starts with no indicator.
+   */
+  const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
 
   useEffect(() => {
     if (!appContext) return;
     setMessageHistory([]);
+    setContextUsage(null);
 
     (async () => {
       if (!props.sessionId) {
@@ -100,15 +89,25 @@ export default function Chat(props: { sessionId?: string }) {
         );
 
         if (hist) {
-          setMessageHistory(
-            hist
-              .filter((x) => x !== null)
-              .map((x) => ({
-                type: x!.type as ChatBotMessageType,
-                metadata: x!.metadata!,
-                content: x!.content,
-              }))
-          );
+          const restored = hist
+            .filter((x) => x !== null)
+            .map((x) => ({
+              type: x!.type as ChatBotMessageType,
+              metadata: x!.metadata!,
+              content: x!.content,
+            }));
+          setMessageHistory(restored);
+          // Seed the memory-usage ring from the most recent AI message so the
+          // indicator persists across page refreshes.
+          for (let i = restored.length - 1; i >= 0; i--) {
+            const meta = restored[i]?.metadata as unknown;
+            const parsed = typeof meta === "string" ? safeParseJson(meta) : meta;
+            const usage = (parsed as { ContextUsage?: ContextUsage } | null)?.ContextUsage;
+            if (usage && typeof usage.percent === "number") {
+              setContextUsage(usage);
+              break;
+            }
+          }
         }
         setSession({ id: props.sessionId, loading: false });
         setRunning(false);
@@ -403,7 +402,8 @@ export default function Chat(props: { sessionId?: string }) {
           onStop={abort}
           queuedPrompt={queuedPrompt}
           onQueuedPromptHandled={() => setQueuedPrompt(null)}
-          onSessionExhausted={handleSessionExhausted}
+          contextUsage={contextUsage}
+          onContextUsage={setContextUsage}
         />
       </div>
     </div>

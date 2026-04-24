@@ -28,11 +28,13 @@ import {
   ChatBotHistoryItem,
   ChatBotMessageType,
   ChatInputState,
+  ContextUsage,
 } from "./types";
 
 import { SessionRefreshContext } from "../../common/session-refresh-context";
 import { useNotifications } from "../notif-manager";
 import { useWebSocketChat, StreamingStatus } from "../../hooks/useWebSocketChat";
+import ContextUsageRing from "./context-usage-ring";
 import { Utils } from "../../common/utils";
 
 export interface ChatInputPanelProps {
@@ -46,10 +48,11 @@ export interface ChatInputPanelProps {
   onStop?: () => void;
   queuedPrompt?: string | null;
   onQueuedPromptHandled?: () => void;
-  /** Fired when the conversation can no longer continue in this session
-   *  (context exhausted or payload too large). Parent should redirect to a
-   *  fresh session and replay `unsentMessage` there. */
-  onSessionExhausted?: (info: { reason: "context" | "payload"; message: string; unsentMessage: string }) => void;
+  /** Latest server-reported context-window usage, surfaced as a small ring in
+   *  the input toolbar. `null` until the first response of the session. */
+  contextUsage?: ContextUsage | null;
+  /** Called whenever a fresh metadata frame carrying `ContextUsage` arrives. */
+  onContextUsage?: (usage: ContextUsage) => void;
 }
 
 const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
@@ -162,6 +165,12 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
           },
         ];
         props.setMessageHistory(messageHistoryRef.current);
+        // The metadata frame piggybacks ContextUsage from the backend; lift it
+        // into chat-level state so the input toolbar can render the live ring.
+        const usage = (sources as { ContextUsage?: ContextUsage })?.ContextUsage;
+        if (usage && typeof usage.percent === "number") {
+          props.onContextUsage?.(usage);
+        }
       },
 
       onComplete(firstMessage) {
@@ -181,17 +190,6 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
           message || "Sorry, something went wrong. Please try again."
         );
         props.setRunning(false);
-      },
-
-      onSessionExhausted(info) {
-        // Drop the placeholder assistant message AND the just-added user
-        // message — the parent will replay the user message in the fresh
-        // session, so leaving them here would create a duplicate on the way out.
-        props.setStreamingStatus({ text: "", active: false });
-        messageHistoryRef.current = messageHistoryRef.current.slice(0, -2);
-        props.setMessageHistory(messageHistoryRef.current);
-        props.setRunning(false);
-        props.onSessionExhausted?.(info);
       },
     });
   };
@@ -246,6 +244,7 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
             aria-label="Type your message to ABE"
           />
           <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 1 }}>
+            <ContextUsageRing usage={props.contextUsage ?? null} />
             {browserSupportsSpeechRecognition && (
               <Tooltip title={listening ? "Stop listening" : "Start voice input"}>
                 <IconButton
