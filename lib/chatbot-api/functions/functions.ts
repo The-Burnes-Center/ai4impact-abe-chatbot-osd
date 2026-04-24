@@ -38,7 +38,7 @@
  *   Sync (automated data pipeline)
  *     - SyncOrchestratorFunction        — Moves staged files to KB/index buckets + triggers ingestion
  *     - SyncScheduleFunction            — API for managing the EventBridge weekly schedule
- *     - WeeklySyncSchedule              — EventBridge cron (Sundays 6 AM UTC)
+ *     - WeeklySyncSchedule              — EventBridge cron (Sundays 1:00 AM America/New_York)
  *
  *   Metrics
  *     - MetricsHandlerFunction          — Reads session/analytics tables for admin dashboards
@@ -1042,7 +1042,7 @@ syncOrchestratorFunction.addToRolePolicy(new iam.PolicyStatement({
 }));
 this.syncOrchestratorFunction = syncOrchestratorFunction;
 
-// EventBridge Scheduler: runs the sync orchestrator every Sunday at 6 AM UTC.
+// EventBridge Scheduler: weekly in America/New_York (same local time year-round, matches history ET display)
 const schedulerRole = new iam.Role(scope, 'SyncSchedulerRole', {
   assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
 });
@@ -1059,8 +1059,8 @@ const scheduleGroup = new scheduler.CfnScheduleGroup(scope, 'ABESyncScheduleGrou
 const syncSchedule = new scheduler.CfnSchedule(scope, 'WeeklySyncSchedule', {
   name: `${cdk.Stack.of(scope).stackName}-WeeklySyncSchedule`,
   groupName: scheduleGroup.name!,
-  scheduleExpression: 'cron(0 6 ? * SUN *)',
-  scheduleExpressionTimezone: 'UTC',
+  scheduleExpression: 'cron(0 1 ? * SUN *)',
+  scheduleExpressionTimezone: 'America/New_York',
   state: 'ENABLED',
   flexibleTimeWindow: { mode: 'OFF' },
   target: {

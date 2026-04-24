@@ -6,9 +6,17 @@ export interface SyncSchedule {
   state: string;
   enabled: boolean;
   dayOfWeek?: string;
-  hourUtc?: number;
+  /** Local hour in scheduleTimezone (America/New_York for new schedules) */
+  hour?: number;
   minute?: number;
+  scheduleTimezone?: string;
+  /** True when the schedule is still in UTC; UI uses hour/minute as next run in Eastern */
+  legacyUtc?: boolean;
   humanReadable?: string;
+  /** Only when legacy UTC — raw cron in UTC for reference */
+  hourUtc?: number;
+  minuteUtc?: number;
+  dayOfWeekUtc?: string;
 }
 
 export interface SyncDestination {
@@ -59,7 +67,7 @@ export class SyncClient {
 
   async updateSyncSchedule(
     dayOfWeek: string,
-    hourUtc: number,
+    hour: number,
     minute: number,
     enabled = true
   ): Promise<SyncSchedule> {
@@ -70,7 +78,7 @@ export class SyncClient {
         "Content-Type": "application/json",
         Authorization: auth,
       },
-      body: JSON.stringify({ dayOfWeek, hourUtc, minute, enabled }),
+      body: JSON.stringify({ dayOfWeek, hour, minute, enabled }),
     });
     if (!response.ok) throw new Error("Failed to update sync schedule");
     return response.json();

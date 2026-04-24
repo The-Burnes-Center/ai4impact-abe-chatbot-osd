@@ -49,19 +49,16 @@ const DAYS = [
   { value: "SAT", label: "Saturday" },
 ];
 
-const HOURS_ET = Array.from({ length: 24 }, (_, i) => {
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => {
   const ampm = i < 12 ? "AM" : "PM";
   const h12 = i % 12 || 12;
-  return { value: i, label: `${h12}:00 ${ampm} ET` };
+  return { value: i, label: `${h12} ${ampm}` };
 });
 
-function etToUtc(hourEt: number): number {
-  return (hourEt + 5) % 24;
-}
-
-function utcToEt(hourUtc: number): number {
-  return (hourUtc - 5 + 24) % 24;
-}
+const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, i) => ({
+  value: i,
+  label: i < 10 ? `0${i}` : String(i),
+}));
 
 function statusChipColor(
   status: string
@@ -91,7 +88,8 @@ export default function AutomationTab({ onScheduleChange }: AutomationTabProps) 
 
   const [editOpen, setEditOpen] = useState(false);
   const [editDay, setEditDay] = useState("SUN");
-  const [editHourEt, setEditHourEt] = useState(2);
+  const [editHour, setEditHour] = useState(1);
+  const [editMinute, setEditMinute] = useState(0);
   const [saving, setSaving] = useState(false);
 
   const [confirmSyncOpen, setConfirmSyncOpen] = useState(false);
@@ -121,19 +119,18 @@ export default function AutomationTab({ onScheduleChange }: AutomationTabProps) 
 
   const openEditDialog = () => {
     if (schedule?.dayOfWeek) setEditDay(schedule.dayOfWeek);
-    if (schedule?.hourUtc !== undefined)
-      setEditHourEt(utcToEt(schedule.hourUtc));
+    if (schedule?.hour !== undefined) setEditHour(schedule.hour);
+    setEditMinute(schedule?.minute ?? 0);
     setEditOpen(true);
   };
 
   const handleSaveSchedule = async () => {
     setSaving(true);
     try {
-      const hourUtc = etToUtc(editHourEt);
       const updated = await apiClient.sync.updateSyncSchedule(
         editDay,
-        hourUtc,
-        0,
+        editHour,
+        editMinute,
         true
       );
       setSchedule(updated);
@@ -358,22 +355,51 @@ export default function AutomationTab({ onScheduleChange }: AutomationTabProps) 
                 ))}
               </Select>
             </FormControl>
-            <FormControl fullWidth>
-              <InputLabel id="time-select-label">Time (Eastern)</InputLabel>
-              <Select
-                labelId="time-select-label"
-                value={editHourEt}
-                label="Time (Eastern)"
-                onChange={(e) => setEditHourEt(Number(e.target.value))}
-                disabled={saving}
+            <Box>
+              <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                <FormControl fullWidth>
+                  <InputLabel id="hour-select-label">Hour (Eastern Time)</InputLabel>
+                  <Select
+                    labelId="hour-select-label"
+                    value={editHour}
+                    label="Hour (Eastern Time)"
+                    onChange={(e) => setEditHour(Number(e.target.value))}
+                    disabled={saving}
+                  >
+                    {HOUR_OPTIONS.map((h) => (
+                      <MenuItem key={h.value} value={h.value}>
+                        {h.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl fullWidth>
+                  <InputLabel id="minute-select-label">Minute</InputLabel>
+                  <Select
+                    labelId="minute-select-label"
+                    value={editMinute}
+                    label="Minute"
+                    onChange={(e) => setEditMinute(Number(e.target.value))}
+                    disabled={saving}
+                  >
+                    {MINUTE_OPTIONS.map((m) => (
+                      <MenuItem key={m.value} value={m.value}>
+                        {m.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Stack>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                display="block"
+                sx={{ mt: 0.5 }}
               >
-                {HOURS_ET.map((h) => (
-                  <MenuItem key={h.value} value={h.value}>
-                    {h.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                Uses the America/New_York time zone (including daylight saving
+                time), matching sync history.
+              </Typography>
+            </Box>
           </Stack>
         </DialogContent>
         <DialogActions>

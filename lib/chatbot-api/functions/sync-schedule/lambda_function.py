@@ -1,9 +1,11 @@
 import json
 import os
 import logging
+from datetime import datetime, time, timedelta, timezone
 
 import boto3
 from boto3.dynamodb.conditions import Key
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -25,11 +27,31 @@ registry_table = dynamodb.Table(INDEX_REGISTRY_TABLE)
 
 CORS_HEADERS = {"Access-Control-Allow-Origin": "*"}
 
+# EventBridge scheduler DOW tokens
 DAYS_OF_WEEK = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
 DAY_LABELS = {
-    "SUN": "Sunday", "MON": "Monday", "TUE": "Tuesday", "WED": "Wednesday",
-    "THU": "Thursday", "FRI": "Friday", "SAT": "Saturday",
+    "SUN": "Sunday",
+    "MON": "Monday",
+    "TUE": "Tuesday",
+    "WED": "Wednesday",
+    "THU": "Thursday",
+    "FRI": "Friday",
+    "SAT": "Saturday",
 }
+
+# Python date.weekday(): Monday=0 … Sunday=6
+_AWS_DOW_TO_PY = {
+    "MON": 0,
+    "TUE": 1,
+    "WED": 2,
+    "THU": 3,
+    "FRI": 4,
+    "SAT": 5,
+    "SUN": 6,
+}
+_PY_TO_AWS_DOW = {v: k for k, v in _AWS_DOW_TO_PY.items()}
+
+TARGET_SCHEDULE_TZ = "America/New_York"
 
 
 def _check_admin(event):
@@ -66,15 +88,50 @@ def _build_cron(day_of_week: str, hour: int, minute: int) -> str:
     return f"cron({minute} {hour} ? * {day_of_week} *)"
 
 
-def _human_schedule(cron_parts: dict) -> str:
+def _human_local_eastern(cron_parts: dict) -> str:
     h = cron_parts["hour"]
     m = cron_parts["minute"]
-    h_et = (h - 5) % 24
-    ampm = "AM" if h_et < 12 else "PM"
-    h12 = h_et % 12 or 12
     day = DAY_LABELS.get(cron_parts["dayOfWeek"], cron_parts["dayOfWeek"])
-    time_str = f"{h12}:{m:02d} {ampm} ET"
-    return f"Every {day} at {time_str}"
+    return f"Every {day} at {h:02d}:{m:02d} Eastern Time"
+
+
+def _next_utc_cron_instant(aws_dow: str, hour: int, minute: int) -> datetime:
+    """Next fire time for a weekly rule that is expressed in UTC (legacy)."""
+    py_w = _AWS_DOW_TO_PY[aws_dow]
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    for d in range(0, 8 * 7):
+        cand_d = today + timedelta(days=d)
+        if cand_d.weekday() != py_w:
+            continue
+        t = datetime.combine(cand_d, time(hour, minute, tzinfo=timezone.utc))
+        if t > now:
+            return t
+    return now + timedelta(days=7)
+
+
+def _legacy_utc_body(cron_parts: dict) -> dict:
+    nxt = _next_utc_cron_instant(
+        cron_parts["dayOfWeek"], cron_parts["hour"], cron_parts["minute"]
+    )
+    ny = nxt.astimezone(ZoneInfo(TARGET_SCHEDULE_TZ))
+    aws_dow_ny = _PY_TO_AWS_DOW[ny.weekday()]
+    human = (
+        f"Every {DAY_LABELS[cron_parts['dayOfWeek']]} at "
+        f"{cron_parts['hour']:02d}:{cron_parts['minute']:02d} UTC "
+        f"(next run in Eastern: {ny.strftime('%b %d, %Y %I:%M %p %Z')})"
+    )
+    return {
+        "dayOfWeek": aws_dow_ny,
+        "hour": ny.hour,
+        "minute": ny.minute,
+        "hourUtc": cron_parts["hour"],
+        "minuteUtc": cron_parts["minute"],
+        "dayOfWeekUtc": cron_parts["dayOfWeek"],
+        "scheduleTimezone": "UTC",
+        "legacyUtc": True,
+        "humanReadable": human,
+    }
 
 
 def handle_get_schedule(event):
@@ -82,18 +139,28 @@ def handle_get_schedule(event):
         resp = scheduler.get_schedule(Name=SCHEDULE_NAME, GroupName=SCHEDULE_GROUP)
         expr = resp.get("ScheduleExpression", "")
         state = resp.get("State", "ENABLED")
+        sched_tz = resp.get("ScheduleExpressionTimezone") or "UTC"
         cron_parts = _parse_cron(expr)
 
-        body = {
+        body: dict = {
             "scheduleExpression": expr,
             "state": state,
             "enabled": state == "ENABLED",
+            "scheduleTimezone": sched_tz,
         }
-        if cron_parts:
+
+        if not cron_parts:
+            return _ok(body)
+
+        if sched_tz == TARGET_SCHEDULE_TZ:
             body["dayOfWeek"] = cron_parts["dayOfWeek"]
-            body["hourUtc"] = cron_parts["hour"]
+            body["hour"] = cron_parts["hour"]
             body["minute"] = cron_parts["minute"]
-            body["humanReadable"] = _human_schedule(cron_parts)
+            body["humanReadable"] = _human_local_eastern(cron_parts)
+        else:
+            # Legacy UTC — show next run in Eastern so the form matches history formatting
+            leg = _legacy_utc_body(cron_parts)
+            body.update(leg)
 
         return _ok(body)
     except scheduler.exceptions.ResourceNotFoundException:
@@ -105,21 +172,21 @@ def handle_get_schedule(event):
 
 def handle_put_schedule(event):
     try:
-        body = json.loads(event.get("body", "{}"))
+        body_in = json.loads(event.get("body", "{}"))
     except (json.JSONDecodeError, TypeError):
         return _err(400, "Invalid JSON body")
 
-    day = body.get("dayOfWeek", "SUN").upper()
+    day = body_in.get("dayOfWeek", "SUN").upper()
     if day not in DAYS_OF_WEEK:
         return _err(400, f"Invalid dayOfWeek: {day}")
 
-    hour_utc = int(body.get("hourUtc", 6))
-    minute = int(body.get("minute", 0))
-    if not (0 <= hour_utc <= 23) or not (0 <= minute <= 59):
+    hour = int(body_in.get("hour", 1))
+    minute = int(body_in.get("minute", 0))
+    if not (0 <= hour <= 23) or not (0 <= minute <= 59):
         return _err(400, "Invalid hour/minute")
 
-    enabled = body.get("enabled", True)
-    cron_expr = _build_cron(day, hour_utc, minute)
+    enabled = body_in.get("enabled", True)
+    cron_expr = _build_cron(day, hour, minute)
 
     try:
         current = scheduler.get_schedule(Name=SCHEDULE_NAME, GroupName=SCHEDULE_GROUP)
@@ -127,7 +194,7 @@ def handle_put_schedule(event):
             Name=SCHEDULE_NAME,
             GroupName=SCHEDULE_GROUP,
             ScheduleExpression=cron_expr,
-            ScheduleExpressionTimezone="UTC",
+            ScheduleExpressionTimezone=TARGET_SCHEDULE_TZ,
             State="ENABLED" if enabled else "DISABLED",
             FlexibleTimeWindow={"Mode": "OFF"},
             Target=current["Target"],
@@ -136,16 +203,20 @@ def handle_put_schedule(event):
         logger.error("Error updating schedule: %s", e, exc_info=True)
         return _err(500, str(e))
 
-    cron_parts = {"dayOfWeek": day, "hour": hour_utc, "minute": minute}
-    return _ok({
-        "scheduleExpression": cron_expr,
-        "state": "ENABLED" if enabled else "DISABLED",
-        "enabled": enabled,
-        "dayOfWeek": day,
-        "hourUtc": hour_utc,
-        "minute": minute,
-        "humanReadable": _human_schedule(cron_parts),
-    })
+    cron_parts = {"dayOfWeek": day, "hour": hour, "minute": minute}
+    return _ok(
+        {
+            "scheduleExpression": cron_expr,
+            "state": "ENABLED" if enabled else "DISABLED",
+            "enabled": enabled,
+            "dayOfWeek": day,
+            "hour": hour,
+            "minute": minute,
+            "scheduleTimezone": TARGET_SCHEDULE_TZ,
+            "legacyUtc": False,
+            "humanReadable": _human_local_eastern(cron_parts),
+        }
+    )
 
 
 def handle_get_destinations(event):
@@ -167,29 +238,37 @@ def handle_get_destinations(event):
             idx_name = item.get("index_name") or item.get("sk", "")
             if not idx_name:
                 continue
-            indexes.append({
-                "indexName": idx_name,
-                "displayName": item.get("display_name", idx_name),
-                "path": f"s3://{STAGING_BUCKET}/indexes/{idx_name}/latest.xlsx",
-            })
+            indexes.append(
+                {
+                    "indexName": idx_name,
+                    "displayName": item.get("display_name", idx_name),
+                    "path": f"s3://{STAGING_BUCKET}/indexes/{idx_name}/latest.xlsx",
+                }
+            )
     except Exception as e:
         logger.error("Error reading index registry: %s", e, exc_info=True)
 
     staged_docs = 0
     try:
-        resp = s3.list_objects_v2(Bucket=STAGING_BUCKET, Prefix="documents/", MaxKeys=1000)
-        staged_docs = sum(1 for o in resp.get("Contents", []) if not o["Key"].endswith("/"))
+        resp = s3.list_objects_v2(
+            Bucket=STAGING_BUCKET, Prefix="documents/", MaxKeys=1000
+        )
+        staged_docs = sum(
+            1 for o in resp.get("Contents", []) if not o["Key"].endswith("/")
+        )
     except Exception:
         pass
 
-    return _ok({
-        "stagingBucket": STAGING_BUCKET,
-        "kbDocuments": {
-            "path": f"s3://{STAGING_BUCKET}/documents/",
-            "stagedCount": staged_docs,
-        },
-        "indexes": indexes,
-    })
+    return _ok(
+        {
+            "stagingBucket": STAGING_BUCKET,
+            "kbDocuments": {
+                "path": f"s3://{STAGING_BUCKET}/documents/",
+                "stagedCount": staged_docs,
+            },
+            "indexes": indexes,
+        }
+    )
 
 
 def handle_get_history(event):

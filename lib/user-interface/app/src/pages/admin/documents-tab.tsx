@@ -18,11 +18,14 @@ import {
   Checkbox,
   IconButton,
   Collapse,
+  TextField,
+  InputAdornment,
 } from "@mui/material";
+import SearchIcon from "@mui/icons-material/Search";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import AddIcon from "@mui/icons-material/Add";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
-import { useCallback, useContext, useEffect, useState, useRef } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState, useRef } from "react";
 import { AdminDataType } from "../../common/types";
 import { ApiClient } from "../../common/api-client/api-client";
 import { AppContext } from "../../common/app-context";
@@ -52,6 +55,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
   const [selectedItems, setSelectedItems] = useState<any[]>([]);
   const [showModalDelete, setShowModalDelete] = useState(false);
   const [showUploadArea, setShowUploadArea] = useState(false);
+  const [search, setSearch] = useState("");
   const { addNotification } = useNotifications();
   const previousSyncStatusRef = useRef<boolean>(false);
 
@@ -263,6 +267,17 @@ export default function DocumentsTab(props: DocumentsTabProps) {
   const currentItems =
     pages[Math.min(pages.length - 1, currentPageIndex - 1)]?.Contents || [];
 
+  const q = search.trim().toLowerCase();
+  const filteredItems = useMemo(
+    () =>
+      !q
+        ? currentItems
+        : currentItems.filter((item) =>
+            (item.Key ?? "").toLowerCase().includes(q)
+          ),
+    [currentItems, q]
+  );
+
   const isSelected = (item: any) =>
     selectedItems.some((s) => s.Key === item.Key);
 
@@ -274,11 +289,29 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     );
   };
 
+  const allFilteredSelected =
+    filteredItems.length > 0 &&
+    filteredItems.every((item) => isSelected(item));
+
   const toggleSelectAll = () => {
-    if (selectedItems.length === currentItems.length) {
-      setSelectedItems([]);
+    if (allFilteredSelected) {
+      setSelectedItems((prev) =>
+        prev.filter(
+          (s) => !filteredItems.some((f) => f.Key === s.Key)
+        )
+      );
     } else {
-      setSelectedItems([...currentItems]);
+      setSelectedItems((prev) => {
+        const byKey = new Set(prev.map((p) => p.Key));
+        const merged = [...prev];
+        for (const f of filteredItems) {
+          if (!byKey.has(f.Key)) {
+            byKey.add(f.Key);
+            merged.push(f);
+          }
+        }
+        return merged;
+      });
     }
   };
 
@@ -315,12 +348,28 @@ export default function DocumentsTab(props: DocumentsTabProps) {
           justifyContent="space-between"
           alignItems="center"
         >
-          <Box>
+          <Box sx={{ minWidth: 0, flex: 1, pr: 2 }}>
             <Typography variant="h6">Files</Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
               Please expect a delay for your changes to be reflected. Press
               the refresh button to see the latest changes.
             </Typography>
+            <TextField
+              size="small"
+              placeholder="Search by file name or path"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              fullWidth
+              inputProps={{ "aria-label": "Search documents" }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" color="action" />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{ maxWidth: 420 }}
+            />
           </Box>
           <Stack direction="row" spacing={1}>
             <IconButton onClick={refreshPage} aria-label="Refresh">
@@ -382,6 +431,12 @@ export default function DocumentsTab(props: DocumentsTabProps) {
           <Box sx={{ textAlign: "center", p: 4 }}>
             <Typography color="text.secondary">No files available</Typography>
           </Box>
+        ) : filteredItems.length === 0 ? (
+          <Box sx={{ textAlign: "center", p: 4 }}>
+            <Typography color="text.secondary">
+              No files match your search
+            </Typography>
+          </Box>
         ) : (
           <TableContainer component={Paper}>
             <Table size="small" aria-label="Documents">
@@ -390,13 +445,10 @@ export default function DocumentsTab(props: DocumentsTabProps) {
                   <TableCell padding="checkbox">
                     <Checkbox
                       indeterminate={
-                        selectedItems.length > 0 &&
-                        selectedItems.length < currentItems.length
+                        !allFilteredSelected &&
+                        filteredItems.some((item) => isSelected(item))
                       }
-                      checked={
-                        currentItems.length > 0 &&
-                        selectedItems.length === currentItems.length
-                      }
+                      checked={allFilteredSelected}
                       onChange={toggleSelectAll}
                       aria-label="Select all documents"
                     />
@@ -409,7 +461,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {currentItems.map((item: any, index: number) => (
+                {filteredItems.map((item: any, index: number) => (
                   <TableRow
                     key={item.Key || index}
                     hover
