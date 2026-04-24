@@ -189,7 +189,12 @@ export class LambdaFunctionStack extends Construct {
             'RESPONSE_TRACE_TABLE': props.responseTraceTable.tableName,
             'PROMPT_FAMILY': 'ABE_CHAT',
           },
-          timeout: cdk.Duration.seconds(300),
+          // 15 min is the AWS Lambda max. Long agentic loops (e.g. exhaustive
+          // KB sweeps for "list all X" questions) can legitimately use most of
+          // it. The API Gateway WebSocket idle timeout is 10 min, but the
+          // chat handler streams status/text frames continuously, so the
+          // socket stays alive throughout an active turn.
+          timeout: cdk.Duration.minutes(15),
         });
         websocketAPIFunction.addToRolePolicy(new iam.PolicyStatement({
           effect: iam.Effect.ALLOW,

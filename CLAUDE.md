@@ -167,7 +167,7 @@ npx cdk deploy ABEStackNonProd -c alarmEmail=you@example.com  # With alerts
 ### Core Chat (Node.js 20)
 | Function | Memory | Timeout | Purpose |
 |----------|--------|---------|---------|
-| ChatHandlerFunction | 512 MB | 5 min | Main chat LLM handler + agentic loop |
+| ChatHandlerFunction | 512 MB | 15 min | Main chat LLM handler + agentic loop |
 | GetS3FilesHandlerFunction | default | 30s | List/retrieve KB files |
 | UploadS3FilesHandlerFunction | default | 30s | Upload KB files |
 | ExcelIndexApiFunction | default | 30s | Index management API |
@@ -205,7 +205,7 @@ npx cdk deploy ABEStackNonProd -c alarmEmail=you@example.com  # With alerts
 | LlmEvalFunction (Docker) | 10 GB | 15 min | RAGAS evaluation (max concurrency: 2) |
 | AggregateEvalResultsFunction (Python) | 256 MB | 120s | Compute average metrics across chunks |
 | LlmEvalResultsHandlerFunction (Python) | default | 30s | Write results to DynamoDB |
-| LlmEvalCleanupFunction (Python) | default | 30s | Delete S3 evaluation artifacts |
+| LlmEvalCleanupFunction (Pytho) | default | 30s | Delete S3 evaluation artifacts |
 
 ### Test Library & Analytics (Python 3.12)
 | Function | Memory | Timeout | Purpose |

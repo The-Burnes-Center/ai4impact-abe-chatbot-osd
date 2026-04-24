@@ -92,7 +92,7 @@ export class MonitoringConstruct extends Construct {
       throttleAlarm.addAlarmAction(alarmAction);
     }
 
-    // Chat function gets a dedicated duration alarm. The Lambda has a 5-min
+    // Chat function gets a dedicated duration alarm. The Lambda has a 15-min
     // timeout, but healthy responses complete in ~10-30s. Alerting at 60s avg
     // over 3 periods (15 min) catches Bedrock latency regressions before users
     // start seeing timeouts.
