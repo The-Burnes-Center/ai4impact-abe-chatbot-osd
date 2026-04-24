@@ -1,4 +1,5 @@
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   ChatBotHistoryItem,
   ChatBotMessageType,
@@ -26,6 +27,8 @@ import { useWebSocketChat, StreamingStatus } from "../../hooks/useWebSocketChat"
 
 export default function Chat(props: { sessionId?: string }) {
   const appContext = useContext(AppContext);
+  const navigate = useNavigate();
+  const location = useLocation();
   const [running, setRunning] = useState<boolean>(true);
   const [session, setSession] = useState<{ id: string; loading: boolean }>({
     id: props.sessionId ?? uuidv4(),
@@ -45,7 +48,33 @@ export default function Chat(props: { sessionId?: string }) {
     text: "",
     active: false,
   });
-  const [queuedPrompt, setQueuedPrompt] = useState<string | null>(null);
+  // If we landed here as part of a session-full redirect, replay the unsent
+  // user message in this fresh session. The state shape is `{ pendingMessage }`
+  // and is consumed exactly once by clearing the router state right after.
+  const [queuedPrompt, setQueuedPrompt] = useState<string | null>(
+    () => (location.state as { pendingMessage?: string } | null)?.pendingMessage ?? null
+  );
+
+  useEffect(() => {
+    const pending =
+      (location.state as { pendingMessage?: string } | null)?.pendingMessage ?? null;
+    if (pending) {
+      setQueuedPrompt(pending);
+      // Clear the one-shot router state so a refresh doesn't replay the message.
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.pathname, location.state, navigate]);
+
+  const handleSessionExhausted = useCallback(
+    (info: { reason: "context" | "payload"; message: string; unsentMessage: string }) => {
+      addNotification("info", info.message);
+      const newSessionId = uuidv4();
+      navigate(`/chatbot/playground/${newSessionId}`, {
+        state: { pendingMessage: info.unsentMessage },
+      });
+    },
+    [addNotification, navigate]
+  );
 
   useEffect(() => {
     if (!appContext) return;
@@ -374,6 +403,7 @@ export default function Chat(props: { sessionId?: string }) {
           onStop={abort}
           queuedPrompt={queuedPrompt}
           onQueuedPromptHandled={() => setQueuedPrompt(null)}
+          onSessionExhausted={handleSessionExhausted}
         />
       </div>
     </div>

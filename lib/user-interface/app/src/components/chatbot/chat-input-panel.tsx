@@ -46,6 +46,10 @@ export interface ChatInputPanelProps {
   onStop?: () => void;
   queuedPrompt?: string | null;
   onQueuedPromptHandled?: () => void;
+  /** Fired when the conversation can no longer continue in this session
+   *  (context exhausted or payload too large). Parent should redirect to a
+   *  fresh session and replay `unsentMessage` there. */
+  onSessionExhausted?: (info: { reason: "context" | "payload"; message: string; unsentMessage: string }) => void;
 }
 
 const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
@@ -177,6 +181,17 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
           message || "Sorry, something went wrong. Please try again."
         );
         props.setRunning(false);
+      },
+
+      onSessionExhausted(info) {
+        // Drop the placeholder assistant message AND the just-added user
+        // message — the parent will replay the user message in the fresh
+        // session, so leaving them here would create a duplicate on the way out.
+        props.setStreamingStatus({ text: "", active: false });
+        messageHistoryRef.current = messageHistoryRef.current.slice(0, -2);
+        props.setMessageHistory(messageHistoryRef.current);
+        props.setRunning(false);
+        props.onSessionExhausted?.(info);
       },
     });
   };
