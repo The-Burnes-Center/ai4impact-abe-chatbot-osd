@@ -5,8 +5,8 @@ import * as matchers from "vitest-axe/matchers";
 expect.extend(matchers);
 
 declare module "vitest" {
-  interface Assertion<T = unknown> extends matchers.AxeMatchers {
-    /** present so the generic param is used; vitest-axe matchers attach via expect.extend */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  interface Assertion<T = any> extends matchers.AxeMatchers {
     _phantom?: T;
   }
   interface AsymmetricMatchersContaining extends matchers.AxeMatchers {}

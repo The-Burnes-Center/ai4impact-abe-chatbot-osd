@@ -80,8 +80,7 @@ describe("ChatMessage", () => {
   it("renders AI message markdown content", () => {
     renderMessage(makeAiMessage("**Procurement** is handled by OSD."));
 
-    // Role="article" with aria-label="ABE response" wraps AI messages
-    const article = screen.getByRole("article", { name: /abe response/i });
+    const article = screen.getByRole("article", { name: /message from abe/i });
     expect(article).toBeInTheDocument();
     // ReactMarkdown renders **text** as <strong>
     expect(article.querySelector("strong")).toHaveTextContent("Procurement");
@@ -115,7 +114,7 @@ describe("ChatMessage", () => {
     renderMessage(makeHumanMessage("What vendors are on statewide contract?"));
 
     expect(
-      screen.getByRole("article", { name: /your message/i })
+      screen.getByRole("article", { name: /message from you/i })
     ).toHaveTextContent("What vendors are on statewide contract?");
   });
 });

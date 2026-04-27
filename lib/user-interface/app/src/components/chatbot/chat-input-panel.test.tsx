@@ -98,7 +98,7 @@ describe("ChatInputPanel", () => {
       screen.queryByRole("button", { name: /send message/i })
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /stop generating/i })
+      screen.getByRole("button", { name: /stop response/i })
     ).toBeInTheDocument();
   });
 
