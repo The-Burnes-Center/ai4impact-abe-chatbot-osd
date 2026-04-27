@@ -78,14 +78,22 @@ function TipsTab() {
         <Divider />
         <List disablePadding>
           {prompts.map((prompt, index) => (
-            <Box key={index}>
+            <Box
+              component="li"
+              key={index}
+              sx={{ listStyle: "none", display: "block" }}
+            >
               <ListItemButton
                 onClick={() => toggle(`prompt-${index}`)}
                 aria-expanded={!!expanded[`prompt-${index}`]}
                 aria-controls={`help-prompt-panel-${index}`}
                 sx={{ px: 0.5, borderRadius: 1 }}
               >
-                {expanded[`prompt-${index}`] ? <ExpandLess sx={{ mr: 1 }} /> : <ExpandMore sx={{ mr: 1 }} />}
+                {expanded[`prompt-${index}`] ? (
+                  <ExpandLess sx={{ mr: 1 }} aria-hidden="true" />
+                ) : (
+                  <ExpandMore sx={{ mr: 1 }} aria-hidden="true" />
+                )}
                 <ListItemText
                   primary={prompt.title}
                   primaryTypographyProps={{ fontWeight: 600, fontSize: "0.9375rem" }}
@@ -113,14 +121,22 @@ function TipsTab() {
         <Divider />
         <List disablePadding>
           {sampleQuestions.map((section, index) => (
-            <Box key={index}>
+            <Box
+              component="li"
+              key={index}
+              sx={{ listStyle: "none", display: "block" }}
+            >
               <ListItemButton
                 onClick={() => toggle(`question-${index}`)}
                 aria-expanded={!!expanded[`question-${index}`]}
                 aria-controls={`help-question-panel-${index}`}
                 sx={{ px: 0.5, borderRadius: 1 }}
               >
-                {expanded[`question-${index}`] ? <ExpandLess sx={{ mr: 1 }} /> : <ExpandMore sx={{ mr: 1 }} />}
+                {expanded[`question-${index}`] ? (
+                  <ExpandLess sx={{ mr: 1 }} aria-hidden="true" />
+                ) : (
+                  <ExpandMore sx={{ mr: 1 }} aria-hidden="true" />
+                )}
                 <ListItemText
                   primary={section.topic}
                   primaryTypographyProps={{ fontWeight: 600, fontSize: "0.9375rem" }}
@@ -240,14 +256,26 @@ export default function HelpPage() {
         aria-label="Help sections"
         sx={{ borderBottom: 1, borderColor: "divider" }}
       >
-        <Tab label="Tips & Questions" />
-        <Tab label="About ABE" />
-        <Tab label="Support" />
+        <Tab label="Tips & Questions" id="help-tab-0" aria-controls="help-tabpanel-0" />
+        <Tab label="About ABE" id="help-tab-1" aria-controls="help-tabpanel-1" />
+        <Tab label="Support" id="help-tab-2" aria-controls="help-tabpanel-2" />
       </Tabs>
 
-      {tabIndex === 0 && <TipsTab />}
-      {tabIndex === 1 && <AboutTab />}
-      {tabIndex === 2 && <SupportTab />}
+      {tabIndex === 0 && (
+        <Box role="tabpanel" id="help-tabpanel-0" aria-labelledby="help-tab-0">
+          <TipsTab />
+        </Box>
+      )}
+      {tabIndex === 1 && (
+        <Box role="tabpanel" id="help-tabpanel-1" aria-labelledby="help-tab-1">
+          <AboutTab />
+        </Box>
+      )}
+      {tabIndex === 2 && (
+        <Box role="tabpanel" id="help-tabpanel-2" aria-labelledby="help-tab-2">
+          <SupportTab />
+        </Box>
+      )}
     </Box>
   );
 }

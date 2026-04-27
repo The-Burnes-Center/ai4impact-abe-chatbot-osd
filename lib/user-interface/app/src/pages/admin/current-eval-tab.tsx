@@ -128,8 +128,12 @@ export default function CurrentEvalTab({ onRunEval, onViewLibrary }: DashboardPr
 
   if (loading) {
     return (
-      <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
-        <CircularProgress />
+      <Box
+        role="status"
+        aria-label="Loading evaluation"
+        sx={{ display: "flex", justifyContent: "center", py: 6 }}
+      >
+        <CircularProgress aria-hidden="true" />
       </Box>
     );
   }
@@ -137,7 +141,7 @@ export default function CurrentEvalTab({ onRunEval, onViewLibrary }: DashboardPr
   if (evaluations.length === 0) {
     return (
       <Paper sx={{ p: 4, textAlign: "center" }}>
-        <Typography variant="h6" gutterBottom>
+        <Typography variant="h6" component="h2" gutterBottom>
           No evaluations yet
         </Typography>
         <Typography color="text.secondary" sx={{ mb: 3 }}>
@@ -215,7 +219,7 @@ export default function CurrentEvalTab({ onRunEval, onViewLibrary }: DashboardPr
       </Grid>
 
       <Paper sx={{ p: 2 }}>
-        <Typography variant="h6" gutterBottom>
+        <Typography variant="h6" component="h2" gutterBottom>
           Performance Trends
         </Typography>
         {timestamps.length > 1 ? (

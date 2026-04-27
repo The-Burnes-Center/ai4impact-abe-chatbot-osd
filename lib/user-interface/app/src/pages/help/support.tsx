@@ -5,14 +5,14 @@ import Box from "@mui/material/Box";
 
 export default function Support() {
   return (
-    <Box>
-      <Typography variant="h2" component="h1" gutterBottom>
+    <Box component="section" aria-labelledby="support-heading">
+      <Typography id="support-heading" variant="h4" component="h2" gutterBottom>
         Support
       </Typography>
 
       <Stack spacing={3}>
         <Paper sx={{ p: 3 }}>
-          <Typography variant="h4" component="h2" gutterBottom>
+          <Typography variant="h5" component="h3" gutterBottom>
             Need Help?
           </Typography>
           <Typography variant="body1" color="text.secondary">
@@ -22,7 +22,7 @@ export default function Support() {
         </Paper>
 
         <Paper sx={{ p: 3 }}>
-          <Typography variant="h4" component="h2" gutterBottom>
+          <Typography variant="h5" component="h3" gutterBottom>
             Reporting Issues
           </Typography>
           <Typography variant="body1" color="text.secondary">

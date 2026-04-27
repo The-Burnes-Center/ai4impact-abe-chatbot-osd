@@ -223,7 +223,11 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
         }}
       >
         <div className={styles.input_textarea_container}>
+          <label htmlFor="abe-chat-input" className="sr-only">
+            Message ABE
+          </label>
           <TextareaAutosize
+            id="abe-chat-input"
             ref={ref}
             className={styles.input_textarea}
             maxRows={6}
@@ -241,15 +245,17 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
             }}
             value={state.value}
             placeholder="Ask ABE a question..."
-            aria-label="Type your message to ABE"
+            aria-label="Message ABE"
+            aria-multiline="true"
           />
           <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 1 }}>
             <ContextUsageRing usage={props.contextUsage ?? null} />
             {browserSupportsSpeechRecognition && (
-              <Tooltip title={listening ? "Stop listening" : "Start voice input"}>
+              <Tooltip title={listening ? "Stop dictation" : "Start dictation"}>
                 <IconButton
                   size="small"
-                  aria-label={listening ? "Stop voice input" : "Start voice input"}
+                  aria-label={listening ? "Stop dictation" : "Start dictation"}
+                  aria-pressed={listening}
                   onClick={() =>
                     listening
                       ? SpeechRecognition.stopListening()
@@ -258,27 +264,27 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
                   color={listening ? "primary" : "default"}
                 >
                   {listening ? (
-                    <MicOffIcon fontSize="small" />
+                    <MicOffIcon fontSize="small" aria-hidden="true" />
                   ) : (
-                    <MicIcon fontSize="small" />
+                    <MicIcon fontSize="small" aria-hidden="true" />
                   )}
                 </IconButton>
               </Tooltip>
             )}
             {props.running ? (
-              <Tooltip title="Stop generating">
+              <Tooltip title="Stop response">
                 <IconButton
                   onClick={() => {
                     props.onStop?.();
                     props.setRunning(false);
                     props.setStreamingStatus({ text: "", active: false });
                   }}
-                  aria-label="Stop generating response"
+                  aria-label="Stop response"
                   color="error"
                   size="small"
                   sx={{ border: 1, borderColor: "error.main" }}
                 >
-                  <StopCircleOutlinedIcon fontSize="small" />
+                  <StopCircleOutlinedIcon fontSize="small" aria-hidden="true" />
                 </IconButton>
               </Tooltip>
             ) : (
@@ -294,7 +300,7 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
                       borderRadius: 2,
                       px: 2,
                     }}
-                    endIcon={<SendIcon fontSize="small" />}
+                    endIcon={<SendIcon fontSize="small" aria-hidden="true" />}
                   >
                     Send
                   </Button>

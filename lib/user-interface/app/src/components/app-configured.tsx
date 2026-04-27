@@ -176,6 +176,8 @@ export default function AppConfigured() {
       <MuiThemeProvider theme={muiTheme}>
         <CssBaseline />
         <Box
+          role="status"
+          aria-live="polite"
           sx={{
             width: "100%",
             height: "100%",
@@ -185,7 +187,7 @@ export default function AppConfigured() {
             gap: 1,
           }}
         >
-          <CircularProgress size={20} />
+          <CircularProgress size={20} aria-hidden="true" />
           Loading
         </Box>
       </MuiThemeProvider>

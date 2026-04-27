@@ -349,7 +349,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
           alignItems="center"
         >
           <Box sx={{ minWidth: 0, flex: 1, pr: 2 }}>
-            <Typography variant="h6">Files</Typography>
+            <Typography variant="h6" component="h2">Files</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
               Please expect a delay for your changes to be reflected. Press
               the refresh button to see the latest changes.
@@ -403,7 +403,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
               {syncing ? (
                 <Stack direction="row" spacing={1} alignItems="center">
                   <span>Syncing data...</span>
-                  <CircularProgress size={16} color="inherit" />
+                  <CircularProgress size={16} color="inherit" aria-hidden="true" />
                 </Stack>
               ) : (
                 "Sync data now"
@@ -424,17 +424,29 @@ export default function DocumentsTab(props: DocumentsTabProps) {
 
         {/* File table */}
         {loading ? (
-          <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
-            <CircularProgress />
+          <Box
+            role="status"
+            aria-label="Loading files"
+            sx={{ display: "flex", justifyContent: "center", p: 4 }}
+          >
+            <CircularProgress aria-hidden="true" />
           </Box>
         ) : currentItems.length === 0 ? (
           <Box sx={{ textAlign: "center", p: 4 }}>
-            <Typography color="text.secondary">No files available</Typography>
+            <Typography variant="subtitle1" component="h3" gutterBottom>
+              No files yet
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Add files to the knowledge base using the &ldquo;Add Files&rdquo; button above.
+            </Typography>
           </Box>
         ) : filteredItems.length === 0 ? (
           <Box sx={{ textAlign: "center", p: 4 }}>
-            <Typography color="text.secondary">
-              No files match your search
+            <Typography variant="subtitle1" component="h3" gutterBottom>
+              No matching files
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              No files match your search.
             </Typography>
           </Box>
         ) : (

@@ -236,9 +236,7 @@ export default function DataFileUpload(props: FileUploadTabProps) {
             aria-label="Choose test case files"
           />
           <Box
-            role="button"
-            tabIndex={0}
-            aria-label="Upload files - click or drag and drop"
+            aria-label="Drop zone for test case files"
             sx={{
               border: "2px dashed",
               borderColor: "divider",
@@ -246,42 +244,60 @@ export default function DataFileUpload(props: FileUploadTabProps) {
               p: 4,
               textAlign: "center",
               cursor: "pointer",
-              "&:hover, &:focus-visible": {
+              "&:hover": {
                 borderColor: "primary.main",
                 bgcolor: "action.hover",
               },
             }}
             onClick={() => fileInputRef.current?.click()}
-            onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInputRef.current?.click(); } }}
           >
             <CloudUploadIcon
               sx={{ fontSize: 48, color: "text.secondary", mb: 1 }}
+              aria-hidden
             />
             <Typography variant="body1">
               Click to choose files or drag and drop
             </Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
               {`Text documents up to 100MB supported (${Array.from(
                 fileExtensions.values()
               ).join(", ")})`}
             </Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<CloudUploadIcon />}
+              onClick={(e) => {
+                e.stopPropagation();
+                fileInputRef.current?.click();
+              }}
+            >
+              Browse files
+            </Button>
           </Box>
 
           {uploadError && <Alert severity="error">{uploadError}</Alert>}
 
           {files.length > 0 && (
-            <Stack spacing={0.5}>
+            <Box
+              component="ul"
+              role="list"
+              aria-label="Selected files"
+              sx={{ listStyle: "none", m: 0, p: 0 }}
+            >
               {files.map((file, i) => (
-                <Stack
+                <Box
+                  component="li"
                   key={i}
-                  direction="row"
-                  alignItems="center"
-                  spacing={1}
                   sx={{
                     py: 0.5,
                     px: 1,
                     bgcolor: "action.hover",
                     borderRadius: 1,
+                    mb: 0.5,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
                   }}
                 >
                   <Typography variant="body2" sx={{ flex: 1 }}>
@@ -292,12 +308,16 @@ export default function DataFileUpload(props: FileUploadTabProps) {
                       {fileErrors[i]}
                     </Typography>
                   )}
-                  <IconButton size="small" onClick={() => removeFile(i)} aria-label={`Remove file ${file.name}`}>
+                  <IconButton
+                    size="small"
+                    onClick={() => removeFile(i)}
+                    aria-label={`Remove ${file.name}`}
+                  >
                     <CloseIcon fontSize="small" />
                   </IconButton>
-                </Stack>
+                </Box>
               ))}
-            </Stack>
+            </Box>
           )}
         </Stack>
       </Paper>

@@ -10,7 +10,7 @@ const config: Record<
   { color: "success" | "warning" | "error" | "default"; icon: React.ReactElement }
 > = {
   ready: { color: "success", icon: <CheckCircleOutlineIcon fontSize="small" /> },
-  processing: { color: "warning", icon: <CircularProgress size={14} color="inherit" /> },
+  processing: { color: "warning", icon: <CircularProgress size={14} color="inherit" aria-hidden="true" /> },
   error: { color: "error", icon: <ErrorOutlineIcon fontSize="small" /> },
   empty: { color: "default", icon: <RemoveCircleOutlineIcon fontSize="small" /> },
 };

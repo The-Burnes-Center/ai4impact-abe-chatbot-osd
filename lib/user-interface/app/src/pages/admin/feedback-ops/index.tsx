@@ -131,7 +131,7 @@ function describeActivity(entry: ActivityLogEntry): {
 }
 
 export default function FeedbackOpsPage() {
-  useDocumentTitle("Feedback Manager");
+  useDocumentTitle("Admin \u00b7 User feedback");
   const { feedbackId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const appContext = useContext(AppContext);
@@ -415,6 +415,8 @@ export default function FeedbackOpsPage() {
           >
             <Tab
               value="queue"
+              id="feedback-tab-queue"
+              aria-controls="feedback-tabpanel-queue"
               label={
                 <Stack direction="row" gap={0.75} alignItems="center">
                   Review Queue
@@ -429,13 +431,24 @@ export default function FeedbackOpsPage() {
                 </Stack>
               }
             />
-            <Tab value="trends" label="Trends" />
-            <Tab value="prompts" label="Prompts" />
+            <Tab
+              value="trends"
+              id="feedback-tab-trends"
+              aria-controls="feedback-tabpanel-trends"
+              label="Trends"
+            />
+            <Tab
+              value="prompts"
+              id="feedback-tab-prompts"
+              aria-controls="feedback-tabpanel-prompts"
+              label="Prompts"
+            />
           </Tabs>
         </Paper>
 
         {/* Views */}
         {tab === "queue" && (
+          <Box role="tabpanel" id="feedback-tabpanel-queue" aria-labelledby="feedback-tab-queue">
           <InboxView
             feedbackItems={feedbackItems}
             selectedFeedback={selectedFeedback}
@@ -451,25 +464,30 @@ export default function FeedbackOpsPage() {
             selectedFeedbackIds={selectedFeedbackIds}
             onSelectedFeedbackIdsChange={setSelectedFeedbackIds}
           />
+          </Box>
         )}
         {tab === "trends" && (
-          <TrendsView
-            monitoring={monitoring}
-            loadingMeta={loadingMeta}
-            onCreateDraftFromCluster={handleCreateDraftFromCluster}
-          />
+          <Box role="tabpanel" id="feedback-tabpanel-trends" aria-labelledby="feedback-tab-trends">
+            <TrendsView
+              monitoring={monitoring}
+              loadingMeta={loadingMeta}
+              onCreateDraftFromCluster={handleCreateDraftFromCluster}
+            />
+          </Box>
         )}
         {tab === "prompts" && (
-          <PromptWorkspace
-            promptData={promptData}
-            loadingMeta={loadingMeta}
-            apiClient={apiClient}
-            onRefresh={async () => {
-              await loadPrompts();
-              await loadMonitoring();
-            }}
-            selectedFeedbackIds={selectedFeedbackIds}
-          />
+          <Box role="tabpanel" id="feedback-tabpanel-prompts" aria-labelledby="feedback-tab-prompts">
+            <PromptWorkspace
+              promptData={promptData}
+              loadingMeta={loadingMeta}
+              apiClient={apiClient}
+              onRefresh={async () => {
+                await loadPrompts();
+                await loadMonitoring();
+              }}
+              selectedFeedbackIds={selectedFeedbackIds}
+            />
+          </Box>
         )}
       </Stack>
 

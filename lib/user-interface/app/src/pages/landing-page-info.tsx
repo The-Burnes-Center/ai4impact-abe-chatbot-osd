@@ -9,19 +9,18 @@ const fadeIn = keyframes`
   to { opacity: 1; transform: translateY(0); }
 `;
 
-const PageContainer = styled.div`
+const PageContainer = styled.main`
   position: relative;
   background: linear-gradient(135deg, #0a2b48 0%, #14558f 100%);
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  min-height: 100vh;
   box-sizing: border-box;
   padding: 24px clamp(20px, 5vw, 60px);
-  font-family: "Inter", "Open Sans", "Helvetica Neue", sans-serif;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  overflow: hidden;
+  overflow-x: hidden;
 `;
 
 const Circle = styled.div`
@@ -68,7 +67,8 @@ const SkipButton = styled.button`
   background: none;
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 8px;
-  padding: 8px 16px;
+  padding: 10px 18px;
+  min-height: 44px;
   cursor: pointer;
   font-family: inherit;
 
@@ -111,6 +111,8 @@ const NavButton = styled.button`
   border: none;
   cursor: pointer;
   padding: 8px 16px;
+  min-height: 44px;
+  min-width: 44px;
   border-radius: 8px;
   transition: all 0.2s ease;
   font-family: inherit;
@@ -131,7 +133,7 @@ const NavButton = styled.button`
 `;
 
 export default function LandingPageInfo() {
-  useDocumentTitle("About ABE");
+  useDocumentTitle("About");
   const navigate = useNavigate();
 
   const handleSkip = () => navigate(`/chatbot/playground/${uuidv4()}`);
@@ -148,7 +150,7 @@ export default function LandingPageInfo() {
   }, []);
 
   return (
-    <PageContainer role="main">
+    <PageContainer id="main-content" tabIndex={-1}>
       <HeaderBar>
         <SkipButton onClick={handleSkip} aria-label="Skip introduction and go to chat">
           Skip to Chat &rarr;
@@ -157,8 +159,8 @@ export default function LandingPageInfo() {
       <TextContent>
         I can provide personalized guidance on procurement done in Massachusetts
       </TextContent>
-      <NavButton onClick={handleNext} aria-label="Continue to next page">
-        &rarr;
+      <NavButton onClick={handleNext} aria-label="Continue to Get Started">
+        <span aria-hidden="true">&rarr;</span>
       </NavButton>
       <Circle className="darkBlue" aria-hidden="true" />
       <Circle className="lightBlue" aria-hidden="true" />

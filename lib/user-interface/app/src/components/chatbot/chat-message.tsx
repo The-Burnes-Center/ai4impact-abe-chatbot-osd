@@ -74,20 +74,18 @@ function CitationBadge({ source, onCitationClick }: { source: SourceItem; onCita
 
   return (
     <>
-      <span
+      <button
+        type="button"
         className={styles.citationBadge}
         onMouseEnter={(e) => setAnchorEl(e.currentTarget)}
         onMouseLeave={() => setAnchorEl(null)}
         onFocus={(e) => setAnchorEl(e.currentTarget)}
         onBlur={() => setAnchorEl(null)}
         onClick={handleClick}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleClick(); }}
-        role="button"
-        tabIndex={0}
         aria-label={`Source ${source.chunkIndex}: ${source.title}`}
       >
         {source.chunkIndex}
-      </span>
+      </button>
       <Popper open={open} anchorEl={anchorEl} placement="top" transition style={{ zIndex: 1300 }}>
         {({ TransitionProps }) => (
           <Fade {...TransitionProps} timeout={150}>
@@ -452,10 +450,9 @@ function ChatMessage(props: ChatMessageProps) {
     <div>
       {/* AI Message */}
       {props.message?.type === ChatBotMessageType.AI && (
-        <div
+        <article
           className={styles.aiMessage}
-          role="article"
-          aria-label="ABE response"
+          aria-label="Message from ABE"
           aria-busy={Boolean(
             props.isLastAiMessage &&
               (props.streamingStatus?.active || props.message.content.length === 0)
@@ -463,6 +460,7 @@ function ChatMessage(props: ChatMessageProps) {
         >
           <Avatar
             className={styles.aiAvatar}
+            aria-hidden="true"
             sx={{
               bgcolor: "primary.light",
               color: "primary.main",
@@ -485,8 +483,13 @@ function ChatMessage(props: ChatMessageProps) {
               }}
             >
               {content.length === 0 && !props.streamingStatus?.active ? (
-                <div className={styles.statusIndicator} role="status" aria-live="polite">
-                  <CircularProgress size={14} sx={{ color: "primary.main" }} />
+                <div
+                  className={styles.statusIndicator}
+                  role="status"
+                  aria-live="polite"
+                  aria-label="ABE is thinking"
+                >
+                  <CircularProgress size={14} sx={{ color: "primary.main" }} aria-hidden="true" />
                   <Typography variant="body2" sx={{ color: "text.secondary", fontStyle: "italic" }}>
                     Thinking…
                   </Typography>
@@ -494,8 +497,13 @@ function ChatMessage(props: ChatMessageProps) {
               ) : null}
 
               {props.isLastAiMessage && props.streamingStatus?.active ? (
-                <div className={styles.statusIndicator} role="status" aria-live="off">
-                  <CircularProgress size={14} sx={{ color: "primary.main" }} />
+                <div
+                  className={styles.statusIndicator}
+                  role="status"
+                  aria-live="off"
+                  aria-label={`ABE: ${props.streamingStatus.text || "responding"}`}
+                >
+                  <CircularProgress size={14} sx={{ color: "primary.main" }} aria-hidden="true" />
                   <Typography variant="body2" sx={{ color: "text.secondary", fontStyle: "italic" }}>
                     {props.streamingStatus.text}
                   </Typography>
@@ -783,12 +791,12 @@ function ChatMessage(props: ChatMessageProps) {
               </Box>
             )}
           </Box>
-        </div>
+        </article>
       )}
 
       {/* Human Message */}
       {props.message?.type === ChatBotMessageType.Human && (
-        <div className={styles.humanMessage} role="article" aria-label="Your message">
+        <article className={styles.humanMessage} aria-label="Message from you">
           <div className={styles.humanMessageInner}>
             <div className={styles.humanBubble}>
               {typeof content === "string" ? content : ""}
@@ -803,7 +811,7 @@ function ChatMessage(props: ChatMessageProps) {
               </Typography>
             )}
           </div>
-        </div>
+        </article>
       )}
     </div>
   );

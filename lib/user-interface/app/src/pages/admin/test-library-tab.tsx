@@ -244,7 +244,7 @@ export default function TestLibraryTab() {
     <Stack spacing={2}>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Box>
-          <Typography variant="h6">Test Library</Typography>
+          <Typography variant="h6" component="h2">Test Library</Typography>
           <Typography variant="body2" color="text.secondary">
             {stats ? `${stats.total} Q&A pairs` : "Loading..."}
             {stats?.sources?.manual ? ` | ${stats.sources.manual} manual` : ""}
@@ -315,13 +315,20 @@ export default function TestLibraryTab() {
       </Paper>
 
       {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-          <CircularProgress />
+        <Box
+          role="status"
+          aria-label="Loading test library"
+          sx={{ display: "flex", justifyContent: "center", py: 4 }}
+        >
+          <CircularProgress aria-hidden="true" />
         </Box>
       ) : items.length === 0 ? (
         <Paper sx={{ p: 4, textAlign: "center" }}>
-          <Typography color="text.secondary">
-            {search ? "No matching Q&A pairs found." : "Test library is empty. Add Q&A pairs to get started."}
+          <Typography variant="subtitle1" component="h3" gutterBottom>
+            {search ? "No matches" : "No Q&A pairs yet"}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {search ? "No Q&A pairs match your search." : "Add Q&A pairs to get started."}
           </Typography>
         </Paper>
       ) : (
@@ -527,8 +534,12 @@ export default function TestLibraryTab() {
               )}
             </Stack>
           ) : (
-            <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
-              <CircularProgress />
+            <Box
+              role="status"
+              aria-label="Loading test cases"
+              sx={{ display: "flex", justifyContent: "center", py: 3 }}
+            >
+              <CircularProgress aria-hidden="true" />
             </Box>
           )}
         </DialogContent>

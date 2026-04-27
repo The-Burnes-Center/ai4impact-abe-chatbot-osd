@@ -212,13 +212,7 @@ export default function DataFileUpload({
         aria-label="Choose files to upload"
       />
       <Box
-        role="button"
-        tabIndex={0}
-        aria-label="Upload files - click or drag and drop"
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ")
-            fileInputRef.current?.click();
-        }}
+        aria-label="Drop zone for files"
         onDragOver={(e) => {
           e.preventDefault();
           e.currentTarget.style.borderColor = "var(--abe-primary)";
@@ -252,11 +246,6 @@ export default function DataFileUpload({
             borderColor: "primary.main",
             bgcolor: "primary.light",
           },
-          "&:focus-visible": {
-            outline: "2px solid",
-            outlineColor: "primary.main",
-            outlineOffset: 2,
-          },
         }}
         onClick={() => fileInputRef.current?.click()}
       >
@@ -267,6 +256,7 @@ export default function DataFileUpload({
             mb: 1,
             opacity: 0.6,
           }}
+          aria-hidden
         />
         <Typography
           variant="body1"
@@ -274,26 +264,44 @@ export default function DataFileUpload({
         >
           Click to choose files or drag and drop
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
           {`Documents up to 100MB (${Array.from(fileExtensions.values()).join(", ")})`}
         </Typography>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<CloudUploadIcon />}
+          onClick={(e) => {
+            e.stopPropagation();
+            fileInputRef.current?.click();
+          }}
+        >
+          Browse files
+        </Button>
       </Box>
 
       {uploadError && <Alert severity="error">{uploadError}</Alert>}
 
       {files.length > 0 && (
-        <Stack spacing={0.5}>
+        <Box
+          component="ul"
+          role="list"
+          aria-label="Selected files"
+          sx={{ listStyle: "none", m: 0, p: 0 }}
+        >
           {files.map((file, i) => (
-            <Stack
+            <Box
+              component="li"
               key={i}
-              direction="row"
-              alignItems="center"
-              spacing={1}
               sx={{
                 py: 0.5,
                 px: 1,
-                    bgcolor: "action.hover",
+                bgcolor: "action.hover",
                 borderRadius: 1,
+                mb: 0.5,
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
               }}
             >
               <Typography variant="body2" sx={{ flex: 1 }}>
@@ -304,12 +312,16 @@ export default function DataFileUpload({
                   {fileErrors[i]}
                 </Typography>
               )}
-              <IconButton size="small" onClick={() => removeFile(i)} aria-label={`Remove file ${file.name}`}>
+              <IconButton
+                size="small"
+                onClick={() => removeFile(i)}
+                aria-label={`Remove ${file.name}`}
+              >
                 <CloseIcon fontSize="small" />
               </IconButton>
-            </Stack>
+            </Box>
           ))}
-        </Stack>
+        </Box>
       )}
     </Stack>
   );

@@ -4,6 +4,9 @@ import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 import BaseAppLayout from "./components/base-app-layout";
 import ErrorBoundary from "./components/error-boundary";
+import BrandBanner from "./components/mds/BrandBanner";
+import MdsFooter from "./components/mds/MdsFooter";
+import SkipLink from "./components/mds/SkipLink";
 import "./styles/app.scss";
 
 const Playground = React.lazy(() => import("./pages/chatbot/playground/playground"));
@@ -34,7 +37,7 @@ function PageLoader() {
         color: "text.secondary",
       }}
     >
-      <CircularProgress size={20} />
+      <CircularProgress size={20} aria-hidden="true" />
       Loading...
     </Box>
   );
@@ -54,67 +57,87 @@ function AppShell() {
 
 function App() {
   return (
-    <div style={{ height: "100%" }}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        minHeight: "100vh",
+        width: "100%",
+      }}
+    >
       <BrowserRouter>
-        <ErrorBoundary>
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              {/* Landing Pages (no sidebar) */}
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/about" element={<LandingPageInfo />} />
-              <Route path="/get-started" element={<LandingPageStart />} />
+        <BrandBanner />
+        <SkipLink />
+        <Box
+          component="div"
+          sx={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+          }}
+        >
+          <ErrorBoundary>
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                {/* Landing Pages (no sidebar) */}
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/about" element={<LandingPageInfo />} />
+                <Route path="/get-started" element={<LandingPageStart />} />
 
-              {/* App routes with sidebar + header */}
-              <Route element={<AppShell />}>
-                <Route path="/chatbot">
-                  <Route path="playground/:sessionId" element={<Playground />} />
-                  <Route path="sessions" element={<SessionPage />} />
-                  {/* Redirect old tips path to unified help page */}
-                  <Route path="tips" element={<Navigate to="/help" replace />} />
-                </Route>
-
-                <Route path="/admin">
-                  <Route path="data" element={<DataPage />} />
-                  <Route path="user-feedback" element={<UserFeedbackPage />} />
-                  <Route path="user-feedback/:feedbackId" element={<UserFeedbackDetailPage />} />
-                  <Route path="metrics" element={<MetricsPage />} />
-                  <Route path="llm-evaluation" element={<Outlet />}>
-                    <Route index element={<LlmEvaluationPage />} />
-                    <Route
-                      path=":evaluationId"
-                      element={<DetailedEvaluationPage />}
-                    />
-                    <Route
-                      path="details/:evaluationId"
-                      element={<DetailedEvaluationPage />}
-                    />
+                {/* App routes with sidebar + header */}
+                <Route element={<AppShell />}>
+                  <Route path="/chatbot">
+                    <Route path="playground/:sessionId" element={<Playground />} />
+                    <Route path="sessions" element={<SessionPage />} />
+                    {/* Redirect old tips path to unified help page */}
+                    <Route path="tips" element={<Navigate to="/help" replace />} />
                   </Route>
+
+                  <Route path="/admin">
+                    <Route path="data" element={<DataPage />} />
+                    <Route path="user-feedback" element={<UserFeedbackPage />} />
+                    <Route path="user-feedback/:feedbackId" element={<UserFeedbackDetailPage />} />
+                    <Route path="metrics" element={<MetricsPage />} />
+                    <Route path="llm-evaluation" element={<Outlet />}>
+                      <Route index element={<LlmEvaluationPage />} />
+                      <Route
+                        path=":evaluationId"
+                        element={<DetailedEvaluationPage />}
+                      />
+                      <Route
+                        path="details/:evaluationId"
+                        element={<DetailedEvaluationPage />}
+                      />
+                    </Route>
+                  </Route>
+
+                  <Route path="/help" element={<HelpPage />} />
+                  <Route path="/not-found" element={<NotFoundPage />} />
+                  {/* Redirect old help paths */}
+                  <Route path="/faq-and-guide/*" element={<Navigate to="/help" replace />} />
                 </Route>
 
-                <Route path="/help" element={<HelpPage />} />
-                <Route path="/not-found" element={<NotFoundPage />} />
-                {/* Redirect old help paths */}
-                <Route path="/faq-and-guide/*" element={<Navigate to="/help" replace />} />
-              </Route>
-
-              {/* Unknown paths: explicit not-found inside app shell */}
-              <Route
-                path="*"
-                element={
-                  <BaseAppLayout>
-                    <ErrorBoundary>
-                      <Suspense fallback={<PageLoader />}>
-                        <NotFoundPage />
-                      </Suspense>
-                    </ErrorBoundary>
-                  </BaseAppLayout>
-                }
-              />
-            </Routes>
-          </Suspense>
-        </ErrorBoundary>
+                {/* Unknown paths: explicit not-found inside app shell */}
+                <Route
+                  path="*"
+                  element={
+                    <BaseAppLayout>
+                      <ErrorBoundary>
+                        <Suspense fallback={<PageLoader />}>
+                          <NotFoundPage />
+                        </Suspense>
+                      </ErrorBoundary>
+                    </BaseAppLayout>
+                  }
+                />
+              </Routes>
+            </Suspense>
+          </ErrorBoundary>
+        </Box>
+        <MdsFooter />
       </BrowserRouter>
-    </div>
+    </Box>
   );
 }
 

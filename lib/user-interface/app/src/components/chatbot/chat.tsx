@@ -233,12 +233,17 @@ export default function Chat(props: { sessionId?: string }) {
         </div>
       )}
       {/* Scrollable message area */}
-      <div className={styles.messages_scroll} ref={scrollContainerRef}>
-        <Box
-          aria-live={running ? "off" : "polite"}
-          aria-relevant="additions"
-          aria-busy={running}
-        >
+      <section
+        className={styles.messages_scroll}
+        ref={scrollContainerRef}
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions"
+        aria-label="Chat conversation"
+        aria-busy={running}
+      >
+        <Typography component="h2" className="sr-only">Conversation</Typography>
+        <Box>
           <Stack direction="column" spacing={2}>
             {isEmpty && (
               <Alert severity="info" sx={{ mb: 1 }}>
@@ -370,7 +375,7 @@ export default function Chat(props: { sessionId?: string }) {
 
         {/* Loading state */}
         {session?.loading && (
-          <Box sx={{ py: 4 }}>
+          <Box sx={{ py: 4 }} role="status" aria-label="Loading conversation history">
             <Stack spacing={2}>
               {[1, 2, 3].map((i) => (
                 <Box key={i} sx={{ display: "flex", gap: 1.5 }}>
@@ -386,10 +391,11 @@ export default function Chat(props: { sessionId?: string }) {
 
         {/* Invisible anchor for auto-scroll */}
         <div ref={messagesEndRef} />
-      </div>
+      </section>
 
       {/* Input panel — always visible at the bottom */}
-      <div className={styles.input_container}>
+      <section className={styles.input_container} aria-label="Compose message">
+        <Typography component="h2" className="sr-only">Compose message</Typography>
         <ChatInputPanel
           ref={messageInputRef}
           session={session}
@@ -405,7 +411,7 @@ export default function Chat(props: { sessionId?: string }) {
           contextUsage={contextUsage}
           onContextUsage={setContextUsage}
         />
-      </div>
+      </section>
     </div>
   );
 }

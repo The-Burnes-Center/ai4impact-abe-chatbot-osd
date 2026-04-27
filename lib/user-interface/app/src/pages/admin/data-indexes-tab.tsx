@@ -234,10 +234,14 @@ export default function DataIndexesTab() {
       ))}
 
       {indexes.length === 0 && !error && (
-        <Typography variant="body2" color="text.secondary" textAlign="center">
-          No indexes registered yet. Click &ldquo;Add New Index&rdquo; to get
-          started.
-        </Typography>
+        <Box sx={{ textAlign: "center", p: 2 }}>
+          <Typography variant="subtitle1" component="h2" gutterBottom>
+            No indexes yet
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Click &ldquo;Add New Index&rdquo; to get started.
+          </Typography>
+        </Box>
       )}
 
       <Button
@@ -268,6 +272,9 @@ export default function DataIndexesTab() {
               autoFocus
               disabled={creating}
               required
+              inputProps={{ "aria-required": true }}
+              error={!!createError && !newDisplayName.trim()}
+              aria-describedby={createError ? "create-index-error" : undefined}
             />
             <TextField
               label="Description (optional - AI will generate if left blank)"
@@ -311,7 +318,11 @@ export default function DataIndexesTab() {
               <LinearProgress variant="determinate" value={uploadProgress} />
             )}
             {creating && uploadProgress === 0 && <LinearProgress />}
-            {createError && <Alert severity="error">{createError}</Alert>}
+            {createError && (
+              <Alert id="create-index-error" severity="error" role="alert">
+                {createError}
+              </Alert>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions>

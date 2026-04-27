@@ -31,6 +31,7 @@ export function TruncatedTextCell({
       <Box>
         {value ? (
           <Box
+            title={isTruncated ? value : undefined}
             sx={{
               position: "relative",
               maxHeight: isTruncated ? previewMaxHeight : "none",

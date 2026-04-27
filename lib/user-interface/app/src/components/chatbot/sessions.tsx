@@ -176,7 +176,7 @@ export default function Sessions(props: SessionsProps) {
       </Dialog>
 
       <Box>
-        <Typography variant="h4" sx={{ mb: 3 }}>Session History</Typography>
+        <Typography component="h1" variant="h4" sx={{ mb: 3 }}>Session History</Typography>
 
         <Stack direction="row" spacing={1} sx={{ mb: 2 }} alignItems="center">
           <RouterButton
@@ -248,8 +248,10 @@ export default function Sessions(props: SessionsProps) {
               {isLoading ? (
                 <TableRow>
                   <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
-                    <CircularProgress size={24} />
-                    <Typography variant="body2" sx={{ mt: 1 }}>Loading history</Typography>
+                    <div role="status" aria-label="Loading session history">
+                      <CircularProgress size={24} aria-hidden="true" />
+                      <Typography variant="body2" sx={{ mt: 1 }}>Loading history</Typography>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : paginatedSessions.length === 0 ? (
@@ -259,31 +261,36 @@ export default function Sessions(props: SessionsProps) {
                   </TableCell>
                 </TableRow>
               ) : (
-                paginatedSessions.map((session) => (
-                  <TableRow
-                    key={session.session_id}
-                    hover
-                    selected={selectedItems.has(session.session_id)}
-                  >
-                    <TableCell padding="checkbox">
-                      <Checkbox
-                        checked={selectedItems.has(session.session_id)}
-                        onChange={() => handleSelectItem(session.session_id)}
-                        aria-label={`Select session ${session.title || session.session_id}`}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Link to={`/chatbot/playground/${session.session_id}`}>
-                        {session.title}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      {DateTime.fromISO(
-                        new Date(session.time_stamp).toISOString()
-                      ).toLocaleString(DateTime.DATETIME_SHORT)}
-                    </TableCell>
-                  </TableRow>
-                ))
+                paginatedSessions.map((session) => {
+                  const formattedTimestamp = DateTime.fromISO(
+                    new Date(session.time_stamp).toISOString()
+                  ).toLocaleString(DateTime.DATETIME_SHORT);
+                  const sessionLabel = session.title || "Untitled session";
+                  return (
+                    <TableRow
+                      key={session.session_id}
+                      hover
+                      selected={selectedItems.has(session.session_id)}
+                    >
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          checked={selectedItems.has(session.session_id)}
+                          onChange={() => handleSelectItem(session.session_id)}
+                          aria-label={`Select session: ${sessionLabel}`}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Link
+                          to={`/chatbot/playground/${session.session_id}`}
+                          aria-label={`Open chat from ${formattedTimestamp}: ${sessionLabel}`}
+                        >
+                          {session.title}
+                        </Link>
+                      </TableCell>
+                      <TableCell>{formattedTimestamp}</TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>

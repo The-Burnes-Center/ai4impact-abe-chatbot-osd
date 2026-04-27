@@ -11,6 +11,14 @@ const root = ReactDOM.createRoot(
 const theme = StorageHelper.getTheme();
 StorageHelper.applyTheme(theme);
 
+if (import.meta.env.DEV) {
+  // @axe-core/react streams accessibility violations to the browser console
+  // while the app runs in dev mode. Production bundles never load axe.
+  void import("@axe-core/react").then(({ default: axe }) => {
+    axe(React, ReactDOM, 1000);
+  });
+}
+
 root.render(
   <React.StrictMode>
     <AppConfigured />

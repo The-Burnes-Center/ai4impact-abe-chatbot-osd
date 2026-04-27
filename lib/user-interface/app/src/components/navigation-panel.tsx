@@ -126,7 +126,6 @@ export default function NavigationPanel() {
   return (
     <Box
       component="nav"
-      role="navigation"
       aria-label="Main navigation"
       sx={{
         overflow: "auto",
@@ -140,7 +139,7 @@ export default function NavigationPanel() {
         <Button
           variant="contained"
           fullWidth
-          startIcon={<AddIcon />}
+          startIcon={<AddIcon aria-hidden="true" />}
           onClick={handleNewSession}
           aria-label="Start a new chat session"
           sx={{
@@ -179,7 +178,7 @@ export default function NavigationPanel() {
                 pb: 0.25,
               }}
             >
-              <ChatBubbleOutlineIcon sx={{ fontSize: 15, opacity: 0.5 }} />
+              <ChatBubbleOutlineIcon aria-hidden="true" sx={{ fontSize: 15, opacity: 0.5 }} />
               <Typography
                 variant="caption"
                 sx={{
@@ -202,9 +201,9 @@ export default function NavigationPanel() {
                   sx={{ p: 0.375 }}
                 >
                   {loadingSessions ? (
-                    <CircularProgress size={13} />
+                    <CircularProgress size={13} aria-hidden="true" />
                   ) : (
-                    <RefreshIcon sx={{ fontSize: 15, opacity: 0.5 }} />
+                    <RefreshIcon aria-hidden="true" sx={{ fontSize: 15, opacity: 0.5 }} />
                   )}
                 </IconButton>
               </Tooltip>
@@ -222,7 +221,10 @@ export default function NavigationPanel() {
                   </Typography>
                 </ListItem>
               )}
-              {visibleSessions.map((session) => (
+              {visibleSessions.map((session) => {
+                const isActive =
+                  location.pathname === `/chatbot/playground/${session.session_id}`;
+                return (
                 <ListItem key={session.session_id} disablePadding>
                   <Tooltip
                     title={session.title}
@@ -230,7 +232,8 @@ export default function NavigationPanel() {
                     enterDelay={200}
                   >
                     <ListItemButton
-                      selected={location.pathname === `/chatbot/playground/${session.session_id}`}
+                      selected={isActive}
+                      aria-current={isActive ? "page" : undefined}
                       onClick={() => navigate(`/chatbot/playground/${session.session_id}`)}
                       sx={{ pl: 2.5, mx: 0.5, borderRadius: 1 }}
                     >
@@ -245,7 +248,8 @@ export default function NavigationPanel() {
                     </ListItemButton>
                   </Tooltip>
                 </ListItem>
-              ))}
+                );
+              })}
               {hasMore && (
                 <ListItem disablePadding>
                   <Box sx={{ px: 1, pt: 0.5, width: "100%" }}>
@@ -284,20 +288,30 @@ export default function NavigationPanel() {
                           color: "text.secondary",
                         }}
                       />
-                      {adminOpen ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+                      {adminOpen ? (
+                        <ExpandLess fontSize="small" aria-hidden="true" />
+                      ) : (
+                        <ExpandMore fontSize="small" aria-hidden="true" />
+                      )}
                     </ListItemButton>
                   </ListItem>
                   <ListItem disablePadding sx={{ display: "block" }}>
                     <Collapse in={adminOpen} timeout={200} unmountOnExit id="admin-nav-section">
                       <List dense disablePadding>
-                        {adminLinks.map((link) => (
+                        {adminLinks.map((link) => {
+                          const isActive = isNavLinkSelected(location.pathname, link.href);
+                          return (
                           <ListItem key={link.href} disablePadding>
                             <ListItemButton
-                              selected={isNavLinkSelected(location.pathname, link.href)}
+                              selected={isActive}
+                              aria-current={isActive ? "page" : undefined}
                               onClick={() => navigate(link.href)}
                               sx={{ pl: 2 }}
                             >
-                              <ListItemIcon sx={{ minWidth: 32, color: "text.secondary" }}>
+                              <ListItemIcon
+                                aria-hidden="true"
+                                sx={{ minWidth: 32, color: "text.secondary" }}
+                              >
                                 {link.icon}
                               </ListItemIcon>
                               <ListItemText
@@ -306,7 +320,8 @@ export default function NavigationPanel() {
                               />
                             </ListItemButton>
                           </ListItem>
-                        ))}
+                          );
+                        })}
                       </List>
                     </Collapse>
                   </ListItem>

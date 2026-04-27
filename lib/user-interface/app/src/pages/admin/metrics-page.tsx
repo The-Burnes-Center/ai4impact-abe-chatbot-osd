@@ -247,7 +247,7 @@ function OverviewTab({ metrics }: { metrics: MetricsData }) {
       {recentDaily.length > 1 && (
         <Card sx={{ mb: 3 }}>
           <CardContent>
-            <Typography variant="h4" gutterBottom>
+            <Typography variant="h4" component="h2" gutterBottom>
               Activity Over Time
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -286,7 +286,7 @@ function OverviewTab({ metrics }: { metrics: MetricsData }) {
 
       <Card>
         <CardContent>
-          <Typography variant="h4" gutterBottom>
+          <Typography variant="h4" component="h2" gutterBottom>
             Daily Breakdown
           </Typography>
           <TableContainer>
@@ -376,7 +376,7 @@ function FAQTab({ faqData }: { faqData: FAQData | null }) {
   if (!faqData || faqData.topics.length === 0) {
     return (
       <Box sx={{ mt: 3, textAlign: "center", py: 8 }}>
-        <Typography variant="h4" color="text.secondary">
+        <Typography variant="h4" component="h2" color="text.secondary">
           No FAQ data yet
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 400, mx: "auto" }}>
@@ -399,7 +399,7 @@ function FAQTab({ faqData }: { faqData: FAQData | null }) {
       {chartTopics.length > 0 && (
         <Card sx={{ mb: 3 }}>
           <CardContent>
-            <Typography variant="h4" gutterBottom>
+            <Typography variant="h4" component="h2" gutterBottom>
               Top Topics
             </Typography>
             <Typography
@@ -428,7 +428,7 @@ function FAQTab({ faqData }: { faqData: FAQData | null }) {
 
       <Card>
         <CardContent>
-          <Typography variant="h4" gutterBottom>
+          <Typography variant="h4" component="h2" gutterBottom>
             All Topics
           </Typography>
           <TableContainer>
@@ -459,7 +459,7 @@ function AgencyTab({ agencyData }: { agencyData: AgencyData | null }) {
   if (!agencyData || agencyData.agencies.length === 0) {
     return (
       <Box sx={{ mt: 3, textAlign: "center", py: 8 }}>
-        <Typography variant="h4" color="text.secondary">
+        <Typography variant="h4" component="h2" color="text.secondary">
           No agency data yet
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 400, mx: "auto" }}>
@@ -513,7 +513,7 @@ function AgencyTab({ agencyData }: { agencyData: AgencyData | null }) {
       {chartAgencies.length > 0 && (
         <Card sx={{ mb: 3 }}>
           <CardContent>
-            <Typography variant="h4" gutterBottom>
+            <Typography variant="h4" component="h2" gutterBottom>
               Messages by Agency
             </Typography>
             <Typography
@@ -542,7 +542,7 @@ function AgencyTab({ agencyData }: { agencyData: AgencyData | null }) {
 
       <Card>
         <CardContent>
-          <Typography variant="h4" gutterBottom>
+          <Typography variant="h4" component="h2" gutterBottom>
             All Agencies
           </Typography>
           <TableContainer>
@@ -621,7 +621,7 @@ function UsersTab({ userData }: { userData: UserData | null }) {
   if (!userData || userData.users.length === 0) {
     return (
       <Box sx={{ mt: 3, textAlign: "center", py: 8 }}>
-        <Typography variant="h4" color="text.secondary">
+        <Typography variant="h4" component="h2" color="text.secondary">
           No user data yet
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 400, mx: "auto" }}>
@@ -640,7 +640,7 @@ function UsersTab({ userData }: { userData: UserData | null }) {
 
       <Card>
         <CardContent>
-          <Typography variant="h4" gutterBottom>
+          <Typography variant="h4" component="h2" gutterBottom>
             All Users
           </Typography>
           <TableContainer>
@@ -727,7 +727,7 @@ function UsersTab({ userData }: { userData: UserData | null }) {
 }
 
 export default function MetricsPage() {
-  useDocumentTitle("Analytics");
+  useDocumentTitle("Admin \u00b7 Metrics");
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState<MetricsData | null>(null);
   const [faqData, setFaqData] = useState<FAQData | null>(null);
@@ -798,17 +798,34 @@ export default function MetricsPage() {
           <Tabs
             value={tabIndex}
             onChange={(_, v) => setTabIndex(v)}
+            aria-label="Metrics sections"
             sx={{ borderBottom: 1, borderColor: "divider" }}
           >
-            <Tab label="Overview" />
-            <Tab label="FAQ Insights" />
-            <Tab label="By Agency" />
-            <Tab label="By User" />
+            <Tab label="Overview" id="metrics-tab-0" aria-controls="metrics-tabpanel-0" />
+            <Tab label="FAQ Insights" id="metrics-tab-1" aria-controls="metrics-tabpanel-1" />
+            <Tab label="By Agency" id="metrics-tab-2" aria-controls="metrics-tabpanel-2" />
+            <Tab label="By User" id="metrics-tab-3" aria-controls="metrics-tabpanel-3" />
           </Tabs>
-          {tabIndex === 0 && metrics && <OverviewTab metrics={metrics} />}
-          {tabIndex === 1 && <FAQTab faqData={faqData} />}
-          {tabIndex === 2 && <AgencyTab agencyData={agencyData} />}
-          {tabIndex === 3 && <UsersTab userData={userData} />}
+          {tabIndex === 0 && metrics && (
+            <Box role="tabpanel" id="metrics-tabpanel-0" aria-labelledby="metrics-tab-0">
+              <OverviewTab metrics={metrics} />
+            </Box>
+          )}
+          {tabIndex === 1 && (
+            <Box role="tabpanel" id="metrics-tabpanel-1" aria-labelledby="metrics-tab-1">
+              <FAQTab faqData={faqData} />
+            </Box>
+          )}
+          {tabIndex === 2 && (
+            <Box role="tabpanel" id="metrics-tabpanel-2" aria-labelledby="metrics-tab-2">
+              <AgencyTab agencyData={agencyData} />
+            </Box>
+          )}
+          {tabIndex === 3 && (
+            <Box role="tabpanel" id="metrics-tabpanel-3" aria-labelledby="metrics-tab-3">
+              <UsersTab userData={userData} />
+            </Box>
+          )}
         </>
       )}
     </AdminPageLayout>

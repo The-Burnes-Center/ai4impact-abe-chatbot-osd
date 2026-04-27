@@ -19,7 +19,7 @@ const RouterButton = forwardRef<HTMLButtonElement, RouterButtonProps>(
       <Button
         ref={ref}
         disabled={disabled || loading}
-        startIcon={loading ? <CircularProgress size={16} color="inherit" /> : iconSvg}
+        startIcon={loading ? <CircularProgress size={16} color="inherit" aria-hidden="true" /> : iconSvg}
         {...linkProps}
         {...rest}
       >

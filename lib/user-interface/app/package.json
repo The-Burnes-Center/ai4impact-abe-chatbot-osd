@@ -19,6 +19,8 @@
     "@emotion/cache": "^11.14.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
+    "@massds/mayflower-assets": "^14.1.0",
+    "@massds/mayflower-react": "^14.1.0",
     "@mui/icons-material": "^6.4.8",
     "@mui/material": "^6.5.0",
     "@mui/x-charts": "^7.29.1",
@@ -36,6 +38,7 @@
     "uuid": "^9.0.0"
   },
   "devDependencies": {
+    "@axe-core/react": "^4.10.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -57,6 +60,8 @@
     "typescript": "^5.0.2",
     "vite": "^6.2.1",
     "@vitest/coverage-v8": "^4.1.2",
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.2",
+    "axe-core": "^4.10.2",
+    "vitest-axe": "^0.1.0"
   }
 }

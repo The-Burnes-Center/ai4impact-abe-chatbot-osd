@@ -26,7 +26,7 @@ export default function NotFoundPage() {
           Help &amp; guide
         </Button>
         <Button variant="text" component={RouterLink} to="/">
-          Home
+          Return to home
         </Button>
       </Stack>
     </Box>

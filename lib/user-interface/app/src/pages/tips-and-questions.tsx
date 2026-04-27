@@ -14,6 +14,7 @@ import ExpandMore from "@mui/icons-material/ExpandMore";
 import ExpandLess from "@mui/icons-material/ExpandLess";
 import { Link as RouterLink } from "react-router-dom";
 import { CHATBOT_NAME } from "../common/constants";
+import { useDocumentTitle } from "../common/hooks/use-document-title";
 
 const prompts = [
   { title: "Spell out acronyms", details: "Avoid using abbreviations. For example, instead of 'RFP,' use 'Request for Proposal'." },
@@ -55,6 +56,7 @@ const questions = [
 ];
 
 export default function TipsAndQuestions() {
+  useDocumentTitle("Tips & questions");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const toggle = (key: string) => {
@@ -96,15 +98,24 @@ export default function TipsAndQuestions() {
                 <ListItemButton
                   onClick={() => toggle(`prompt-${index}`)}
                   aria-expanded={!!expanded[`prompt-${index}`]}
+                  aria-controls={`tips-prompt-panel-${index}`}
                   sx={{ px: 0.5, borderRadius: 1 }}
                 >
-                  {expanded[`prompt-${index}`] ? <ExpandLess sx={{ mr: 1 }} /> : <ExpandMore sx={{ mr: 1 }} />}
+                  {expanded[`prompt-${index}`] ? (
+                    <ExpandLess sx={{ mr: 1 }} aria-hidden="true" />
+                  ) : (
+                    <ExpandMore sx={{ mr: 1 }} aria-hidden="true" />
+                  )}
                   <ListItemText
                     primary={prompt.title}
                     primaryTypographyProps={{ fontWeight: 600, fontSize: "0.9375rem" }}
                   />
                 </ListItemButton>
-                <Collapse in={!!expanded[`prompt-${index}`]} timeout={200}>
+                <Collapse
+                  in={!!expanded[`prompt-${index}`]}
+                  timeout={200}
+                  id={`tips-prompt-panel-${index}`}
+                >
                   <Typography variant="body2" color="text.secondary" sx={{ pl: 4.5, pb: 1.5 }}>
                     {prompt.details}
                   </Typography>
@@ -126,15 +137,24 @@ export default function TipsAndQuestions() {
                 <ListItemButton
                   onClick={() => toggle(`question-${index}`)}
                   aria-expanded={!!expanded[`question-${index}`]}
+                  aria-controls={`tips-question-panel-${index}`}
                   sx={{ px: 0.5, borderRadius: 1 }}
                 >
-                  {expanded[`question-${index}`] ? <ExpandLess sx={{ mr: 1 }} /> : <ExpandMore sx={{ mr: 1 }} />}
+                  {expanded[`question-${index}`] ? (
+                    <ExpandLess sx={{ mr: 1 }} aria-hidden="true" />
+                  ) : (
+                    <ExpandMore sx={{ mr: 1 }} aria-hidden="true" />
+                  )}
                   <ListItemText
                     primary={section.topic}
                     primaryTypographyProps={{ fontWeight: 600, fontSize: "0.9375rem" }}
                   />
                 </ListItemButton>
-                <Collapse in={!!expanded[`question-${index}`]} timeout={200}>
+                <Collapse
+                  in={!!expanded[`question-${index}`]}
+                  timeout={200}
+                  id={`tips-question-panel-${index}`}
+                >
                   <Stack component="ul" spacing={0.5} sx={{ pl: 4.5, pb: 1.5, m: 0, listStyle: "disc" }}>
                     {section.items.map((q, qIndex) => (
                       <li key={qIndex}>

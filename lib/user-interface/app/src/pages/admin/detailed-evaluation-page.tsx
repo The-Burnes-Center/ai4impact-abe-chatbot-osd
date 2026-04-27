@@ -92,7 +92,7 @@ function escapeCSVValue(val: any): string {
 }
 
 function DetailedEvaluationPage() {
-  useDocumentTitle("Evaluation Details");
+  useDocumentTitle("Admin \u00b7 Evaluation details");
   const { evaluationId } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -229,7 +229,7 @@ function DetailedEvaluationPage() {
 
   return (
     <Stack spacing={2}>
-      <Breadcrumbs>
+      <Breadcrumbs aria-label="Breadcrumb">
         <Link
           component="button"
           underline="hover"
@@ -243,7 +243,7 @@ function DetailedEvaluationPage() {
       </Breadcrumbs>
 
       <Stack direction="row" justifyContent="space-between" alignItems="center">
-        <Typography variant="h5">Evaluation Details</Typography>
+        <Typography variant="h5" component="h1">Evaluation Details</Typography>
         <Button
           onClick={() => navigate("/admin/llm-evaluation#history")}
           variant="text"
@@ -267,15 +267,19 @@ function DetailedEvaluationPage() {
       )}
 
       <Stack direction="row" justifyContent="space-between" alignItems="center">
-        <Typography variant="h6">Per-Question Results</Typography>
+        <Typography variant="h6" component="h2">Per-Question Results</Typography>
         <Button onClick={handleDownload} variant="outlined" size="small">
           Export CSV
         </Button>
       </Stack>
 
       {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
-          <CircularProgress />
+        <Box
+          role="status"
+          aria-label="Loading evaluation details"
+          sx={{ display: "flex", justifyContent: "center", p: 4 }}
+        >
+          <CircularProgress aria-hidden="true" />
         </Box>
       ) : sortedItems.length === 0 ? (
         <Box sx={{ textAlign: "center", p: 4 }}>
@@ -287,27 +291,40 @@ function DetailedEvaluationPage() {
         </Box>
       ) : (
         <TableContainer component={Paper}>
-          <Table size="small">
+          <Table size="small" aria-label="Per-question evaluation results">
             <TableHead>
               <TableRow>
-                {columnDefinitions.map((col) => (
-                  <TableCell
-                    key={col.id}
-                    sx={{ fontWeight: "bold", ...(col.width ? { width: col.width } : {}) }}
-                  >
-                    {col.sortingField ? (
-                      <TableSortLabel
-                        active={sortField === col.sortingField}
-                        direction={sortField === col.sortingField ? sortDirection : "asc"}
-                        onClick={() => handleSort(col.sortingField!)}
-                      >
-                        {col.header}
-                      </TableSortLabel>
-                    ) : (
-                      col.header
-                    )}
-                  </TableCell>
-                ))}
+                {columnDefinitions.map((col) => {
+                  const isActiveSort = !!col.sortingField && sortField === col.sortingField;
+                  return (
+                    <TableCell
+                      key={col.id}
+                      sortDirection={isActiveSort ? sortDirection : false}
+                      aria-sort={
+                        col.sortingField
+                          ? isActiveSort
+                            ? sortDirection === "asc"
+                              ? "ascending"
+                              : "descending"
+                            : "none"
+                          : undefined
+                      }
+                      sx={{ fontWeight: "bold", ...(col.width ? { width: col.width } : {}) }}
+                    >
+                      {col.sortingField ? (
+                        <TableSortLabel
+                          active={isActiveSort}
+                          direction={isActiveSort ? sortDirection : "asc"}
+                          onClick={() => handleSort(col.sortingField!)}
+                        >
+                          {col.header}
+                        </TableSortLabel>
+                      ) : (
+                        col.header
+                      )}
+                    </TableCell>
+                  );
+                })}
               </TableRow>
             </TableHead>
             <TableBody>

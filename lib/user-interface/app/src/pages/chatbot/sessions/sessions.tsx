@@ -7,7 +7,7 @@ import { CHATBOT_NAME } from "../../../common/constants";
 import { useDocumentTitle } from "../../../common/hooks/use-document-title";
 
 export default function SessionPage() {
-  useDocumentTitle("Session History");
+  useDocumentTitle("Chat sessions");
   return (
     <>
       <Breadcrumbs sx={{ mb: 2 }}>

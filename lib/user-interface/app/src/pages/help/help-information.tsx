@@ -1,9 +1,9 @@
-import React from 'react'
-
 const HelpInformation = () => {
   return (
-    <div>help-information</div>
-  )
-}
+    <section aria-labelledby="help-information-heading">
+      <h2 id="help-information-heading">Help information</h2>
+    </section>
+  );
+};
 
-export default HelpInformation
+export default HelpInformation;

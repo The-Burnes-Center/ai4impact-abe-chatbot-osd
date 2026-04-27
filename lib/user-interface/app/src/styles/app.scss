@@ -12,13 +12,106 @@ body,
 #root,
 div[data-amplify-authenticator],
 div[data-amplify-theme] {
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
   background-color: var(--abe-surface, #ffffff);
-  overflow-y: scroll;
+  overflow-y: auto;
+  font-family: "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   transition: background-color var(--abe-transition-normal, 250ms cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+/* WCAG 2.1 AA - Visible focus indicators (1.4.11, 2.4.7) */
+*:focus-visible {
+  outline: 3px solid #0088FF;
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible,
+[role="menuitem"]:focus-visible,
+[role="option"]:focus-visible {
+  outline: 3px solid #0088FF;
+  outline-offset: 2px;
+}
+
+/* Suppress focus ring on the programmatically-focused <main> wrapper */
+main#main-content:focus,
+main#main-content:focus-visible {
+  outline: none;
+  outline-offset: 0;
+}
+
+/* Visually-hidden helper for screen-reader-only content */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* WCAG 2.3.3 - Respect prefers-reduced-motion globally */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Mayflower BrandBanner / Footer integration overrides */
+.ma__brand-banner button[aria-expanded="false"] ~ .ma__brand-banner-expansion,
+.ma__brand-banner button[aria-expanded="false"] ~ ul[role="region"] {
+  pointer-events: none;
+}
+
+.ma__brand-banner button[aria-expanded="false"] ~ .ma__brand-banner-expansion *,
+.ma__brand-banner button[aria-expanded="false"] ~ ul[role="region"] * {
+  pointer-events: none;
+}
+
+[aria-hidden="true"] {
+  pointer-events: none;
+}
+
+[aria-hidden="true"] * {
+  pointer-events: none;
+}
+
+/* WCAG 1.4.3 - Footer link contrast (4.5:1 on white background) */
+.ma__footer-new a {
+  color: #0056b3 !important;
+}
+
+.ma__footer-new a:hover,
+.ma__footer-new a:focus {
+  color: #004085 !important;
+  text-decoration: underline;
+}
+
+.ma__footer-new a:visited {
+  color: #0056b3 !important;
+}
+
+/* WCAG 1.4.3 - Placeholder text contrast (4.5:1) */
+input::placeholder,
+textarea::placeholder {
+  color: #757575 !important;
+  opacity: 1 !important;
 }
 
 .header-container {

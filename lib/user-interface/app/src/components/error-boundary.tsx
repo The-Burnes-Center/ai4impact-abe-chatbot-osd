@@ -45,6 +45,8 @@ export default class ErrorBoundary extends Component<Props, State> {
           }}
         >
           <Paper
+            role="alert"
+            aria-labelledby="error-boundary-title"
             sx={{
               p: 4,
               maxWidth: 480,
@@ -53,9 +55,15 @@ export default class ErrorBoundary extends Component<Props, State> {
             }}
           >
             <ErrorOutlineIcon
+              aria-hidden="true"
               sx={{ fontSize: 48, color: "error.main", mb: 2 }}
             />
-            <Typography variant="h5" sx={{ mb: 1, fontWeight: 600 }}>
+            <Typography
+              id="error-boundary-title"
+              variant="h5"
+              component="h2"
+              sx={{ mb: 1, fontWeight: 600 }}
+            >
               {this.props.fallbackTitle ?? "Something went wrong"}
             </Typography>
             <Typography
@@ -66,12 +74,17 @@ export default class ErrorBoundary extends Component<Props, State> {
               page.
             </Typography>
             <Box sx={{ display: "flex", gap: 1.5, justifyContent: "center" }}>
-              <Button variant="outlined" onClick={this.handleReset}>
+              <Button
+                variant="outlined"
+                onClick={this.handleReset}
+                aria-label="Try rendering this section again"
+              >
                 Try again
               </Button>
               <Button
                 variant="contained"
                 onClick={() => window.location.reload()}
+                aria-label="Refresh the entire page"
               >
                 Refresh page
               </Button>

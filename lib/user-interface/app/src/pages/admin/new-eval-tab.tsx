@@ -240,7 +240,7 @@ export default function NewEvalTab({ onComplete }: RunEvalTabProps) {
                 icon={
                   step.status === "completed" ? <CheckCircleIcon color="success" /> :
                   step.status === "failed" ? <ErrorIcon color="error" /> :
-                  step.status === "running" ? <CircularProgress size={24} /> :
+                  step.status === "running" ? <CircularProgress size={24} aria-label={`${step.name} in progress`} role="status" /> :
                   undefined
                 }
               >
@@ -357,8 +357,12 @@ export default function NewEvalTab({ onComplete }: RunEvalTabProps) {
             </IconButton>
           </Stack>
           {loadingFiles ? (
-            <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
-              <CircularProgress size={28} />
+            <Box
+              role="status"
+              aria-label="Loading past files"
+              sx={{ display: "flex", justifyContent: "center", py: 3 }}
+            >
+              <CircularProgress size={28} aria-hidden="true" />
             </Box>
           ) : pastFiles.length === 0 ? (
             <Typography color="text.secondary" align="center" sx={{ py: 3 }}>
@@ -366,7 +370,7 @@ export default function NewEvalTab({ onComplete }: RunEvalTabProps) {
             </Typography>
           ) : (
             <TableContainer sx={{ maxHeight: 300 }}>
-              <Table size="small" stickyHeader>
+              <Table size="small" stickyHeader aria-label="Past test case uploads">
                 <TableHead>
                   <TableRow>
                     <TableCell padding="checkbox" />

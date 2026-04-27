@@ -77,6 +77,7 @@ export default function ContextUsageRing({ usage }: Props) {
           value={100}
           size={RING_SIZE}
           thickness={RING_THICKNESS}
+          aria-hidden="true"
           sx={{ color: "action.disabledBackground", position: "absolute" }}
         />
         {/* Filled portion */}
@@ -86,6 +87,7 @@ export default function ContextUsageRing({ usage }: Props) {
           size={RING_SIZE}
           thickness={RING_THICKNESS}
           color={color}
+          aria-hidden="true"
         />
         {/* Centered percentage */}
         <Box

@@ -68,9 +68,10 @@ export default function GlobalHeader({ onMenuClick }: GlobalHeaderProps) {
 
   return (
     <AppBar
-      position="fixed"
+      position="sticky"
       role="banner"
       sx={{
+        top: 0,
         zIndex: (t) => t.zIndex.drawer + 1,
         bgcolor: c.headerBg,
         borderBottom: `1px solid ${theme === "light" ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.05)"}`,

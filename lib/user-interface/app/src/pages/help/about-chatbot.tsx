@@ -5,14 +5,14 @@ import Box from "@mui/material/Box";
 
 export default function AboutChatbot() {
   return (
-    <Box>
-      <Typography variant="h2" component="h1" gutterBottom>
+    <Box component="section" aria-labelledby="about-chatbot-heading">
+      <Typography id="about-chatbot-heading" variant="h4" component="h2" gutterBottom>
         About ABE
       </Typography>
 
       <Stack spacing={3}>
         <Paper sx={{ p: 3 }}>
-          <Typography variant="h4" component="h2" gutterBottom>
+          <Typography variant="h5" component="h3" gutterBottom>
             Assistive Buyer Engine
           </Typography>
           <Typography variant="body1" color="text.secondary">
@@ -24,7 +24,7 @@ export default function AboutChatbot() {
         </Paper>
 
         <Paper sx={{ p: 3 }}>
-          <Typography variant="h4" component="h2" gutterBottom>
+          <Typography variant="h5" component="h3" gutterBottom>
             How It Works
           </Typography>
           <Typography variant="body1" color="text.secondary">

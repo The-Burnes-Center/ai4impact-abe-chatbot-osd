@@ -243,15 +243,19 @@ export default function PastEvalsTab() {
       </Dialog>
 
       <Stack direction="row" justifyContent="space-between" alignItems="center">
-        <Typography variant="h6">Evaluation History</Typography>
+        <Typography variant="h6" component="h2">Evaluation History</Typography>
         <IconButton onClick={() => getEvaluations({ pageIndex: currentPageIndex })} aria-label="Refresh evaluations">
           <RefreshIcon />
         </IconButton>
       </Stack>
 
       {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
-          <CircularProgress />
+        <Box
+          role="status"
+          aria-label="Loading evaluation history"
+          sx={{ display: "flex", justifyContent: "center", p: 4 }}
+        >
+          <CircularProgress aria-hidden="true" />
         </Box>
       ) : sortedItems.length === 0 ? (
         <Box sx={{ textAlign: "center", p: 4 }}>
@@ -266,24 +270,38 @@ export default function PastEvalsTab() {
           <Table size="small" aria-label="Evaluation history">
             <TableHead>
               <TableRow>
-                {columnDefinitions.map((col) => (
-                  <TableCell
-                    key={col.id}
-                    sx={{ fontWeight: "bold", ...(col.width ? { width: col.width } : {}) }}
-                  >
-                    {col.sortingField && !col.disableSort ? (
-                      <TableSortLabel
-                        active={sortField === col.sortingField}
-                        direction={sortField === col.sortingField ? sortDirection : "asc"}
-                        onClick={() => handleSort(col.sortingField!)}
-                      >
-                        {col.header}
-                      </TableSortLabel>
-                    ) : (
-                      col.header
-                    )}
-                  </TableCell>
-                ))}
+                {columnDefinitions.map((col) => {
+                  const isSortable = !!col.sortingField && !col.disableSort;
+                  const isActiveSort = isSortable && sortField === col.sortingField;
+                  return (
+                    <TableCell
+                      key={col.id}
+                      sortDirection={isActiveSort ? sortDirection : false}
+                      aria-sort={
+                        isSortable
+                          ? isActiveSort
+                            ? sortDirection === "asc"
+                              ? "ascending"
+                              : "descending"
+                            : "none"
+                          : undefined
+                      }
+                      sx={{ fontWeight: "bold", ...(col.width ? { width: col.width } : {}) }}
+                    >
+                      {isSortable ? (
+                        <TableSortLabel
+                          active={isActiveSort}
+                          direction={isActiveSort ? sortDirection : "asc"}
+                          onClick={() => handleSort(col.sortingField!)}
+                        >
+                          {col.header}
+                        </TableSortLabel>
+                      ) : (
+                        col.header
+                      )}
+                    </TableCell>
+                  );
+                })}
               </TableRow>
             </TableHead>
             <TableBody>

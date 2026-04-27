@@ -185,7 +185,7 @@ export default function AutomationTab({ onScheduleChange }: AutomationTabProps) 
           alignItems="flex-start"
         >
           <Box>
-            <Typography variant="subtitle2" color="text.secondary">
+            <Typography variant="subtitle2" component="h2" color="text.secondary">
               Weekly Auto-Sync Schedule
             </Typography>
             <Typography variant="h6" sx={{ mt: 0.5 }}>
@@ -223,7 +223,7 @@ export default function AutomationTab({ onScheduleChange }: AutomationTabProps) 
       <Paper sx={{ px: 3, py: 2.5 }}>
         <Stack spacing={2}>
           <Box>
-            <Typography variant="subtitle2" color="text.secondary">
+            <Typography variant="subtitle2" component="h2" color="text.secondary">
               Upload Destinations
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -267,7 +267,7 @@ export default function AutomationTab({ onScheduleChange }: AutomationTabProps) 
           alignItems="center"
           sx={{ mb: 1.5 }}
         >
-          <Typography variant="subtitle2" color="text.secondary">
+          <Typography variant="subtitle2" component="h2" color="text.secondary">
             Sync History
           </Typography>
           <IconButton size="small" onClick={loadAll} aria-label="Refresh history">

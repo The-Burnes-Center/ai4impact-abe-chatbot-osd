@@ -21,7 +21,7 @@ import StatusChip, { type StatusVariant } from "./status-chip";
 import type { SyncSchedule } from "../../common/api-client/sync-client";
 
 export default function DataPage() {
-  useDocumentTitle("Data Management");
+  useDocumentTitle("Admin \u00b7 Data");
   const [activeTab, setActiveTab] = useState(0);
   const appContext = useContext(AppContext);
   const apiClient = new ApiClient(appContext!);
@@ -134,23 +134,34 @@ export default function DataPage() {
         <Tabs
           value={activeTab}
           onChange={(_, newValue) => setActiveTab(newValue)}
+          aria-label="Data sections"
           sx={{ borderBottom: 1, borderColor: "divider" }}
         >
-          <Tab label="Documents" />
-          <Tab label="Data Indexes" />
-          <Tab label="Automation" />
+          <Tab label="Documents" id="data-tab-0" aria-controls="data-tabpanel-0" />
+          <Tab label="Data Indexes" id="data-tab-1" aria-controls="data-tabpanel-1" />
+          <Tab label="Automation" id="data-tab-2" aria-controls="data-tabpanel-2" />
         </Tabs>
         <Box sx={{ pt: 2 }}>
           {activeTab === 0 && (
-            <DocumentsTab
-              documentType="file"
-              statusRefreshFunction={refreshSyncTime}
-              lastSyncTime={lastSyncData?.completedAt || null}
-              setShowUnsyncedAlert={setShowUnsyncedAlert}
-            />
+            <Box role="tabpanel" id="data-tabpanel-0" aria-labelledby="data-tab-0">
+              <DocumentsTab
+                documentType="file"
+                statusRefreshFunction={refreshSyncTime}
+                lastSyncTime={lastSyncData?.completedAt || null}
+                setShowUnsyncedAlert={setShowUnsyncedAlert}
+              />
+            </Box>
           )}
-          {activeTab === 1 && <DataIndexesTab />}
-          {activeTab === 2 && <AutomationTab onScheduleChange={setSyncSchedule} />}
+          {activeTab === 1 && (
+            <Box role="tabpanel" id="data-tabpanel-1" aria-labelledby="data-tab-1">
+              <DataIndexesTab />
+            </Box>
+          )}
+          {activeTab === 2 && (
+            <Box role="tabpanel" id="data-tabpanel-2" aria-labelledby="data-tab-2">
+              <AutomationTab onScheduleChange={setSyncSchedule} />
+            </Box>
+          )}
         </Box>
       </Box>
     </AdminPageLayout>
@@ -202,7 +213,12 @@ function StatusCard({ title, detail, chipVariant, chipLabel }: StatusCardProps) 
           </Typography>
           <Typography variant="body2" noWrap>
             {detail || (
-              <CircularProgress size={14} sx={{ verticalAlign: "middle" }} />
+              <CircularProgress
+                size={14}
+                aria-label="Loading"
+                role="status"
+                sx={{ verticalAlign: "middle" }}
+              />
             )}
           </Typography>
         </Box>

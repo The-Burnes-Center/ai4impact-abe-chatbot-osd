@@ -9,19 +9,18 @@ const fadeIn = keyframes`
   to { opacity: 1; transform: translateY(0); }
 `;
 
-const PageContainer = styled.div`
+const PageContainer = styled.main`
   position: relative;
   background: linear-gradient(135deg, #0a2b48 0%, #14558f 100%);
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  min-height: 100vh;
   box-sizing: border-box;
   padding: 24px clamp(20px, 5vw, 60px);
-  font-family: "Inter", "Open Sans", "Helvetica Neue", sans-serif;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  overflow: hidden;
+  overflow-x: hidden;
 `;
 
 const Circle = styled.div`
@@ -69,7 +68,8 @@ const SkipButton = styled.button`
   background: none;
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 8px;
-  padding: 8px 16px;
+  padding: 10px 18px;
+  min-height: 44px;
   cursor: pointer;
   font-family: inherit;
 
@@ -109,6 +109,7 @@ const StartButton = styled.button`
   border: none;
   border-radius: 12px;
   padding: 14px 32px;
+  min-height: 44px;
   cursor: pointer;
   z-index: 2;
   animation: ${fadeIn} 0.75s ease-out 0.15s both;
@@ -139,7 +140,7 @@ const StartButton = styled.button`
 `;
 
 export default function LandingPageStart() {
-  useDocumentTitle("Get Started");
+  useDocumentTitle("Get started");
   const navigate = useNavigate();
 
   const handleStart = () => navigate(`/chatbot/playground/${uuidv4()}`);
@@ -156,7 +157,7 @@ export default function LandingPageStart() {
   }, []);
 
   return (
-    <PageContainer role="main">
+    <PageContainer id="main-content" tabIndex={-1}>
       <HeaderBar>
         <SkipButton onClick={handleSkip} aria-label="Skip introduction and go to chat">
           Skip to Chat &rarr;
@@ -165,8 +166,8 @@ export default function LandingPageStart() {
       <TextContent>
         The more specific your questions, the better I can help you!
       </TextContent>
-      <StartButton onClick={handleStart} aria-label="Start chatting with ABE">
-        Get Started &rarr;
+      <StartButton onClick={handleStart}>
+        Get Started <span aria-hidden="true">&rarr;</span>
       </StartButton>
       <Circle className="darkBlue" aria-hidden="true" />
       <Circle className="lightBlue" aria-hidden="true" />

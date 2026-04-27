@@ -1,7 +1,6 @@
 import { ReactElement, useState } from "react";
 import Box from "@mui/material/Box";
 import Drawer from "@mui/material/Drawer";
-import Toolbar from "@mui/material/Toolbar";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import NavigationPanel from "./navigation-panel";
@@ -16,7 +15,7 @@ interface BaseAppLayoutProps {
   info?: ReactElement;
 }
 
-export default function BaseAppLayout({ children, info }: BaseAppLayoutProps) {
+export default function BaseAppLayout({ children }: BaseAppLayoutProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -27,102 +26,72 @@ export default function BaseAppLayout({ children, info }: BaseAppLayoutProps) {
   return (
     <SessionRefreshContext.Provider value={{ needsRefresh, setNeedsRefresh }}>
       <NotificationProvider>
-        <Box sx={{ display: "flex" }}>
-          {/* Skip to content link for accessibility */}
-          <Box
-            component="a"
-            href="#main-content"
-            className="sr-only"
-            sx={{
-              "&:focus": {
-                position: "fixed",
-                top: 8,
-                left: "50%",
-                transform: "translateX(-50%)",
-                zIndex: 9999,
-                clip: "auto",
-                width: "auto",
-                height: "auto",
-                overflow: "visible",
-                whiteSpace: "normal",
-                bgcolor: "primary.main",
-                color: "#fff",
-                px: 3,
-                py: 1.5,
-                borderRadius: 2,
-                fontWeight: 600,
-                fontSize: "0.875rem",
-                textDecoration: "none",
-                boxShadow: 4,
-              },
-            }}
-          >
-            Skip to main content
-          </Box>
+        <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+          <GlobalHeader onMenuClick={isMobile ? () => setMobileOpen(!mobileOpen) : undefined} />
 
-          <GlobalHeader onMenuClick={() => setMobileOpen(!mobileOpen)} />
-
-          {/* Mobile drawer */}
-          <Drawer
-            variant="temporary"
-            open={mobileOpen}
-            onClose={() => setMobileOpen(false)}
-            ModalProps={{ keepMounted: true }}
-            PaperProps={{ "aria-label": "Main navigation" }}
-            sx={{
-              display: { xs: "block", md: "none" },
-              "& .MuiDrawer-paper": { width: DRAWER_WIDTH, boxSizing: "border-box" },
-            }}
-          >
-            <Toolbar sx={{ minHeight: { xs: 56, sm: 64 } }} />
-            {drawerContent}
-          </Drawer>
-
-          {/* Desktop drawer */}
-          <Drawer
-            variant="permanent"
-            sx={{
-              display: { xs: "none", md: "block" },
-              width: DRAWER_WIDTH,
-              flexShrink: 0,
-              "& .MuiDrawer-paper": { width: DRAWER_WIDTH, boxSizing: "border-box" },
-            }}
-          >
-            <Toolbar sx={{ minHeight: { xs: 56, sm: 64 } }} />
-            {drawerContent}
-          </Drawer>
-
-          {/* Main content */}
-          <Box
-            component="main"
-            id="main-content"
-            tabIndex={-1}
-            sx={{
-              flexGrow: 1,
-              width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
-              height: "100vh",
-              display: "flex",
-              flexDirection: "column",
-              "&:focus:not(:focus-visible)": { outline: "none" },
-              overflow: "hidden",
-            }}
-          >
-            <Toolbar sx={{ minHeight: { xs: 56, sm: 64 }, flexShrink: 0 }} />
-            <Box
+          <Box sx={{ display: "flex", flex: 1, minHeight: 0 }}>
+            {/* Mobile drawer */}
+            <Drawer
+              variant="temporary"
+              open={mobileOpen}
+              onClose={() => setMobileOpen(false)}
+              ModalProps={{ keepMounted: true }}
+              PaperProps={{ "aria-label": "Main navigation" }}
               sx={{
-                flex: 1,
-                minHeight: 0,
-                display: "flex",
-                flexDirection: "column",
-                px: { xs: 2, sm: 2.5, md: 3 },
-                pt: { xs: 2, sm: 2.5, md: 3 },
-                pb: 0,
-                width: "100%",
-                overflow: "auto",
+                display: { xs: "block", md: "none" },
+                "& .MuiDrawer-paper": { width: DRAWER_WIDTH, boxSizing: "border-box" },
               }}
             >
-              <NotificationBar />
-              {children}
+              {drawerContent}
+            </Drawer>
+
+            {/* Desktop drawer */}
+            <Drawer
+              variant="permanent"
+              sx={{
+                display: { xs: "none", md: "block" },
+                width: DRAWER_WIDTH,
+                flexShrink: 0,
+                "& .MuiDrawer-paper": {
+                  width: DRAWER_WIDTH,
+                  boxSizing: "border-box",
+                  position: "static",
+                },
+              }}
+            >
+              {drawerContent}
+            </Drawer>
+
+            {/* Main content */}
+            <Box
+              component="main"
+              id="main-content"
+              tabIndex={-1}
+              sx={{
+                flexGrow: 1,
+                width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
+                display: "flex",
+                flexDirection: "column",
+                "&:focus:not(:focus-visible)": { outline: "none" },
+                minHeight: 0,
+              }}
+            >
+              <Box
+                sx={{
+                  flex: 1,
+                  minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  px: { xs: 2, sm: 2.5, md: 3 },
+                  pt: { xs: 2, sm: 2.5, md: 3 },
+                  pb: 0,
+                  width: "100%",
+                  overflow: "auto",
+                }}
+              >
+                <NotificationBar />
+                {children}
+              </Box>
             </Box>
           </Box>
         </Box>
