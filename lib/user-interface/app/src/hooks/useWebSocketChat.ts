@@ -198,8 +198,6 @@ export function useWebSocketChat() {
             // not JSON gateway timeout — continue
           }
 
-          lastActivity = Date.now();
-
           if (raw.startsWith(ERROR_PREFIX)) {
             clearInterval(timeoutId);
             terminalHandled = true;
@@ -209,12 +207,24 @@ export function useWebSocketChat() {
           }
 
           if (raw.startsWith(STATUS_PREFIX)) {
+            lastActivity = Date.now();
             const statusText = raw.slice(STATUS_PREFIX.length);
             opts.onStatusChange({ text: statusText, active: true });
             return;
           }
 
           if (raw === EOF_MARKER) {
+            // EOF with zero text chunks means the model produced no output
+            // (e.g. empty Bedrock content / guardrail intervention). Surface
+            // an error rather than silently completing with an empty bubble,
+            // which would leave the UI stuck on the "Thinking..." indicator.
+            if (receivedData === "") {
+              clearInterval(timeoutId);
+              terminalHandled = true;
+              opts.onError("I wasn't able to generate a response for that question. Please try again or rephrase your question.");
+              ws.close();
+              return;
+            }
             eofReceived = true;
             incomingMetadata = true;
             opts.onStatusChange({ text: "", active: false });
@@ -222,6 +232,7 @@ export function useWebSocketChat() {
           }
 
           if (!incomingMetadata) {
+            lastActivity = Date.now();
             opts.onStatusChange({ text: "", active: false });
             receivedData += raw;
             opts.onStreamChunk(receivedData);
