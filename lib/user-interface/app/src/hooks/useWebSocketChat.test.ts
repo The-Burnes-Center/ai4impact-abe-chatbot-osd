@@ -206,7 +206,7 @@ describe("useWebSocketChat", () => {
     expect(onStreamChunk).toHaveBeenLastCalledWith("Hello world");
   });
 
-  it("calls onComplete after the EOF marker followed by a clean close", async () => {
+  it("calls onComplete after streamed text plus the EOF marker followed by a clean close", async () => {
     const onComplete = vi.fn();
     const { result } = renderHook(() => useWebSocketChat(), { wrapper });
 
@@ -218,11 +218,33 @@ describe("useWebSocketChat", () => {
     const ws = MockWebSocket.lastInstance!;
     act(() => {
       ws.simulateOpen();
+      ws.simulateMessage("Hello world");
       ws.simulateMessage("!<|EOF_STREAM|>!");
       ws.simulateClose(1000);
     });
 
     expect(onComplete).toHaveBeenCalledWith(true);
+  });
+
+  it("calls onError when EOF arrives with no streamed text (empty Bedrock response)", async () => {
+    const onError = vi.fn();
+    const onComplete = vi.fn();
+    const { result } = renderHook(() => useWebSocketChat(), { wrapper });
+
+    await act(async () => {
+      await result.current.send(makeOpts({ onError, onComplete }));
+    });
+
+    const ws = MockWebSocket.lastInstance!;
+    act(() => {
+      ws.simulateOpen();
+      ws.simulateMessage("!<|EOF_STREAM|>!");
+    });
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.stringContaining("wasn't able to generate a response")
+    );
+    expect(onComplete).not.toHaveBeenCalled();
   });
 
   it("does not call onError on the first unexpected close — schedules a reconnect instead", async () => {
