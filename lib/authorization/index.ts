@@ -4,8 +4,15 @@ import { cognitoDomainName } from '../constants'
 import { UserPool, UserPoolIdentityProviderOidc,UserPoolClient, UserPoolClientIdentityProvider, ProviderAttribute } from 'aws-cdk-lib/aws-cognito';
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as fs from 'fs';
 import * as path from 'path';
 import { MANAGED_LOGIN_BRANDING_SETTINGS } from './managed-login-branding';
+
+const STATE_SEAL_PATH = path.join(
+  __dirname,
+  '../user-interface/app/public/images/stateseal-color.png',
+);
+const STATE_SEAL_BASE64 = fs.readFileSync(STATE_SEAL_PATH).toString('base64');
 
 export class AuthorizationStack extends Construct {
   public readonly lambdaAuthorizer : lambda.Function;
@@ -86,6 +93,14 @@ export class AuthorizationStack extends Construct {
       useCognitoProvidedValues: false,
       returnMergedResources: false,
       settings: MANAGED_LOGIN_BRANDING_SETTINGS,
+      assets: [
+        {
+          bytes: STATE_SEAL_BASE64,
+          category: 'FORM_LOGO',
+          colorMode: 'LIGHT',
+          extension: 'PNG',
+        },
+      ],
     });
 
     const authorizerHandlerFunction = new lambda.Function(this, 'AuthorizationFunction', {

@@ -184,7 +184,7 @@ export const MANAGED_LOGIN_BRANDING_SETTINGS = {
       darkMode: { backgroundColor: "0f1b2aff", borderColor: "424650ff" },
       lightMode: { backgroundColor: "ffffffff", borderColor: "c6c6cdff" },
       logo: {
-        enabled: false,
+        enabled: true,
         formInclusion: "IN",
         location: "CENTER",
         position: "TOP",
