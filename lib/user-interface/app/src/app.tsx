@@ -7,6 +7,9 @@ import ErrorBoundary from "./components/error-boundary";
 import BrandBanner from "./components/mds/BrandBanner";
 import MdsFooter from "./components/mds/MdsFooter";
 import SkipLink from "./components/mds/SkipLink";
+import LandingPage from "./pages/landing-page";
+import LandingPageInfo from "./pages/landing-page-info";
+import LandingPageStart from "./pages/landing-page-start";
 import "./styles/app.scss";
 
 const Playground = React.lazy(() => import("./pages/chatbot/playground/playground"));
@@ -18,9 +21,6 @@ const MetricsPage = React.lazy(() => import("./pages/admin/metrics-page"));
 const LlmEvaluationPage = React.lazy(() => import("./pages/admin/llm-evaluation-page"));
 const DetailedEvaluationPage = React.lazy(() => import("./pages/admin/detailed-evaluation-page"));
 const HelpPage = React.lazy(() => import("./pages/help/how-to-use"));
-const LandingPage = React.lazy(() => import("./pages/landing-page"));
-const LandingPageInfo = React.lazy(() => import("./pages/landing-page-info"));
-const LandingPageStart = React.lazy(() => import("./pages/landing-page-start"));
 const NotFoundPage = React.lazy(() => import("./pages/not-found"));
 
 function PageLoader() {
