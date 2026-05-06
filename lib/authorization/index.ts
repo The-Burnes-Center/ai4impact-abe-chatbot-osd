@@ -24,6 +24,7 @@ export class AuthorizationStack extends Construct {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       selfSignUpEnabled: false,
       mfa: cognito.Mfa.OPTIONAL,
+      featurePlan: cognito.FeaturePlan.PLUS,
       advancedSecurityMode: cognito.AdvancedSecurityMode.ENFORCED,
       autoVerify: { email: true, phone: true },
       signInAliases: {
@@ -51,6 +52,7 @@ export class AuthorizationStack extends Construct {
       cognitoDomain: {
         domainPrefix: cognitoDomainName,
       },
+      managedLoginVersion: cognito.ManagedLoginVersion.NEWER_MANAGED_LOGIN,
     });
     
     
