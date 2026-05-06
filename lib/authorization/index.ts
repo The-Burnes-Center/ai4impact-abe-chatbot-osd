@@ -1,10 +1,11 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { cognitoDomainName } from '../constants' 
+import { cognitoDomainName } from '../constants'
 import { UserPool, UserPoolIdentityProviderOidc,UserPoolClient, UserPoolClientIdentityProvider, ProviderAttribute } from 'aws-cdk-lib/aws-cognito';
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as path from 'path';
+import { MANAGED_LOGIN_BRANDING_SETTINGS } from './managed-login-branding';
 
 export class AuthorizationStack extends Construct {
   public readonly lambdaAuthorizer : lambda.Function;
@@ -78,6 +79,14 @@ export class AuthorizationStack extends Construct {
     });
 
     this.userPoolClient = userPoolClient;
+
+    new cognito.CfnManagedLoginBranding(this, 'ManagedLoginBranding', {
+      userPoolId: userPool.userPoolId,
+      clientId: userPoolClient.userPoolClientId,
+      useCognitoProvidedValues: false,
+      returnMergedResources: false,
+      settings: MANAGED_LOGIN_BRANDING_SETTINGS,
+    });
 
     const authorizerHandlerFunction = new lambda.Function(this, 'AuthorizationFunction', {
       runtime: lambda.Runtime.PYTHON_3_12, // Choose any supported Node.js runtime
