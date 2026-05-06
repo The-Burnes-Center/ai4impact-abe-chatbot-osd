@@ -61,7 +61,6 @@ function App() {
       sx={{
         display: "flex",
         flexDirection: "column",
-        minHeight: "100vh",
         width: "100%",
       }}
     >
@@ -71,10 +70,9 @@ function App() {
         <Box
           component="div"
           sx={{
-            flex: 1,
             display: "flex",
             flexDirection: "column",
-            minHeight: 0,
+            minHeight: "100vh",
           }}
         >
           <ErrorBoundary>
