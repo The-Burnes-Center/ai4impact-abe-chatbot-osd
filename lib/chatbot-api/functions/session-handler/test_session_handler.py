@@ -702,9 +702,11 @@ class TestLambdaHandlerDispatch:
         })
         assert resp["headers"]["Content-Type"] == "application/json"
 
-    def test_jwt_sub_overrides_body_user_id(self, ctx):
-        """When a JWT `sub` claim is present, the handler must use it instead
-        of the client-supplied body field — this is the IDOR guard."""
+    def test_jwt_overrides_body_user_id(self, ctx):
+        """When JWT claims are present, the handler must use them instead of
+        the client-supplied body field — this is the IDOR guard. We prefer
+        `cognito:username` since that matches the historical key the frontend
+        sent."""
         lf, table = ctx
         attacker_target = "victim-user-id"
         # Seed a session that belongs to the JWT-authenticated user only.
@@ -713,7 +715,9 @@ class TestLambdaHandlerDispatch:
         # identifies them as USER_ID — the JWT must win.
         resp = lf.lambda_handler(
             {
-                "requestContext": {"authorizer": {"jwt": {"claims": {"sub": USER_ID}}}},
+                "requestContext": {
+                    "authorizer": {"jwt": {"claims": {"cognito:username": USER_ID, "sub": "some-uuid"}}}
+                },
                 "body": json.dumps({
                     "operation": "get_session",
                     "user_id": attacker_target,
@@ -726,6 +730,23 @@ class TestLambdaHandlerDispatch:
         assert resp["statusCode"] == 200
         # Got the JWT-owner's session, not the victim's lookup.
         assert body["user_id"] == USER_ID
+
+    def test_jwt_falls_back_to_sub_when_username_absent(self, ctx):
+        lf, table = ctx
+        _seed_session(table, user_id=USER_ID, session_id=SESSION_ID)
+        resp = lf.lambda_handler(
+            {
+                "requestContext": {"authorizer": {"jwt": {"claims": {"sub": USER_ID}}}},
+                "body": json.dumps({
+                    "operation": "get_session",
+                    "user_id": "anything",
+                    "session_id": SESSION_ID,
+                }),
+            },
+            {},
+        )
+        assert resp["statusCode"] == 200
+        assert json.loads(resp["body"])["user_id"] == USER_ID
 
 
 # ---------------------------------------------------------------------------

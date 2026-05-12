@@ -212,16 +212,22 @@ def fetch_metadata(filter_key=None):
 
 
 def _resolve_user_id(event, body_user_id):
-    """Prefer the JWT `sub` from the API Gateway authorizer when the handler is
-    invoked over HTTP. When invoked directly via Lambda Invoke (no authorizer
-    context) — e.g. from the WebSocket chat handler — fall back to the supplied
-    body value, which the chat handler has already derived from the WS
-    authorizer principal.
+    """Derive the user identifier from the API Gateway JWT authorizer when
+    present. When invoked directly via Lambda Invoke (no authorizer context) —
+    e.g. from the WebSocket chat handler — fall back to the supplied body
+    value, which the chat handler has already derived from the WS authorizer
+    principal.
+
+    We key off `cognito:username` because that matches the identifier the
+    frontend has been sending all along (Amplify's `.username`), which is what
+    historical chat rows are stored under. Falling back to `sub` keeps the
+    handler working for tokens that omit `cognito:username` (e.g. unit tests).
     """
     claims = get_claims(event)
-    jwt_sub = claims.get("sub") if isinstance(claims, dict) else None
-    if jwt_sub:
-        return jwt_sub
+    if isinstance(claims, dict):
+        jwt_user = claims.get("cognito:username") or claims.get("username") or claims.get("sub")
+        if jwt_user:
+            return jwt_user
     return body_user_id
 
 

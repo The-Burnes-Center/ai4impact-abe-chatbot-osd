@@ -1054,15 +1054,24 @@ export default function InboxView(props: InboxViewProps) {
       </Dialog>
 
       {/* Detail slide-out drawer (negative feedback review) */}
+      {/* The global AppBar sits at `zIndex.drawer + 1`, so a default drawer
+          would have its own header (and Close button) hidden under the navy
+          bar. Offsetting the Paper by the toolbar height keeps the close
+          control visible and leaves the app header reachable. */}
       <Drawer
         anchor="right"
         open={detailOpen && selectedFeedback != null}
         onClose={handleCloseDetail}
         slotProps={{
-          backdrop: { "aria-hidden": true },
+          backdrop: { "aria-hidden": true, sx: { top: { xs: 56, sm: 64 } } },
         }}
         PaperProps={{
-          sx: { width: { xs: "100%", md: 520 }, p: 0 },
+          sx: {
+            width: { xs: "100%", md: 520 },
+            p: 0,
+            top: { xs: 56, sm: 64 },
+            height: { xs: "calc(100% - 56px)", sm: "calc(100% - 64px)" },
+          },
           role: "dialog",
           "aria-modal": true,
           "aria-label": "Feedback detail",
