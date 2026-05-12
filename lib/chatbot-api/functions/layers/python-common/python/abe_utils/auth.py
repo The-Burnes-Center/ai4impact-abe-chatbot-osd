@@ -32,7 +32,9 @@ def get_roles(event: dict | None) -> list[str]:
 
 
 def is_admin_request(event: dict | None) -> bool:
-    return any("Admin" in role for role in get_roles(event))
+    # Exact role membership only. A substring match would let role names like
+    # `AdminViewer` or `NotAdmin` slip through the admin gate.
+    return "Admin" in get_roles(event)
 
 
 def get_audit_actor_label(event: dict | None, *, max_length: int = 200) -> str:

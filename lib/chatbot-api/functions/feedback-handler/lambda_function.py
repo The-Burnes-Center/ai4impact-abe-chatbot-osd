@@ -1221,6 +1221,9 @@ def lambda_handler(event, context):
             return append_feedback_follow_up(event, path_parts[1])
 
         if path_parts == ["user-feedback"] and method == "GET":
+            # Admin-only data view — non-admins must not be able to list any
+            # other user's feedback through this legacy route.
+            ensure_admin(event)
             return list_feedback(event)
         if path_parts == ["user-feedback"] and method in ("POST", "DELETE"):
             return json_response(410, {"error": "Legacy endpoint removed. Use POST /feedback instead."})

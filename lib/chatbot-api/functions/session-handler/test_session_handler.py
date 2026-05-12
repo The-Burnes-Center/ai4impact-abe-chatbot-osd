@@ -659,11 +659,12 @@ class TestLambdaHandlerDispatch:
         resp = lf.lambda_handler({"body": "not-valid-json{"}, {})
         assert resp["statusCode"] == 400
 
-    def test_missing_body_uses_empty_defaults_and_returns_400(self, ctx):
+    def test_missing_body_without_auth_returns_401(self, ctx):
         lf, _ = ctx
-        # No body at all → parse_json_body returns {} → operation is None → 400
+        # No JWT claims and no body → handler refuses to act on an unauthenticated
+        # request rather than falling through to the operation dispatcher.
         resp = lf.lambda_handler({}, {})
-        assert resp["statusCode"] == 400
+        assert resp["statusCode"] == 401
 
     def test_body_as_dict_is_accepted(self, ctx):
         """parse_json_body also accepts a dict body (API GW proxy integration variation)."""
@@ -700,6 +701,31 @@ class TestLambdaHandlerDispatch:
             "session_id": SESSION_ID,
         })
         assert resp["headers"]["Content-Type"] == "application/json"
+
+    def test_jwt_sub_overrides_body_user_id(self, ctx):
+        """When a JWT `sub` claim is present, the handler must use it instead
+        of the client-supplied body field — this is the IDOR guard."""
+        lf, table = ctx
+        attacker_target = "victim-user-id"
+        # Seed a session that belongs to the JWT-authenticated user only.
+        _seed_session(table, user_id=USER_ID, session_id=SESSION_ID)
+        # Attacker passes the victim's user_id in the body, but the JWT
+        # identifies them as USER_ID — the JWT must win.
+        resp = lf.lambda_handler(
+            {
+                "requestContext": {"authorizer": {"jwt": {"claims": {"sub": USER_ID}}}},
+                "body": json.dumps({
+                    "operation": "get_session",
+                    "user_id": attacker_target,
+                    "session_id": SESSION_ID,
+                }),
+            },
+            {},
+        )
+        body = json.loads(resp["body"])
+        assert resp["statusCode"] == 200
+        # Got the JWT-owner's session, not the victim's lookup.
+        assert body["user_id"] == USER_ID
 
 
 # ---------------------------------------------------------------------------

@@ -58,7 +58,7 @@ def _check_admin(event):
     try:
         claims = event["requestContext"]["authorizer"]["jwt"]["claims"]
         roles = json.loads(claims["custom:role"])
-        if not any("Admin" in role for role in roles):
+        if "Admin" not in roles:
             return False
     except Exception:
         return False
