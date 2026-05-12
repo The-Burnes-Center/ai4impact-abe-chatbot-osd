@@ -127,6 +127,17 @@ class TestValidToken:
             result = lf.lambda_handler(_event(token), {})
         assert result["policyDocument"]["Statement"][0]["Resource"] == METHOD_ARN
 
+    def test_context_includes_cognito_username(self):
+        # Downstream Lambdas read `cognito_username` from the WS authorizer
+        # context to look up historical session rows by the same identifier
+        # the frontend sent as `username`.
+        lf = _fresh_module()
+        token = _make_token()
+        with patch("requests.get", return_value=_jwks_response()):
+            result = lf.lambda_handler(_event(token), {})
+        # Token has no `cognito:username` claim, so falls back to sub.
+        assert result["context"]["cognito_username"] == "user123"
+
 
 # ---------------------------------------------------------------------------
 # Missing / empty token

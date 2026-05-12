@@ -48,12 +48,18 @@ def lambda_handler(event, context):
             print('Token was not issued for this audience')
             raise Exception("Unauthorized")
 
+        # `principalId` is required by API Gateway and we keep it as `sub`
+        # (the immutable Cognito UUID) for IAM/audit purposes. The chat
+        # handler reads `cognito_username` from the propagated context because
+        # historical session rows are keyed off that identifier (matches the
+        # frontend's Amplify `.username`).
         principalId = claims['sub']
         role = claims.get('custom:role', '')
+        cognito_username = claims.get('cognito:username') or claims.get('username') or claims['sub']
 
         return {
             'principalId': principalId,
-            'context': {'role': role},
+            'context': {'role': role, 'cognito_username': cognito_username},
             'policyDocument': {
                 'Version': '2012-10-17',
                 'Statement': [{
