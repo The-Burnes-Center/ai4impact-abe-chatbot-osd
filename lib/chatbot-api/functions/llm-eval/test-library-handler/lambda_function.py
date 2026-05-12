@@ -8,6 +8,7 @@ from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 from datetime import datetime
 from decimal import Decimal
+from abe_utils import is_admin_request
 from abe_utils.text import strip_kb_citation_markers
 
 logging.basicConfig(level=logging.INFO)
@@ -326,6 +327,9 @@ def lambda_handler(event, context):
 
     if event.get("httpMethod") == "OPTIONS" or event.get("requestContext", {}).get("http", {}).get("method") == "OPTIONS":
         return {"statusCode": 200, "headers": headers, "body": ""}
+
+    if not is_admin_request(event):
+        return {"statusCode": 403, "headers": headers, "body": json.dumps({"error": "Not authorized"})}
 
     try:
         body_raw = event.get("body", "{}")

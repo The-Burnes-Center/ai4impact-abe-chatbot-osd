@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import boto3
 from botocore.exceptions import ClientError
 
-from abe_utils import get_logger, json_response, parse_json_body, truncate_text
+from abe_utils import get_claims, get_logger, json_response, parse_json_body, truncate_text
 
 
 DDB_TABLE_NAME = os.environ["DDB_TABLE_NAME"]
@@ -211,6 +211,20 @@ def fetch_metadata(filter_key=None):
         return json_response(500, {"error": f"Failed to fetch metadata: {str(error)}"})
 
 
+def _resolve_user_id(event, body_user_id):
+    """Prefer the JWT `sub` from the API Gateway authorizer when the handler is
+    invoked over HTTP. When invoked directly via Lambda Invoke (no authorizer
+    context) — e.g. from the WebSocket chat handler — fall back to the supplied
+    body value, which the chat handler has already derived from the WS
+    authorizer principal.
+    """
+    claims = get_claims(event)
+    jwt_sub = claims.get("sub") if isinstance(claims, dict) else None
+    if jwt_sub:
+        return jwt_sub
+    return body_user_id
+
+
 def lambda_handler(event, context):
     try:
         data = parse_json_body(event)
@@ -218,7 +232,9 @@ def lambda_handler(event, context):
         return json_response(400, "Invalid JSON request body")
 
     operation = data.get("operation")
-    user_id = data.get("user_id")
+    user_id = _resolve_user_id(event, data.get("user_id"))
+    if not user_id and operation != "fetch_metadata":
+        return json_response(401, "Unauthorized")
     session_id = data.get("session_id")
     new_chat_entry = data.get("new_chat_entry")
     title = data.get("title")

@@ -158,7 +158,7 @@ def lambda_handler(event, context):
     try:
         claims = event["requestContext"]["authorizer"]["jwt"]["claims"]
         roles = json.loads(claims['custom:role'])
-        if any('Admin' in role for role in roles):
+        if isinstance(roles, list) and 'Admin' in roles:
             logger.info("Admin access granted")
         else:
             logger.warning("Access denied: User does not have Admin role")
