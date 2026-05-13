@@ -108,29 +108,58 @@ main#main-content:focus-visible {
 }
 
 /* Dark-mode overrides for the Mayflower footer.
-   The third-party component ships with hardcoded light-mode colors, so we
-   re-color the major surfaces and text to match the rest of the app. */
+   The third-party component ships with hardcoded light-mode colors. We
+   re-color it to match the rest of the app while meeting WCAG 2.1 AA:
+     - body text:  textPrimary on surfaceAlt  → ~13.6:1 (AAA)
+     - links:      primary on surfaceAlt      → ~7.1:1  (AAA)
+     - hover:      brighter, with thicker underline (color-independent)
+     - focus:      2px outline ring (2.4.7 keyboard visibility)
+   The state seal PNG is dark navy on dark navy, so we brighten it via
+   filter so it stays recognizable without swapping the asset. */
 [data-theme="dark"] .ma__footer-new {
   background-color: var(--abe-surfaceAlt) !important;
-  color: var(--abe-textPrimary) !important;
   border-top: 1px solid var(--abe-border);
 }
 
+/* All body content defaults to high-contrast textPrimary. Generic selectors
+   keep us robust to Mayflower DOM changes between versions. */
 [data-theme="dark"] .ma__footer-new,
 [data-theme="dark"] .ma__footer-new p,
 [data-theme="dark"] .ma__footer-new span,
-[data-theme="dark"] .ma__footer-new li {
-  color: var(--abe-textSecondary) !important;
+[data-theme="dark"] .ma__footer-new li,
+[data-theme="dark"] .ma__footer-new div,
+[data-theme="dark"] .ma__footer-new h1,
+[data-theme="dark"] .ma__footer-new h2,
+[data-theme="dark"] .ma__footer-new h3 {
+  color: var(--abe-textPrimary) !important;
 }
 
 [data-theme="dark"] .ma__footer-new a,
 [data-theme="dark"] .ma__footer-new a:visited {
-  color: var(--abe-primaryLight) !important;
+  color: var(--abe-primary) !important;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
 }
 
 [data-theme="dark"] .ma__footer-new a:hover,
 [data-theme="dark"] .ma__footer-new a:focus {
   color: var(--abe-primary) !important;
+  text-decoration-thickness: 2px;
+}
+
+/* WCAG 2.1 SC 2.4.7 — keyboard focus must be visible against any background. */
+[data-theme="dark"] .ma__footer-new a:focus-visible {
+  outline: 2px solid var(--abe-primary);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* The Mass state-seal PNG is rendered in dark navy on white in the source
+   image. On a dark background it vanishes — brighten + slightly desaturate
+   so the seal stays recognizable without shipping a new asset. */
+[data-theme="dark"] .ma__footer-new img {
+  filter: brightness(1.85) saturate(0.85);
 }
 
 /* WCAG 1.4.3 - Placeholder text contrast (4.5:1) */

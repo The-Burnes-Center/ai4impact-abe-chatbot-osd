@@ -26,7 +26,11 @@ export default function BaseAppLayout({ children }: BaseAppLayoutProps) {
   return (
     <SessionRefreshContext.Provider value={{ needsRefresh, setNeedsRefresh }}>
       <NotificationProvider>
-        <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        {/* Pin the app shell to exactly viewport height so the drawer + main
+            content area form a self-contained flex column. Without this, the
+            html/body chain only sets min-height: 100%, so a long session list
+            grows the drawer past the viewport and pushes Admin off-screen. */}
+        <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
           <GlobalHeader onMenuClick={isMobile ? () => setMobileOpen(!mobileOpen) : undefined} />
 
           <Box sx={{ display: "flex", flex: 1, minHeight: 0 }}>
@@ -45,7 +49,9 @@ export default function BaseAppLayout({ children }: BaseAppLayoutProps) {
               {drawerContent}
             </Drawer>
 
-            {/* Desktop drawer */}
+            {/* Desktop drawer — paper must fill the available height so the
+                NavigationPanel's internal flex layout (pinned top/bottom,
+                scrollable middle) can take effect. */}
             <Drawer
               variant="permanent"
               sx={{
@@ -56,6 +62,7 @@ export default function BaseAppLayout({ children }: BaseAppLayoutProps) {
                   width: DRAWER_WIDTH,
                   boxSizing: "border-box",
                   position: "static",
+                  height: "100%",
                 },
               }}
             >
