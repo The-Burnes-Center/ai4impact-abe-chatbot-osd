@@ -18,66 +18,69 @@ logger = get_logger(__name__)
 
 # Using Knowledge Base to fetch document contents
 def retrieve_kb_docs(bucket, file_name, knowledge_base_id):
+    """Fetch all KB chunks for a specific file, paginating through results.
+
+    Using ``retrievalQuery`` alone (semantic search on the bare filename) is
+    unreliable: for files with short, generic names (e.g. ``ENE53.pdf``,
+    ``GRO39.pdf``, ``HLS06.pdf``) Bedrock returns the most semantically
+    relevant chunks across the *entire* knowledge base, often dominated by
+    long policy docs like ``Conducting Best Value Procurements``. The
+    subsequent ``if file_name in uri`` post-filter then drops everything,
+    leaving the document with no summary.
+
+    Use the ``stringContains`` metadata filter on the source URI so the
+    retrieval is scoped to chunks belonging to this file, and paginate via
+    ``nextToken`` to ensure we collect every chunk -- not just the first 100.
+    """
     try:
-        key,_ = os.path.splitext(file_name)
+        key, _ = os.path.splitext(file_name)
         print(f"Search query KB : {key}")
-        response = bedrock.retrieve(
-            knowledgeBaseId=knowledge_base_id,
-            retrievalQuery={
-                'text': key
-            },
-            retrievalConfiguration={
-                'vectorSearchConfiguration': {
-                    'numberOfResults': 100  # We only want the most relevant document
-                }
+        all_chunks = []
+        file_uri = None
+        next_token = None
+        while True:
+            request = {
+                'knowledgeBaseId': knowledge_base_id,
+                'retrievalQuery': {'text': key or file_name},
+                'retrievalConfiguration': {
+                    'vectorSearchConfiguration': {
+                        'numberOfResults': 100,
+                        'filter': {
+                            'stringContains': {
+                                'key': 'x-amz-bedrock-kb-source-uri',
+                                'value': file_name,
+                            },
+                        },
+                    },
+                },
             }
-        )
-
-        full_content = []
-        file_uri = []
-        if response['retrievalResults']:
-            print(f"Complete Response {response['retrievalResults']}")
-            for result in response['retrievalResults']:
+            if next_token:
+                request['nextToken'] = next_token
+            response = bedrock.retrieve(**request)
+            for result in response.get('retrievalResults', []):
                 uri = result['location']['s3Location']['uri']
-                if file_name in uri:
-                    full_content.append(result['content']['text'])
-                    file_uri = uri
+                # Defensive: stringContains is a substring match; require the
+                # URI to actually end with this filename so a query for
+                # "FAC114" doesn't accidentally pick up "FAC1141" etc.
+                if uri.split('/')[-1] != file_name:
+                    continue
+                all_chunks.append(result['content']['text'])
+                file_uri = uri
+            next_token = response.get('nextToken')
+            if not next_token:
+                break
 
-            if full_content:
-                return {
-                    'content': full_content,
-                    'uri': file_uri
-                }
-            else:
-                try:
-                    print(f"Bucket : {bucket} and File : {file_name}")
-                    s3_obj = s3.get_object(Bucket = bucket,Key= file_name)
-                    full_content = s3_obj['Body'].read().decode('utf-8')
-                    file_uri = f"s3://{bucket}/{file_name}"
-                    print(f"Successfully retrieved file from S3: {file_uri}")
-                    return {
-                        'content': [full_content],
-                        'uri': file_uri
-                    }
-                except Exception as e:
-                    print(f"Error reading file content from S3: {e}")
-                    return {
-                        'content': full_content,
-                        'uri': file_uri
-                    }
+        if all_chunks:
+            return {'content': all_chunks, 'uri': file_uri}
 
-
-        else:
-            return {
-                'content': "No relevant document found in the knowledge base.",
-                'uri': None
-            }
+        print(f"No KB chunks found for {file_name}; document may not yet be ingested")
+        return {
+            'content': "No relevant document found in the knowledge base.",
+            'uri': None,
+        }
     except ClientError as e:
         print(f"Error fetching knowledge base docs: {e}")
-        return {
-            'content': [],
-            'uri': None
-        }
+        return {'content': [], 'uri': None}
 
 
 # Function to summarize and categorize using claude 3
