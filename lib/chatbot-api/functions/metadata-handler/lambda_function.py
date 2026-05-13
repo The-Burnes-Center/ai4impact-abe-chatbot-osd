@@ -89,7 +89,11 @@ def summarize_and_categorize(key,content):
             accept='application/json',
             body=json.dumps({
                 "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 500,
+                # 1500 covers a ~100-word summary + the tag JSON object with
+                # comfortable headroom. The previous 500-token cap occasionally
+                # truncated long documents mid-JSON, which surfaced as the
+                # "Error parsing nested JSON in 'text'" summary marker.
+                "max_tokens": 1500,
                 "messages": [
                     {
                         "role": "user",
@@ -280,13 +284,18 @@ def lambda_handler(event, context):
                 print(f"Content : {document_content}")
 
             summary_and_tags = summarize_and_categorize(key,document_content)
-            if "Error generating summary" in summary_and_tags['summary']:
+            # Any of the sentinel error summaries returned by
+            # summarize_and_categorize means we did NOT get a usable response
+            # from the model. Don't persist the sentinel to S3 head metadata
+            # (and therefore to metadata.txt) -- bail out with a 500 so the
+            # next sync sweep retries the file.
+            summary_text = summary_and_tags.get('summary', '') or ''
+            if summary_text.lower().startswith('error '):
                 return {
                     'statusCode': 500,
-                    'body': json.dumps("Error generating summary and tags")
+                    'body': json.dumps(f"Summarization failed for {key}: {summary_text}")
                 }
-            else:
-                print(f"Summary and category : {summary_and_tags}")
+            print(f"Summary and category : {summary_and_tags}")
 
 
 
