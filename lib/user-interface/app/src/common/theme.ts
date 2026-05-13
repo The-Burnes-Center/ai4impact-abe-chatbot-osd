@@ -161,6 +161,10 @@ export const tokens = {
 function applyTokensAsCSSVars(mode: ThemeMode) {
   const c = tokens.colors[mode];
   const root = document.documentElement;
+  // Surface the active mode to plain CSS so non-MUI components (e.g. the
+  // Mayflower footer, which ships with hardcoded light-mode styles) can
+  // override their colors via `[data-theme="dark"]` selectors in app.scss.
+  root.setAttribute("data-theme", mode);
   Object.entries(c).forEach(([key, value]) => {
     root.style.setProperty(`--abe-${key}`, value);
   });

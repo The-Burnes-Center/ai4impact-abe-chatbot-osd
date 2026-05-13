@@ -13,6 +13,7 @@ import Skeleton from "@mui/material/Skeleton";
 import Avatar from "@mui/material/Avatar";
 import Fab from "@mui/material/Fab";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import { v4 as uuidv4 } from "uuid";
 import { AppContext } from "../../common/app-context";
 import { ApiClient } from "../../common/api-client/api-client";
@@ -37,7 +38,12 @@ export default function Chat(props: { sessionId?: string }) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
-  const [showScrollButton, setShowScrollButton] = useState(false);
+  /**
+   * Scroll-jump FAB state. `"down"` shows when the user has scrolled up from
+   * the latest message; `"up"` shows when the user is near the bottom of a
+   * long conversation and can jump back to the start. `null` hides it.
+   */
+  const [scrollFab, setScrollFab] = useState<"up" | "down" | null>(null);
 
   const [messageHistory, setMessageHistory] = useState<ChatBotHistoryItem[]>([]);
   const [announcement, setAnnouncement] = useState("");
@@ -114,22 +120,44 @@ export default function Chat(props: { sessionId?: string }) {
     return undefined;
   }, [running, messageHistory]);
 
-  // Track scroll position for scroll-to-bottom button
+  // Track scroll position for the bidirectional scroll-jump FAB.
+  //   - Conversation must be long enough that jumping is useful (> 600px).
+  //   - Far from bottom    -> "down" arrow (jump to latest).
+  //   - Near bottom but far from top -> "up" arrow (jump to start).
+  //   - Otherwise -> hidden.
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return undefined;
     const handleScroll = () => {
       const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      setShowScrollButton(distFromBottom > 300);
+      const distFromTop = el.scrollTop;
+      const longEnough = el.scrollHeight - el.clientHeight > 600;
+      if (!longEnough) {
+        setScrollFab(null);
+      } else if (distFromBottom > 300) {
+        setScrollFab("down");
+      } else if (distFromTop > 300) {
+        setScrollFab("up");
+      } else {
+        setScrollFab(null);
+      }
     };
+    handleScroll();
     el.addEventListener("scroll", handleScroll, { passive: true });
     return () => el.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [messageHistory.length]);
 
   const scrollToBottom = () => {
     const el = scrollContainerRef.current;
     if (el) {
       el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
+  };
+
+  const scrollToTop = () => {
+    const el = scrollContainerRef.current;
+    if (el) {
+      el.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
 
@@ -185,13 +213,13 @@ export default function Chat(props: { sessionId?: string }) {
   return (
     <div className={styles.chat_container} style={{ position: "relative" }}>
       <Typography variant="h1" className="sr-only">ABE Chat</Typography>
-      {/* Scroll-to-bottom button */}
-      {showScrollButton && (
+      {/* Scroll-jump FAB — direction depends on current scroll position */}
+      {scrollFab && (
         <div className={styles.scrollToBottom}>
           <Fab
             size="small"
-            onClick={scrollToBottom}
-            aria-label="Scroll to bottom"
+            onClick={scrollFab === "down" ? scrollToBottom : scrollToTop}
+            aria-label={scrollFab === "down" ? "Jump to latest message" : "Jump to start of conversation"}
             sx={{
               bgcolor: "background.paper",
               color: "text.secondary",
@@ -199,7 +227,7 @@ export default function Chat(props: { sessionId?: string }) {
               "&:hover": { bgcolor: "background.paper", color: "text.primary" },
             }}
           >
-            <KeyboardArrowDownIcon />
+            {scrollFab === "down" ? <KeyboardArrowDownIcon /> : <KeyboardArrowUpIcon />}
           </Fab>
         </div>
       )}

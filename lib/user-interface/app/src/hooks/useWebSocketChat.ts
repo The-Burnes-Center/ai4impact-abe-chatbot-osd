@@ -62,7 +62,7 @@ const EOF_MARKER = "!<|EOF_STREAM|>!";
 /** Prefix for error frames; the socket is closed immediately after. */
 const ERROR_PREFIX = "<!ERROR!>:";
 /** Inactivity timeout (ms) before the request is considered stalled. */
-const TIMEOUT_MS = 90_000;
+const TIMEOUT_MS = 120_000;
 /** Maximum number of automatic reconnection attempts on unexpected close. */
 const MAX_RECONNECT_ATTEMPTS = 3;
 /** Base delay (ms) for exponential back-off between reconnection attempts. */

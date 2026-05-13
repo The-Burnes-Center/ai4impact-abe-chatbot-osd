@@ -128,14 +128,14 @@ export default function NavigationPanel() {
       component="nav"
       aria-label="Main navigation"
       sx={{
-        overflow: "auto",
         height: "100%",
         display: "flex",
         flexDirection: "column",
+        minHeight: 0,
       }}
     >
-      {/* New session button */}
-      <Box sx={{ p: 2, pt: 1.5 }}>
+      {/* New session button — pinned at top, never scrolls */}
+      <Box sx={{ p: 2, pt: 1.5, flexShrink: 0 }}>
         <Button
           variant="contained"
           fullWidth
@@ -153,7 +153,8 @@ export default function NavigationPanel() {
         </Button>
       </Box>
 
-      <Box sx={{ flex: 1 }}>
+      {/* Sessions area — the only part that scrolls when the list is long */}
+      <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
         {!loaded ? (
           <Box sx={{ px: 2, py: 1 }}>
             {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -265,72 +266,72 @@ export default function NavigationPanel() {
                 </ListItem>
               )}
             </List>
-
-            {/* Admin */}
-            {adminLinks.length > 0 && (
-              <>
-                <Divider sx={{ my: 0.5, mx: 2 }} />
-                <List dense disablePadding>
-                  <ListItem disablePadding>
-                    <ListItemButton
-                      onClick={() => setAdminOpen(!adminOpen)}
-                      sx={{ mx: 1, borderRadius: 1 }}
-                      aria-expanded={adminOpen}
-                      aria-controls="admin-nav-section"
-                    >
-                      <ListItemText
-                        primary="Admin"
-                        primaryTypographyProps={{
-                          fontWeight: 600,
-                          fontSize: "0.75rem",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.5px",
-                          color: "text.secondary",
-                        }}
-                      />
-                      {adminOpen ? (
-                        <ExpandLess fontSize="small" aria-hidden="true" />
-                      ) : (
-                        <ExpandMore fontSize="small" aria-hidden="true" />
-                      )}
-                    </ListItemButton>
-                  </ListItem>
-                  <ListItem disablePadding sx={{ display: "block" }}>
-                    <Collapse in={adminOpen} timeout={200} unmountOnExit id="admin-nav-section">
-                      <List dense disablePadding>
-                        {adminLinks.map((link) => {
-                          const isActive = isNavLinkSelected(location.pathname, link.href);
-                          return (
-                          <ListItem key={link.href} disablePadding>
-                            <ListItemButton
-                              selected={isActive}
-                              aria-current={isActive ? "page" : undefined}
-                              onClick={() => navigate(link.href)}
-                              sx={{ pl: 2 }}
-                            >
-                              <ListItemIcon
-                                aria-hidden="true"
-                                sx={{ minWidth: 32, color: "text.secondary" }}
-                              >
-                                {link.icon}
-                              </ListItemIcon>
-                              <ListItemText
-                                primary={link.text}
-                                primaryTypographyProps={{ fontSize: "0.8125rem" }}
-                              />
-                            </ListItemButton>
-                          </ListItem>
-                          );
-                        })}
-                      </List>
-                    </Collapse>
-                  </ListItem>
-                </List>
-              </>
-            )}
           </>
         )}
       </Box>
+
+      {/* Admin section — pinned at the bottom for admin users */}
+      {loaded && adminLinks.length > 0 && (
+        <Box sx={{ flexShrink: 0 }}>
+          <Divider sx={{ my: 0.5, mx: 2 }} />
+          <List dense disablePadding>
+            <ListItem disablePadding>
+              <ListItemButton
+                onClick={() => setAdminOpen(!adminOpen)}
+                sx={{ mx: 1, borderRadius: 1 }}
+                aria-expanded={adminOpen}
+                aria-controls="admin-nav-section"
+              >
+                <ListItemText
+                  primary="Admin"
+                  primaryTypographyProps={{
+                    fontWeight: 600,
+                    fontSize: "0.75rem",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                    color: "text.secondary",
+                  }}
+                />
+                {adminOpen ? (
+                  <ExpandLess fontSize="small" aria-hidden="true" />
+                ) : (
+                  <ExpandMore fontSize="small" aria-hidden="true" />
+                )}
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding sx={{ display: "block" }}>
+              <Collapse in={adminOpen} timeout={200} unmountOnExit id="admin-nav-section">
+                <List dense disablePadding>
+                  {adminLinks.map((link) => {
+                    const isActive = isNavLinkSelected(location.pathname, link.href);
+                    return (
+                    <ListItem key={link.href} disablePadding>
+                      <ListItemButton
+                        selected={isActive}
+                        aria-current={isActive ? "page" : undefined}
+                        onClick={() => navigate(link.href)}
+                        sx={{ pl: 2 }}
+                      >
+                        <ListItemIcon
+                          aria-hidden="true"
+                          sx={{ minWidth: 32, color: "text.secondary" }}
+                        >
+                          {link.icon}
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={link.text}
+                          primaryTypographyProps={{ fontSize: "0.8125rem" }}
+                        />
+                      </ListItemButton>
+                    </ListItem>
+                    );
+                  })}
+                </List>
+              </Collapse>
+            </ListItem>
+          </List>
+        </Box>
+      )}
     </Box>
   );
 }

@@ -107,6 +107,32 @@ main#main-content:focus-visible {
   color: #0056b3 !important;
 }
 
+/* Dark-mode overrides for the Mayflower footer.
+   The third-party component ships with hardcoded light-mode colors, so we
+   re-color the major surfaces and text to match the rest of the app. */
+[data-theme="dark"] .ma__footer-new {
+  background-color: var(--abe-surfaceAlt) !important;
+  color: var(--abe-textPrimary) !important;
+  border-top: 1px solid var(--abe-border);
+}
+
+[data-theme="dark"] .ma__footer-new,
+[data-theme="dark"] .ma__footer-new p,
+[data-theme="dark"] .ma__footer-new span,
+[data-theme="dark"] .ma__footer-new li {
+  color: var(--abe-textSecondary) !important;
+}
+
+[data-theme="dark"] .ma__footer-new a,
+[data-theme="dark"] .ma__footer-new a:visited {
+  color: var(--abe-primaryLight) !important;
+}
+
+[data-theme="dark"] .ma__footer-new a:hover,
+[data-theme="dark"] .ma__footer-new a:focus {
+  color: var(--abe-primary) !important;
+}
+
 /* WCAG 1.4.3 - Placeholder text contrast (4.5:1) */
 input::placeholder,
 textarea::placeholder {
