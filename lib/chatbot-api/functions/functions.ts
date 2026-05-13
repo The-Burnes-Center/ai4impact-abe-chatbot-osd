@@ -1021,6 +1021,7 @@ const syncOrchestratorFunction = new lambda.Function(scope, 'SyncOrchestratorFun
     KB_ID: props.knowledgeBase.attrKnowledgeBaseId,
     KB_DATA_SOURCE_ID: props.knowledgeBaseSource.attrDataSourceId,
     SYNC_HISTORY_TABLE: props.syncHistoryTable.tableName,
+    METADATA_HANDLER_FUNCTION: metadataHandlerFunction.functionName,
   },
   timeout: cdk.Duration.minutes(5),
   memorySize: 256,
@@ -1035,6 +1036,16 @@ syncOrchestratorFunction.addToRolePolicy(new iam.PolicyStatement({
   actions: ['s3:PutObject'],
   resources: [props.knowledgeBucket.bucketArn + '/*', props.contractIndexBucket.bucketArn + '/*'],
 }));
+// Read access on the KB bucket so the orchestrator can list objects and
+// inspect head metadata to decide which files still need a summary.
+syncOrchestratorFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['s3:ListBucket', 's3:GetObject'],
+  resources: [props.knowledgeBucket.bucketArn, props.knowledgeBucket.bucketArn + '/*'],
+}));
+// Allow the orchestrator to async-invoke the metadata-handler so any KB file
+// missing a summary gets backfilled during every sync run.
+metadataHandlerFunction.grantInvoke(syncOrchestratorFunction);
 syncOrchestratorFunction.addToRolePolicy(new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
   actions: ['bedrock:StartIngestionJob', 'bedrock:ListIngestionJobs'],
