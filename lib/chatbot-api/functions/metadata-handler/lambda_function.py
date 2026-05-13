@@ -219,23 +219,6 @@ def get_complete_metadata(bucket):
 
 def lambda_handler(event, context):
     try:
-        # Check if the event is caused by the Lambda function itself
-        if event['Records'][0]['eventSource'] == 'aws:s3' and \
-           event['Records'][0]['eventName'].startswith('ObjectCreated:Copy'):
-            print("Skipping event triggered by copy operation")
-
-
-            return {
-                'statusCode': 200,
-                'body': json.dumps("Skipped event triggered by copy operation")
-            }
-
-
-    except:
-        print("Issue checking for s3 action")
-
-
-    try:
         # Get the bucket name and file key from the event, handling URL-encoded characters
         event_name = event['Records'][0]['eventName']
         bucket = event['Records'][0]['s3']['bucket']['name']
@@ -248,6 +231,25 @@ def lambda_handler(event, context):
                 'statusCode': 200,
                 'body': json.dumps("Skipped processing for metadata.txt")
             }
+
+        # Recursion guard for our own self-copy (line 315 below copies the object
+        # to itself with MetadataDirective=REPLACE to attach the summary, which
+        # fires another ObjectCreated:Copy event). We skip only when the file
+        # already carries a `summary` in its S3 head metadata. Sync-pushed copies
+        # from the staging bucket have no such marker, so they fall through and
+        # get processed normally.
+        if event_name.startswith('ObjectCreated:Copy'):
+            try:
+                head = s3.head_object(Bucket=bucket, Key=key)
+                existing = head.get('Metadata', {}) or {}
+                if existing.get('summary'):
+                    print(f"Skipping self-copy recursion for {key} (summary already set)")
+                    return {
+                        'statusCode': 200,
+                        'body': json.dumps("Skipped self-copy recursion")
+                    }
+            except Exception as e:
+                print(f"Could not inspect head metadata for {key}, proceeding: {e}")
 
         print(f"Processing file: Bucket - {bucket}, File - {key}")
         if event_name.startswith('ObjectRemoved'):
