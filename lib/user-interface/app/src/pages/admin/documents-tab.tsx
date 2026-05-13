@@ -224,8 +224,12 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     setSyncing(true);
     previousSyncStatusRef.current = true;
     try {
-      const state = await apiClient.knowledgeManagement.syncKendra();
-      if (state !== "STARTED SYNCING") {
+      // Use the orchestrator (admin/sync-now) instead of the KB-only sync
+      // endpoint so this single click also moves staged files into the KB
+      // bucket and backfills any missing metadata summaries -- not just the
+      // Bedrock ingestion. Falls through to the same status polling below.
+      const result = await apiClient.sync.triggerSyncNow();
+      if (result?.status !== "SUCCESS") {
         addNotification(
           "error",
           "Error running sync, please try again later."
@@ -236,8 +240,8 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       }
       setTimeout(async () => {
         try {
-          const result = await apiClient.knowledgeManagement.kendraIsSyncing();
-          const isCurrentlySyncing = result !== "DONE SYNCING";
+          const status = await apiClient.knowledgeManagement.kendraIsSyncing();
+          const isCurrentlySyncing = status !== "DONE SYNCING";
           setSyncing(isCurrentlySyncing);
           previousSyncStatusRef.current = isCurrentlySyncing;
           if (!isCurrentlySyncing) {
