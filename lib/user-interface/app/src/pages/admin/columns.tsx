@@ -353,6 +353,22 @@ export function getColumnDefinition(
         ),
     },
     { id: "size", header: "Size", cell: (item) => Utils.bytesToSize(item.Size) },
+    {
+      id: "metadata",
+      header: (
+        <HeaderWithInfo
+          label="Metadata"
+          tooltip="Whether this file has an AI-generated summary in metadata.txt. The chatbot uses these summaries to know what each document covers. Missing-metadata files still work in search but won't be surfaced as cleanly. Run a sync to backfill missing summaries."
+        />
+      ),
+      cell: (item) =>
+        item.HasMetadata ? (
+          <Chip label="Ready" color="success" size="small" variant="outlined" />
+        ) : (
+          <Chip label="Missing" color="warning" size="small" variant="outlined" />
+        ),
+      width: "120px",
+    },
   ];
 
   switch (documentType) {
