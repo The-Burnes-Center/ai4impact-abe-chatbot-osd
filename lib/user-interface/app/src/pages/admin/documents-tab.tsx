@@ -45,14 +45,23 @@ export interface DocumentsTabProps {
   setShowUnsyncedAlert: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
+const PAGE_SIZE = 25;
+
+type DocItem = {
+  Key?: string;
+  LastModified?: string;
+  Size?: number;
+  HasMetadata?: boolean;
+};
+
 export default function DocumentsTab(props: DocumentsTabProps) {
   const appContext = useContext(AppContext);
   const apiClient = new ApiClient(appContext!);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [currentPageIndex, setCurrentPageIndex] = useState(1);
-  const [pages, setPages] = useState<any[]>([]);
-  const [selectedItems, setSelectedItems] = useState<any[]>([]);
+  const [allItems, setAllItems] = useState<DocItem[]>([]);
+  const [selectedItems, setSelectedItems] = useState<DocItem[]>([]);
   const [showModalDelete, setShowModalDelete] = useState(false);
   const [showUploadArea, setShowUploadArea] = useState(false);
   const [search, setSearch] = useState("");
@@ -80,81 +89,44 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       // summary into S3 head metadata, which bumps LastModified on every
       // file we touch -- without that HasMetadata guard, every successful
       // sync would immediately re-flag every processed file as unsynced.
-      const hasUnsyncedFiles = pages.some((page) =>
-        page.Contents?.some(
-          (file: { LastModified: string; HasMetadata?: boolean }) => {
-            if (file.HasMetadata) return false;
-            const fileDate = new Date(file.LastModified);
-            return fileDate > lastSyncDate;
-          }
-        )
-      );
+      const hasUnsyncedFiles = allItems.some((file) => {
+        if (file.HasMetadata) return false;
+        if (!file.LastModified) return false;
+        return new Date(file.LastModified) > lastSyncDate;
+      });
 
       props.setShowUnsyncedAlert(hasUnsyncedFiles);
     } catch (error) {
       devError("Error comparing sync time:", error);
       props.setShowUnsyncedAlert(false);
     }
-  }, [pages, props.lastSyncTime, props.setShowUnsyncedAlert]);
+  }, [allItems, props.lastSyncTime, props.setShowUnsyncedAlert]);
 
-  const getDocuments = useCallback(
-    async (params: { continuationToken?: string; pageIndex?: number }) => {
-      setLoading(true);
-      try {
-        const result = await apiClient.knowledgeManagement.getDocuments(
-          params?.continuationToken,
-          params?.pageIndex
-        );
-        await props.statusRefreshFunction();
-        setPages((current) => {
-          if (typeof params.pageIndex !== "undefined") {
-            current[params.pageIndex - 1] = result;
-            return [...current];
-          } else {
-            return [...current, result];
-          }
-        });
-      } catch (error) {
-        devError(Utils.getErrorMessage(error));
-      }
-
-      setLoading(false);
-    },
-    [appContext, props.documentType]
-  );
+  // Load the entire bucket inventory in one call. The KB has at most a few
+  // hundred files, the backend already pages internally through
+  // ContinuationToken, and search needs to match across everything -- so
+  // there's no benefit to per-click server-side pagination, and big downside
+  // (search was scoped to the current page only). Pagination is purely
+  // client-side over the filtered set below.
+  const loadDocuments = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await apiClient.knowledgeManagement.getDocuments();
+      const contents: DocItem[] = Array.isArray(result?.Contents) ? result.Contents : [];
+      setAllItems(contents);
+      await props.statusRefreshFunction();
+    } catch (error) {
+      devError(Utils.getErrorMessage(error));
+    }
+    setLoading(false);
+  }, [appContext, props.documentType]);
 
   useEffect(() => {
-    getDocuments({});
-  }, [getDocuments]);
-
-  const onNextPageClick = async () => {
-    const continuationToken =
-      pages[currentPageIndex - 1]?.NextContinuationToken;
-
-    if (continuationToken) {
-      if (pages.length <= currentPageIndex) {
-        await getDocuments({ continuationToken });
-      }
-      setCurrentPageIndex((current) =>
-        Math.min(pages.length + 1, current + 1)
-      );
-    }
-  };
-
-  const onPreviousPageClick = async () => {
-    setCurrentPageIndex((current) =>
-      Math.max(1, Math.min(pages.length - 1, current - 1))
-    );
-  };
+    loadDocuments();
+  }, [loadDocuments]);
 
   const refreshPage = async () => {
-    if (currentPageIndex <= 1) {
-      await getDocuments({ pageIndex: currentPageIndex });
-    } else {
-      const continuationToken =
-        pages[currentPageIndex - 2]?.NextContinuationToken!;
-      await getDocuments({ continuationToken });
-    }
+    await loadDocuments();
   };
 
   const columnDefinitions = getColumnDefinition(props.documentType, () => {});
@@ -175,7 +147,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       addNotification("error", "Error deleting files");
       devError(e);
     }
-    await getDocuments({ pageIndex: currentPageIndex });
+    await loadDocuments();
 
     setSelectedItems([]);
     setLoading(false);
@@ -277,24 +249,36 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     props.setShowUnsyncedAlert(true);
   };
 
-  const currentItems =
-    pages[Math.min(pages.length - 1, currentPageIndex - 1)]?.Contents || [];
-
   const q = search.trim().toLowerCase();
+
+  // Filter the FULL inventory by search query. Previously search only saw
+  // the current S3 page, so most matches were invisible until the user
+  // paginated to them -- defeating the point of a search box.
   const filteredItems = useMemo(
     () =>
       !q
-        ? currentItems
-        : currentItems.filter((item) =>
+        ? allItems
+        : allItems.filter((item) =>
             (item.Key ?? "").toLowerCase().includes(q)
           ),
-    [currentItems, q]
+    [allItems, q]
   );
 
-  const isSelected = (item: any) =>
+  // Reset to page 1 whenever the search query changes so the user always
+  // sees their results from the top, not page 4 of stale pagination.
+  useEffect(() => {
+    setCurrentPageIndex(1);
+  }, [q]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
+  const safePageIndex = Math.min(currentPageIndex, totalPages);
+  const pageStart = (safePageIndex - 1) * PAGE_SIZE;
+  const pageItems = filteredItems.slice(pageStart, pageStart + PAGE_SIZE);
+
+  const isSelected = (item: DocItem) =>
     selectedItems.some((s) => s.Key === item.Key);
 
-  const toggleSelection = (item: any) => {
+  const toggleSelection = (item: DocItem) => {
     setSelectedItems((prev) =>
       isSelected(item)
         ? prev.filter((s) => s.Key !== item.Key)
@@ -302,23 +286,23 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     );
   };
 
-  const allFilteredSelected =
-    filteredItems.length > 0 &&
-    filteredItems.every((item) => isSelected(item));
+  // Header checkbox acts on the CURRENT page's rows only -- selecting
+  // hundreds of files across all pages from a single click is rarely what
+  // the user wants and is too easy to misclick into mass-delete.
+  const allPageSelected =
+    pageItems.length > 0 && pageItems.every((item) => isSelected(item));
 
-  const toggleSelectAll = () => {
-    if (allFilteredSelected) {
+  const togglePageSelectAll = () => {
+    if (allPageSelected) {
       setSelectedItems((prev) =>
-        prev.filter(
-          (s) => !filteredItems.some((f) => f.Key === s.Key)
-        )
+        prev.filter((s) => !pageItems.some((f) => f.Key === s.Key))
       );
     } else {
       setSelectedItems((prev) => {
         const byKey = new Set(prev.map((p) => p.Key));
         const merged = [...prev];
-        for (const f of filteredItems) {
-          if (!byKey.has(f.Key)) {
+        for (const f of pageItems) {
+          if (f.Key && !byKey.has(f.Key)) {
             byKey.add(f.Key);
             merged.push(f);
           }
@@ -444,7 +428,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
           >
             <CircularProgress aria-hidden="true" />
           </Box>
-        ) : currentItems.length === 0 ? (
+        ) : allItems.length === 0 ? (
           <Box sx={{ textAlign: "center", p: 4 }}>
             <Typography variant="subtitle1" component="h3" gutterBottom>
               No files yet
@@ -470,12 +454,12 @@ export default function DocumentsTab(props: DocumentsTabProps) {
                   <TableCell padding="checkbox">
                     <Checkbox
                       indeterminate={
-                        !allFilteredSelected &&
-                        filteredItems.some((item) => isSelected(item))
+                        !allPageSelected &&
+                        pageItems.some((item) => isSelected(item))
                       }
-                      checked={allFilteredSelected}
-                      onChange={toggleSelectAll}
-                      aria-label="Select all documents"
+                      checked={allPageSelected}
+                      onChange={togglePageSelectAll}
+                      aria-label="Select all documents on this page"
                     />
                   </TableCell>
                   {columnDefinitions.map((col) => (
@@ -486,7 +470,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredItems.map((item: any, index: number) => (
+                {pageItems.map((item, index) => (
                   <TableRow
                     key={item.Key || index}
                     hover
@@ -509,32 +493,44 @@ export default function DocumentsTab(props: DocumentsTabProps) {
           </TableContainer>
         )}
 
-        {pages.length > 0 && (
+        {filteredItems.length > 0 && (
           <Stack
             direction="row"
-            justifyContent="center"
-            spacing={2}
+            justifyContent="space-between"
+            alignItems="center"
             sx={{ py: 1 }}
           >
-            <Button
-              size="small"
-              disabled={currentPageIndex <= 1}
-              onClick={onPreviousPageClick}
-            >
-              Previous
-            </Button>
-            <Typography variant="body2" sx={{ alignSelf: "center" }}>
-              Page {currentPageIndex}
+            <Typography variant="body2" color="text.secondary">
+              {q
+                ? `${filteredItems.length} of ${allItems.length} file${allItems.length === 1 ? "" : "s"}`
+                : `${allItems.length} file${allItems.length === 1 ? "" : "s"}`}
+              {filteredItems.length > 0 &&
+                ` — showing ${pageStart + 1}–${Math.min(
+                  pageStart + PAGE_SIZE,
+                  filteredItems.length
+                )}`}
             </Typography>
-            <Button
-              size="small"
-              disabled={
-                !pages[currentPageIndex - 1]?.NextContinuationToken
-              }
-              onClick={onNextPageClick}
-            >
-              Next
-            </Button>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Button
+                size="small"
+                disabled={safePageIndex <= 1}
+                onClick={() => setCurrentPageIndex((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </Button>
+              <Typography variant="body2">
+                Page {safePageIndex} of {totalPages}
+              </Typography>
+              <Button
+                size="small"
+                disabled={safePageIndex >= totalPages}
+                onClick={() =>
+                  setCurrentPageIndex((p) => Math.min(totalPages, p + 1))
+                }
+              >
+                Next
+              </Button>
+            </Stack>
           </Stack>
         )}
       </Stack>

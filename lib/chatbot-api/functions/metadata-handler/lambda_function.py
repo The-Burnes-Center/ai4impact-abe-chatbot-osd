@@ -2,10 +2,58 @@ import boto3
 import json
 import urllib.parse
 import os
+import unicodedata
 from datetime import datetime
 from botocore.exceptions import ClientError
 from config import get_full_prompt, get_all_tags, CATEGORIES, CUSTOM_TAGS
 from abe_utils import extract_json_object, get_logger
+
+
+# S3 object metadata (the head-metadata map written via copy_object with
+# MetadataDirective=REPLACE) is restricted to ASCII. Claude routinely emits
+# typographic characters in summaries -- em-dashes, smart quotes, ellipses,
+# non-breaking spaces -- which makes copy_object reject the whole request and
+# leaves the file with empty head metadata. Map the common offenders to ASCII
+# equivalents first, then strip anything still non-ASCII via NFKD
+# normalization. This is loss-tolerant: the human-readable summary is
+# preserved in metadata.txt where there is no such restriction.
+_TYPOGRAPHIC_REPLACEMENTS = {
+    "–": "-",   # en dash
+    "—": "--",  # em dash
+    "−": "-",   # minus sign
+    "‘": "'",   # left single quote
+    "’": "'",   # right single quote
+    "‚": ",",   # single low-9 quote
+    "“": '"',   # left double quote
+    "”": '"',   # right double quote
+    "„": '"',   # double low-9 quote
+    "…": "...", # ellipsis
+    " ": " ",   # non-breaking space
+    " ": " ",   # narrow no-break space
+    " ": " ",   # thin space
+    "·": "*",   # middle dot
+    "•": "*",   # bullet
+    "™": "(TM)",
+    "®": "(R)",
+    "©": "(C)",
+}
+
+
+def to_ascii(value):
+    """Return an ASCII-safe version of ``value`` suitable for S3 head metadata.
+
+    Replaces common typographic characters with ASCII analogues, then
+    NFKD-normalizes and drops anything still outside the ASCII range. Returns
+    non-string values unchanged.
+    """
+    if not isinstance(value, str):
+        return value
+    text = value
+    for src, dst in _TYPOGRAPHIC_REPLACEMENTS.items():
+        if src in text:
+            text = text.replace(src, dst)
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+    return text
 
 
 
@@ -312,11 +360,14 @@ def lambda_handler(event, context):
                     'body': json.dumps(f"Error fetching metadata for {key}: {e}")
                 }
 
-            # Generate new metadata fields
-
+            # Generate new metadata fields. ASCII-sanitize every value before
+            # it lands in S3 head metadata -- typographic characters in the
+            # model's output (em-dashes, smart quotes, ellipses) would
+            # otherwise cause copy_object to reject the entire request and
+            # leave the file with empty metadata.
             new_metadata = {
-                'summary': summary_and_tags['summary'],
-                **{f"tag_{k}": v for k, v in summary_and_tags['tags'].items()}
+                'summary': to_ascii(summary_and_tags['summary']),
+                **{f"tag_{k}": to_ascii(v) for k, v in summary_and_tags['tags'].items()}
             }
 
             # Merge new metadata with any existing metadata
