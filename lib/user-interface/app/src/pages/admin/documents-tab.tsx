@@ -74,11 +74,20 @@ export default function DocumentsTab(props: DocumentsTabProps) {
         return;
       }
 
+      // A file counts as "unsynced" only if it's both newer than the last
+      // KB ingestion AND still missing an AI-generated summary. The
+      // metadata-handler self-copies each processed file to write its
+      // summary into S3 head metadata, which bumps LastModified on every
+      // file we touch -- without that HasMetadata guard, every successful
+      // sync would immediately re-flag every processed file as unsynced.
       const hasUnsyncedFiles = pages.some((page) =>
-        page.Contents?.some((file: { LastModified: string }) => {
-          const fileDate = new Date(file.LastModified);
-          return fileDate > lastSyncDate;
-        })
+        page.Contents?.some(
+          (file: { LastModified: string; HasMetadata?: boolean }) => {
+            if (file.HasMetadata) return false;
+            const fileDate = new Date(file.LastModified);
+            return fileDate > lastSyncDate;
+          }
+        )
       );
 
       props.setShowUnsyncedAlert(hasUnsyncedFiles);
