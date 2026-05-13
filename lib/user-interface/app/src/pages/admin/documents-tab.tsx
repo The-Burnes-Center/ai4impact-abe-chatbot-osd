@@ -208,17 +208,11 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       // Use the orchestrator (admin/sync-now) instead of the KB-only sync
       // endpoint so this single click also moves staged files into the KB
       // bucket and backfills any missing metadata summaries -- not just the
-      // Bedrock ingestion. Falls through to the same status polling below.
-      const result = await apiClient.sync.triggerSyncNow();
-      if (result?.status !== "SUCCESS") {
-        addNotification(
-          "error",
-          "Error running sync, please try again later."
-        );
-        setSyncing(false);
-        previousSyncStatusRef.current = false;
-        return;
-      }
+      // Bedrock ingestion. The endpoint kicks the orchestrator off
+      // asynchronously and returns immediately; if the HTTP call resolves
+      // without throwing, the dispatch succeeded. The Bedrock ingestion
+      // status is polled separately below via kendraIsSyncing().
+      await apiClient.sync.triggerSyncNow();
       setTimeout(async () => {
         try {
           const status = await apiClient.knowledgeManagement.kendraIsSyncing();
