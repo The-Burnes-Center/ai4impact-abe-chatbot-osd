@@ -492,24 +492,20 @@ export default function FeedbackOpsPage() {
       </Stack>
 
       {/* Activity log drawer */}
-      {/* Offset the Paper by the global AppBar height so its Close button
-          isn't hidden under the navy header (AppBar uses zIndex.drawer+1). */}
+      {/* Lift above the global AppBar (which sits at zIndex.drawer+1) so the
+          Close button isn't hidden under the navy header. */}
       <Drawer
         anchor="right"
         open={activityDrawerOpen}
         onClose={() => setActivityDrawerOpen(false)}
+        sx={{ zIndex: (t) => t.zIndex.modal + 2 }}
         PaperProps={{
-          sx: {
-            width: { xs: "100%", sm: 400 },
-            p: 3,
-            top: { xs: 56, sm: 64 },
-            height: { xs: "calc(100% - 56px)", sm: "calc(100% - 64px)" },
-          },
+          sx: { width: { xs: "100%", sm: 400 }, p: 3 },
           role: "dialog",
           "aria-modal": true,
           "aria-label": "Recent activity",
         }}
-        slotProps={{ backdrop: { "aria-hidden": true, sx: { top: { xs: 56, sm: 64 } } } }}
+        slotProps={{ backdrop: { "aria-hidden": true } }}
       >
         <Stack spacing={2}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
