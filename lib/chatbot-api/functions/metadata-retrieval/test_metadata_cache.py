@@ -16,7 +16,10 @@ import pytest
 # ---------------------------------------------------------------------------
 
 BUCKET = "test-knowledge-bucket"
-METADATA = {"doc1.pdf": {"tag_category": "memos"}, "doc2.pdf": {"tag_category": "user guide"}}
+METADATA = {
+    "doc1.pdf": {"tag_category": "memos", "summary": "memo about X"},
+    "doc2.pdf": {"tag_category": "user guide", "summary": "guide for Y"},
+}
 METADATA_STR = json.dumps(METADATA)
 
 
@@ -132,6 +135,33 @@ class TestTTLCache:
         body = json.loads(resp["body"])
         assert "metadata" in body
 
+    def test_default_returns_compact_form(self):
+        """Compact form: {filename: tag_category} — no summaries/tags."""
+        lf = _fresh_module()
+        with patch.object(lf, "s3") as mock_s3:
+            mock_s3.get_object.return_value = _mock_s3_get(METADATA_STR)
+            resp = lf.lambda_handler({}, {})
+        body = json.loads(resp["body"])
+        assert body["metadata"] == {"doc1.pdf": "memos", "doc2.pdf": "user guide"}
+
+    def test_full_flag_returns_summaries(self):
+        lf = _fresh_module()
+        with patch.object(lf, "s3") as mock_s3:
+            mock_s3.get_object.return_value = _mock_s3_get(METADATA_STR)
+            resp = lf.lambda_handler({"full": True}, {})
+        body = json.loads(resp["body"])
+        assert body["metadata"]["doc1.pdf"]["summary"] == "memo about X"
+        assert body["metadata"]["doc2.pdf"]["tag_category"] == "user guide"
+
+    def test_compact_uses_unknown_for_missing_category(self):
+        data = json.dumps({"a.pdf": {"summary": "no tag"}})
+        lf = _fresh_module()
+        with patch.object(lf, "s3") as mock_s3:
+            mock_s3.get_object.return_value = _mock_s3_get(data)
+            resp = lf.lambda_handler({}, {})
+        body = json.loads(resp["body"])
+        assert body["metadata"] == {"a.pdf": "unknown"}
+
     def test_returns_500_when_s3_fails(self):
         lf = _fresh_module()
         with patch.object(lf, "s3") as mock_s3:
@@ -143,7 +173,7 @@ class TestTTLCache:
         lf = _fresh_module()
         with patch.object(lf, "s3") as mock_s3:
             mock_s3.get_object.return_value = _mock_s3_get(METADATA_STR)
-            resp = lf.lambda_handler({"filter_key": "memos"}, {})
+            resp = lf.lambda_handler({"filter_key": "memos", "full": True}, {})
         body = json.loads(resp["body"])
-        # Only memos category should be returned
+        # Only memos category should be returned (full form preserves the dict)
         assert all(v.get("tag_category") == "memos" for v in body["metadata"].values())

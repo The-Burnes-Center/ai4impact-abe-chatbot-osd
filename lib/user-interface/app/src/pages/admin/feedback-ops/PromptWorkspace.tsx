@@ -52,11 +52,6 @@ const TEMPLATE_VARIABLES: { name: string; description: string; example: string }
     description: "Today's date, formatted as a full human-readable string (e.g. \"Thursday, March 19, 2026\"). Injected at runtime so the model knows the current date.",
     example: "Thursday, March 19, 2026",
   },
-  {
-    name: "{{metadata_json}}",
-    description: "JSON object containing the retrieved source documents from the knowledge base. Each document has a title and S3 URI. The model uses this to ground answers in real sources.",
-    example: '{ "documents": [{ "title": "FAR Part 15.pdf", "uri": "s3://bucket/key" }] }',
-  },
 ];
 
 function computeDiff(base: string, candidate: string): { type: "same" | "add" | "remove"; text: string }[] {
@@ -104,13 +99,7 @@ function renderPreview(template: string): string {
     day: "numeric",
     timeZone: "America/New_York",
   });
-  return template
-    .replace(/\{\{current_date\}\}/g, dateStr)
-    .replace(/\{\{metadata_json\}\}/g, JSON.stringify(
-      { documents: [{ title: "Sample Document.pdf", uri: "s3://bucket/key" }] },
-      null,
-      2
-    ));
+  return template.replace(/\{\{current_date\}\}/g, dateStr);
 }
 
 function PromptSkeleton() {
@@ -209,7 +198,7 @@ export default function PromptWorkspace(props: PromptWorkspaceProps) {
       const result = await apiClient.userFeedback.createPrompt({
         title: livePrompt ? `Draft from ${livePrompt.versionId}` : "New draft",
         parentVersionId: livePrompt?.versionId,
-        template: livePrompt?.template || "# ABE Prompt\n\n{{current_date}}\n\n{{metadata_json}}",
+        template: livePrompt?.template || "# ABE Prompt\n\n{{current_date}}",
       });
       await onRefresh();
       setSelectedPromptId(result.prompt.versionId);

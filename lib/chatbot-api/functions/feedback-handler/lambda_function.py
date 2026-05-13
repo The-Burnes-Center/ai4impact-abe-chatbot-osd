@@ -1011,7 +1011,7 @@ RESPONSE FORMAT — you MUST return a single JSON object with exactly these keys
 
 RULES:
 1. The "prompt" value must contain the ENTIRE system prompt template — every line. Never return a summary, bullet list, or partial snippet in this field.
-2. Keep ALL placeholders exactly as-is: {{current_date}}, {{metadata_json}}, and any others.
+2. Keep ALL placeholders exactly as-is: {{current_date}}, and any others.
 3. Do NOT invent tools, capabilities, or behaviors that do not already exist in the prompt.
 4. Do NOT remove existing sections unless the feedback explicitly calls for it.
 5. If the current prompt already addresses the feedback adequately, set "declined" to true, return the original prompt unchanged in "prompt", and explain in "reasoning" why no edit is needed.

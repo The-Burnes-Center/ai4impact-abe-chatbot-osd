@@ -2,7 +2,6 @@ import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   ChatBotHistoryItem,
   ChatBotMessageType,
-  ContextUsage,
   FeedbackSubmission,
 } from "./types";
 import { Auth } from "aws-amplify";
@@ -24,16 +23,6 @@ import { WELCOME_PAGE, SUGGESTED_PROMPTS } from "../../common/constants";
 import { useNotifications } from "../notif-manager";
 import { Utils } from "../../common/utils";
 import { useWebSocketChat, StreamingStatus } from "../../hooks/useWebSocketChat";
-
-/** Defensive JSON parse: backend persists `metadata` as a JSON string, but
- *  some legacy entries may already be objects. Returns `null` on any failure. */
-function safeParseJson(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
 
 export default function Chat(props: { sessionId?: string }) {
   const appContext = useContext(AppContext);
@@ -57,17 +46,10 @@ export default function Chat(props: { sessionId?: string }) {
     active: false,
   });
   const [queuedPrompt, setQueuedPrompt] = useState<string | null>(null);
-  /**
-   * Latest context-window usage reported by the backend. Drives the
-   * memory-usage ring rendered next to the input toolbar. Reset whenever the
-   * session changes so a fresh chat starts with no indicator.
-   */
-  const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
 
   useEffect(() => {
     if (!appContext) return;
     setMessageHistory([]);
-    setContextUsage(null);
 
     (async () => {
       if (!props.sessionId) {
@@ -97,17 +79,6 @@ export default function Chat(props: { sessionId?: string }) {
               content: x!.content,
             }));
           setMessageHistory(restored);
-          // Seed the memory-usage ring from the most recent AI message so the
-          // indicator persists across page refreshes.
-          for (let i = restored.length - 1; i >= 0; i--) {
-            const meta = restored[i]?.metadata as unknown;
-            const parsed = typeof meta === "string" ? safeParseJson(meta) : meta;
-            const usage = (parsed as { ContextUsage?: ContextUsage } | null)?.ContextUsage;
-            if (usage && typeof usage.percent === "number") {
-              setContextUsage(usage);
-              break;
-            }
-          }
         }
         setSession({ id: props.sessionId, loading: false });
         setRunning(false);
@@ -408,8 +379,6 @@ export default function Chat(props: { sessionId?: string }) {
           onStop={abort}
           queuedPrompt={queuedPrompt}
           onQueuedPromptHandled={() => setQueuedPrompt(null)}
-          contextUsage={contextUsage}
-          onContextUsage={setContextUsage}
         />
       </section>
     </div>

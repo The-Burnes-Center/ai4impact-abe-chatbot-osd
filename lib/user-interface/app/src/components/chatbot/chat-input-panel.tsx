@@ -28,13 +28,11 @@ import {
   ChatBotHistoryItem,
   ChatBotMessageType,
   ChatInputState,
-  ContextUsage,
 } from "./types";
 
 import { SessionRefreshContext } from "../../common/session-refresh-context";
 import { useNotifications } from "../notif-manager";
 import { useWebSocketChat, StreamingStatus } from "../../hooks/useWebSocketChat";
-import ContextUsageRing from "./context-usage-ring";
 import { Utils } from "../../common/utils";
 
 export interface ChatInputPanelProps {
@@ -48,11 +46,6 @@ export interface ChatInputPanelProps {
   onStop?: () => void;
   queuedPrompt?: string | null;
   onQueuedPromptHandled?: () => void;
-  /** Latest server-reported context-window usage, surfaced as a small ring in
-   *  the input toolbar. `null` until the first response of the session. */
-  contextUsage?: ContextUsage | null;
-  /** Called whenever a fresh metadata frame carrying `ContextUsage` arrives. */
-  onContextUsage?: (usage: ContextUsage) => void;
 }
 
 const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
@@ -165,12 +158,6 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
           },
         ];
         props.setMessageHistory(messageHistoryRef.current);
-        // The metadata frame piggybacks ContextUsage from the backend; lift it
-        // into chat-level state so the input toolbar can render the live ring.
-        const usage = (sources as { ContextUsage?: ContextUsage })?.ContextUsage;
-        if (usage && typeof usage.percent === "number") {
-          props.onContextUsage?.(usage);
-        }
       },
 
       onComplete(firstMessage) {
@@ -249,7 +236,6 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
             aria-multiline="true"
           />
           <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 1 }}>
-            <ContextUsageRing usage={props.contextUsage ?? null} />
             {browserSupportsSpeechRecognition && (
               <Tooltip title={listening ? "Stop dictation" : "Start dictation"}>
                 <IconButton
