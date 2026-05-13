@@ -139,7 +139,12 @@ def _backfill_missing_metadata(skip_keys: set[str] | None = None) -> int:
                     continue
                 try:
                     head = s3.head_object(Bucket=KB_BUCKET, Key=key)
-                    if (head.get("Metadata") or {}).get("summary"):
+                    summary = ((head.get("Metadata") or {}).get("summary") or "").strip()
+                    # Skip only when there's a real summary. Empty strings and
+                    # past error markers (e.g. "Error parsing nested JSON in
+                    # 'text'", "Error generating summary") count as missing
+                    # so transient failures get retried on the next sync.
+                    if summary and not summary.lower().startswith("error "):
                         continue
                 except Exception as e:
                     logger.warning("head_object failed for %s, skipping: %s", key, e)
