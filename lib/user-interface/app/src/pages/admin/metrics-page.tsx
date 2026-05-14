@@ -170,6 +170,11 @@ function formatRangeLabel(fromISO: string, toISO: string): string {
   return `${fmt.format(new Date(`${fromISO}T00:00:00`))} – ${fmt.format(new Date(`${toISO}T00:00:00`))}`;
 }
 
+// MUI Select treats value="" as the "no selection" state, which can render the
+// "All agencies" option as a blank placeholder instead of a real, clickable item.
+// Use a sentinel value internally; map back to "" before hitting the API.
+const ALL_AGENCIES_VALUE = "__all__";
+
 interface FilterState {
   preset: PresetKey;
   from: string; // YYYY-MM-DD
@@ -428,11 +433,14 @@ function FilterBar({ state, onChange, agencies }: FilterBarProps) {
             select
             size="small"
             label="Agency"
-            value={state.agency}
-            onChange={(e) => onChange({ ...state, agency: e.target.value })}
+            value={state.agency || ALL_AGENCIES_VALUE}
+            onChange={(e) => {
+              const v = e.target.value;
+              onChange({ ...state, agency: v === ALL_AGENCIES_VALUE ? "" : v });
+            }}
             sx={{ minWidth: 200 }}
           >
-            <MenuItem value="">All agencies</MenuItem>
+            <MenuItem value={ALL_AGENCIES_VALUE}>All agencies</MenuItem>
             {agencies.map((a) => (
               <MenuItem key={a} value={a}>
                 {a}
