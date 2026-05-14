@@ -22,6 +22,15 @@ logger = get_logger(__name__)
 LOCAL_TZ = ZoneInfo("America/New_York")
 MAX_LOOKBACK_DAYS = 365
 
+# Users whose display_name doesn't yield a parseable agency are still real users
+# we want to count. Surface them as a real bucket so the per-agency rows add up
+# to the all-agencies total, instead of silently disappearing.
+UNSPECIFIED_AGENCY = "Unspecified"
+
+
+def _is_unspecified_agency(agency):
+    return not agency or agency == "Unknown" or agency == UNSPECIFIED_AGENCY
+
 
 def parse_timestamp(timestamp_str):
     if not timestamp_str:
@@ -140,10 +149,17 @@ def summarize_session_metrics(start_date=None, end_date=None, hour_from=None, ho
     optional; if omitted, all data is summarized.
 
     ChatHistoryTable has no agency column — when agency_filter is set we look up the user→agency
-    map from AnalyticsTable and skip sessions whose user_id isn't in that agency.
+    map from AnalyticsTable and skip sessions whose user_id isn't in that agency. The special
+    UNSPECIFIED_AGENCY bucket captures users with no parseable agency (empty/Unknown) AND
+    users who don't appear in AnalyticsTable at all — so the per-agency counts sum to the
+    all-agencies total.
     """
     user_display_map = get_user_display_map()
-    if agency_filter:
+    if agency_filter == UNSPECIFIED_AGENCY:
+        # We can't pre-compute this without knowing which user_ids exist in sessions —
+        # filter inline below by checking the user's mapped agency (or its absence).
+        allowed_user_ids = "unspecified"  # sentinel
+    elif agency_filter:
         allowed_user_ids = {
             uid for uid, info in user_display_map.items()
             if info.get("agency") == agency_filter
@@ -184,7 +200,11 @@ def summarize_session_metrics(start_date=None, end_date=None, hour_from=None, ho
                 continue
 
             user_id = item.get("user_id")
-            if allowed_user_ids is not None and user_id not in allowed_user_ids:
+            if allowed_user_ids == "unspecified":
+                mapped_agency = user_display_map.get(user_id, {}).get("agency") if user_id else None
+                if not _is_unspecified_agency(mapped_agency):
+                    continue
+            elif allowed_user_ids is not None and user_id not in allowed_user_ids:
                 continue
             if user_id:
                 unique_users.add(user_id)
@@ -266,7 +286,9 @@ def fetch_analytics_items(start_date, end_date, agency_filter=None, hour_from=No
         return []
 
     items = []
-    if agency_filter:
+    # "Unspecified" is a synthetic bucket — the underlying rows have agency="" or "Unknown",
+    # so AgencyIndex.eq("Unspecified") would return nothing. Fall back to the date-key scan.
+    if agency_filter and agency_filter != UNSPECIFIED_AGENCY:
         last_evaluated_key = None
         start_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=LOCAL_TZ).astimezone(timezone.utc)
         start_timestamp = start_dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -324,9 +346,8 @@ def get_agency_breakdown(start_date, end_date, hour_from=None, hour_to=None, age
         total = 0
 
         for item in items:
-            agency = item.get("agency", "") or ""
-            if not agency or agency == "Unknown":
-                continue
+            raw_agency = item.get("agency", "") or ""
+            agency = UNSPECIFIED_AGENCY if _is_unspecified_agency(raw_agency) else raw_agency
             if agency_filter and agency != agency_filter:
                 continue
             user_id = item.get("user_id", "")
@@ -383,10 +404,12 @@ def get_faq_insights(start_date, end_date, agency_filter=None, hour_from=None, h
         total = 0
 
         for item in items:
+            agency = item.get("agency", "")
+            if agency_filter == UNSPECIFIED_AGENCY and not _is_unspecified_agency(agency):
+                continue
             topic = item.get("topic", "Other")
             question = item.get("question", "")
             display_name = item.get("display_name", "")
-            agency = item.get("agency", "")
             topic_counts[topic] += 1
             total += 1
 
@@ -440,7 +463,10 @@ def get_user_breakdown(start_date, end_date, agency_filter=None, hour_from=None,
 
         for item in items:
             agency = item.get("agency", "")
-            if agency_filter and agency != agency_filter:
+            if agency_filter == UNSPECIFIED_AGENCY:
+                if not _is_unspecified_agency(agency):
+                    continue
+            elif agency_filter and agency != agency_filter:
                 continue
             user_id = item.get("user_id", "") or "unknown"
             display_name = item.get("display_name", "")
