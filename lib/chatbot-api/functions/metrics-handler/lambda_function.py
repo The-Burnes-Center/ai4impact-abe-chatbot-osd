@@ -1,7 +1,8 @@
 import json
 import os
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -17,6 +18,10 @@ session_table = dynamodb.Table(DDB_TABLE_NAME)
 analytics_table = dynamodb.Table(ANALYTICS_TABLE_NAME) if ANALYTICS_TABLE_NAME else None
 logger = get_logger(__name__)
 
+# Admins are in MA — display hours/days in Eastern. Timestamps are stored in UTC.
+LOCAL_TZ = ZoneInfo("America/New_York")
+MAX_LOOKBACK_DAYS = 365
+
 
 def parse_timestamp(timestamp_str):
     if not timestamp_str:
@@ -27,6 +32,81 @@ def parse_timestamp(timestamp_str):
         return datetime.strptime(timestamp_str.split(".")[0], "%Y-%m-%d %H:%M:%S")
     except Exception:
         return None
+
+
+def _to_local(dt):
+    """Normalize a datetime to America/New_York. Naive timestamps are assumed UTC."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(LOCAL_TZ)
+
+
+def parse_iso_date(value, fallback=None):
+    if not value:
+        return fallback
+    try:
+        return date.fromisoformat(value[:10])
+    except Exception:
+        return fallback
+
+
+def resolve_date_range(query_params):
+    """
+    Resolve a (start_date, end_date) inclusive pair in ET.
+    Precedence: explicit from/to > days > default 30.
+    """
+    today_local = datetime.now(LOCAL_TZ).date()
+    from_param = query_params.get("from")
+    to_param = query_params.get("to")
+    if from_param or to_param:
+        end = parse_iso_date(to_param, today_local) or today_local
+        start = parse_iso_date(from_param, end - timedelta(days=29)) or (end - timedelta(days=29))
+        if start > end:
+            start, end = end, start
+        span = (end - start).days + 1
+        if span > MAX_LOOKBACK_DAYS:
+            start = end - timedelta(days=MAX_LOOKBACK_DAYS - 1)
+        return start, end
+
+    days = safe_int(query_params.get("days"), 30, minimum=1, maximum=MAX_LOOKBACK_DAYS)
+    end = today_local
+    start = end - timedelta(days=days - 1)
+    return start, end
+
+
+def resolve_hour_window(query_params):
+    """Optional hour-of-day window in local time. Returns (None, None) if not provided."""
+    hf = query_params.get("hour_from")
+    ht = query_params.get("hour_to")
+    if hf is None and ht is None:
+        return None, None
+    hour_from = safe_int(hf, 0, minimum=0, maximum=23)
+    hour_to = safe_int(ht, 23, minimum=0, maximum=23)
+    if hour_from > hour_to:
+        hour_from, hour_to = hour_to, hour_from
+    return hour_from, hour_to
+
+
+def iter_date_keys(start_date, end_date):
+    current = start_date
+    while current <= end_date:
+        yield current.strftime("%Y-%m-%d")
+        current += timedelta(days=1)
+
+
+def _item_in_local_window(item, start_date, end_date, hour_from, hour_to):
+    """Filter an analytics item by ET-converted day and (optional) hour window."""
+    ts = parse_timestamp(item.get("timestamp", ""))
+    if ts is None:
+        # Fall back to the stored date_key (UTC) if timestamp is unparseable.
+        return True
+    local = _to_local(ts)
+    local_day = local.date()
+    if local_day < start_date or local_day > end_date:
+        return False
+    if hour_from is not None and not (hour_from <= local.hour <= hour_to):
+        return False
+    return True
 
 
 def get_user_display_map():
@@ -53,7 +133,12 @@ def get_user_display_map():
     return user_map
 
 
-def summarize_session_metrics():
+def summarize_session_metrics(start_date=None, end_date=None, hour_from=None, hour_to=None):
+    """
+    Aggregate ChatHistoryTable activity. Days, hours, and weekdays are bucketed in ET so that
+    "9 AM" reads as Eastern for MA admins. start_date / end_date / hour window are optional;
+    if omitted, all data is summarized.
+    """
     unique_users = set()
     total_sessions = 0
     total_messages = 0
@@ -62,6 +147,8 @@ def summarize_session_metrics():
     daily_user_sessions = defaultdict(lambda: defaultdict(int))
     daily_user_messages = defaultdict(lambda: defaultdict(int))
     hourly_counts = defaultdict(int)
+    # 24 hours x 7 weekdays (Mon=0..Sun=6) message volume, used by the heatmap.
+    hour_by_weekday = [[0] * 7 for _ in range(24)]
     session_msg_counts = []
 
     last_evaluated_key = None
@@ -72,6 +159,18 @@ def summarize_session_metrics():
         response = session_table.scan(**params)
 
         for item in response.get("Items", []):
+            dt = parse_timestamp(item.get("time_stamp", ""))
+            if not dt:
+                continue
+            local = _to_local(dt)
+            local_day = local.date()
+            if start_date and local_day < start_date:
+                continue
+            if end_date and local_day > end_date:
+                continue
+            if hour_from is not None and not (hour_from <= local.hour <= hour_to):
+                continue
+
             user_id = item.get("user_id")
             if user_id:
                 unique_users.add(user_id)
@@ -82,17 +181,15 @@ def summarize_session_metrics():
             total_messages += message_count
             session_msg_counts.append(message_count)
 
-            dt = parse_timestamp(item.get("time_stamp", ""))
-            if not dt:
-                continue
-            date_key = dt.strftime("%Y-%m-%d")
+            date_key = local_day.strftime("%Y-%m-%d")
             daily_stats[date_key]["sessions"] += 1
             daily_stats[date_key]["messages"] += message_count
             if user_id:
                 unique_users_daily[date_key].add(user_id)
                 daily_user_sessions[date_key][user_id] += 1
                 daily_user_messages[date_key][user_id] += message_count
-            hourly_counts[dt.hour] += 1
+            hourly_counts[local.hour] += 1
+            hour_by_weekday[local.hour][local.weekday()] += message_count
 
         last_evaluated_key = response.get("LastEvaluatedKey")
         if not last_evaluated_key:
@@ -101,23 +198,23 @@ def summarize_session_metrics():
     user_display_map = get_user_display_map()
 
     daily_breakdown = []
-    for date, stats in sorted(daily_stats.items()):
+    for d, stats in sorted(daily_stats.items()):
         day_users = []
-        for uid in unique_users_daily[date]:
+        for uid in unique_users_daily[d]:
             info = user_display_map.get(uid, {})
             day_users.append({
                 "user_id": uid,
                 "display_name": info.get("display_name") or uid,
                 "agency": info.get("agency") or "Unknown",
-                "sessions": daily_user_sessions[date][uid],
-                "messages": daily_user_messages[date][uid],
+                "sessions": daily_user_sessions[d][uid],
+                "messages": daily_user_messages[d][uid],
             })
         day_users.sort(key=lambda u: u["messages"], reverse=True)
         daily_breakdown.append({
-            "date": date,
+            "date": d,
             "sessions": stats["sessions"],
             "messages": stats["messages"],
-            "unique_users": len(unique_users_daily[date]),
+            "unique_users": len(unique_users_daily[d]),
             "users": day_users,
         })
 
@@ -127,7 +224,7 @@ def summarize_session_metrics():
         else 0
     )
     peak_hour = max(hourly_counts, key=hourly_counts.get) if hourly_counts else None
-    peak_hour_label = f"{peak_hour:02d}:00-{peak_hour + 1:02d}:00" if peak_hour is not None else "N/A"
+    peak_hour_label = f"{peak_hour:02d}:00-{peak_hour + 1:02d}:00 ET" if peak_hour is not None else "N/A"
 
     return {
         "unique_users": len(unique_users),
@@ -140,29 +237,27 @@ def summarize_session_metrics():
             {"hour": f"{hour:02d}:00", "sessions": hourly_counts.get(hour, 0)}
             for hour in range(24)
         ],
+        # rows = hour 0..23, cols = weekday Mon..Sun
+        "hour_by_weekday": hour_by_weekday,
+        "timezone": "America/New_York",
     }
 
 
-def iter_date_keys(days):
-    span = max(days - 1, 0)
-    start_date = datetime.now(timezone.utc).date() - timedelta(days=span)
-    end_date = datetime.now(timezone.utc).date()
-    current = start_date
-    while current <= end_date:
-        yield current.strftime("%Y-%m-%d")
-        current += timedelta(days=1)
-
-
-def fetch_analytics_items(days=30, agency_filter=None):
+def fetch_analytics_items(start_date, end_date, agency_filter=None, hour_from=None, hour_to=None):
+    """
+    Pull AnalyticsTable rows for an ET date range, then filter to ET local-day +
+    optional hour window. We expand the query by one UTC day on each side because
+    `date_key` is the UTC slice of the timestamp; rows on the ET-edges live in the
+    neighboring UTC day.
+    """
     if not analytics_table:
         return []
 
     items = []
     if agency_filter:
         last_evaluated_key = None
-        start_timestamp = (
-            datetime.now(timezone.utc) - timedelta(days=max(days - 1, 0))
-        ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        start_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=LOCAL_TZ).astimezone(timezone.utc)
+        start_timestamp = start_dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
         while True:
             query_params = {
                 "IndexName": "AgencyIndex",
@@ -175,31 +270,42 @@ def fetch_analytics_items(days=30, agency_filter=None):
             last_evaluated_key = response.get("LastEvaluatedKey")
             if not last_evaluated_key:
                 break
-        return items
+    else:
+        query_start = start_date - timedelta(days=1)
+        query_end = end_date + timedelta(days=1)
+        for date_key in iter_date_keys(query_start, query_end):
+            last_evaluated_key = None
+            while True:
+                query_params = {
+                    "IndexName": "DateIndex",
+                    "KeyConditionExpression": Key("date_key").eq(date_key),
+                }
+                if last_evaluated_key:
+                    query_params["ExclusiveStartKey"] = last_evaluated_key
+                response = analytics_table.query(**query_params)
+                items.extend(response.get("Items", []))
+                last_evaluated_key = response.get("LastEvaluatedKey")
+                if not last_evaluated_key:
+                    break
 
-    for date_key in iter_date_keys(days):
-        last_evaluated_key = None
-        while True:
-            query_params = {
-                "IndexName": "DateIndex",
-                "KeyConditionExpression": Key("date_key").eq(date_key),
-            }
-            if last_evaluated_key:
-                query_params["ExclusiveStartKey"] = last_evaluated_key
-            response = analytics_table.query(**query_params)
-            items.extend(response.get("Items", []))
-            last_evaluated_key = response.get("LastEvaluatedKey")
-            if not last_evaluated_key:
-                break
-    return items
+    return [
+        item for item in items
+        if _item_in_local_window(item, start_date, end_date, hour_from, hour_to)
+    ]
 
 
-def get_agency_breakdown(days=30):
+def get_agency_breakdown(start_date, end_date, hour_from=None, hour_to=None, agency_filter=None):
     if not analytics_table:
         return {"agencies": [], "total_messages": 0}
 
     try:
-        items = fetch_analytics_items(days)
+        # When agency_filter is set, fetch_analytics_items uses the AgencyIndex —
+        # cheaper than scanning every date.
+        items = fetch_analytics_items(
+            start_date, end_date,
+            agency_filter=agency_filter,
+            hour_from=hour_from, hour_to=hour_to,
+        )
         agency_stats = defaultdict(
             lambda: {"messages": 0, "users": set(), "topics": defaultdict(int), "daily": defaultdict(int)}
         )
@@ -209,9 +315,12 @@ def get_agency_breakdown(days=30):
             agency = item.get("agency", "") or ""
             if not agency or agency == "Unknown":
                 continue
+            if agency_filter and agency != agency_filter:
+                continue
             user_id = item.get("user_id", "")
             topic = item.get("topic", "Other")
-            date_key = item.get("date_key", "")
+            ts = parse_timestamp(item.get("timestamp", ""))
+            date_key = _to_local(ts).strftime("%Y-%m-%d") if ts else item.get("date_key", "")
             agency_stats[agency]["messages"] += 1
             agency_stats[agency]["users"].add(user_id)
             agency_stats[agency]["topics"][topic] += 1
@@ -231,7 +340,7 @@ def get_agency_breakdown(days=30):
                         reverse=True,
                     )[:5],
                     "daily_breakdown": sorted(
-                        [{"date": date, "messages": count} for date, count in stats["daily"].items()],
+                        [{"date": d, "messages": count} for d, count in stats["daily"].items()],
                         key=lambda value: value["date"],
                     ),
                 }
@@ -246,12 +355,16 @@ def get_agency_breakdown(days=30):
         return {"agencies": [], "total_messages": 0}
 
 
-def get_faq_insights(days=30, agency_filter=None):
+def get_faq_insights(start_date, end_date, agency_filter=None, hour_from=None, hour_to=None):
     if not analytics_table:
         return {"topics": [], "total_classified": 0}
 
     try:
-        items = fetch_analytics_items(days, agency_filter=agency_filter)
+        items = fetch_analytics_items(
+            start_date, end_date,
+            agency_filter=agency_filter,
+            hour_from=hour_from, hour_to=hour_to,
+        )
         topic_counts = defaultdict(int)
         topic_samples = defaultdict(list)
         topic_seen_questions = defaultdict(set)
@@ -295,12 +408,12 @@ def get_faq_insights(days=30, agency_filter=None):
         return {"topics": [], "total_classified": 0}
 
 
-def get_user_breakdown(days=30):
+def get_user_breakdown(start_date, end_date, agency_filter=None, hour_from=None, hour_to=None):
     if not analytics_table:
         return {"users": [], "total_messages": 0}
 
     try:
-        items = fetch_analytics_items(days)
+        items = fetch_analytics_items(start_date, end_date, hour_from=hour_from, hour_to=hour_to)
         user_stats = defaultdict(
             lambda: {
                 "messages": 0,
@@ -314,9 +427,11 @@ def get_user_breakdown(days=30):
         total = 0
 
         for item in items:
+            agency = item.get("agency", "")
+            if agency_filter and agency != agency_filter:
+                continue
             user_id = item.get("user_id", "") or "unknown"
             display_name = item.get("display_name", "")
-            agency = item.get("agency", "")
             topic = item.get("topic", "Other")
             question = item.get("question", "")
             timestamp = item.get("timestamp", "")
@@ -374,25 +489,49 @@ def lambda_handler(event, context):
     try:
         query_params = event.get("queryStringParameters") or {}
         metric_type = query_params.get("type", "overview")
-        days = safe_int(query_params.get("days"), 30, minimum=1, maximum=365)
         agency_filter = query_params.get("agency")
+        start_date, end_date = resolve_date_range(query_params)
+        hour_from, hour_to = resolve_hour_window(query_params)
+
+        range_meta = {
+            "from": start_date.strftime("%Y-%m-%d"),
+            "to": end_date.strftime("%Y-%m-%d"),
+            "days": (end_date - start_date).days + 1,
+            "hour_from": hour_from,
+            "hour_to": hour_to,
+            "timezone": "America/New_York",
+        }
 
         if metric_type == "faq":
-            response_data = get_faq_insights(days, agency_filter=agency_filter)
+            response_data = get_faq_insights(
+                start_date, end_date,
+                agency_filter=agency_filter,
+                hour_from=hour_from, hour_to=hour_to,
+            )
         elif metric_type == "traffic":
-            session_metrics = summarize_session_metrics()
+            session_metrics = summarize_session_metrics(start_date, end_date, hour_from, hour_to)
             response_data = {
                 "daily_breakdown": session_metrics["daily_breakdown"],
                 "hourly_distribution": session_metrics["hourly_distribution"],
+                "hour_by_weekday": session_metrics["hour_by_weekday"],
                 "avg_messages_per_session": session_metrics["avg_messages_per_session"],
                 "peak_hour": session_metrics["peak_hour"],
+                "timezone": session_metrics["timezone"],
             }
         elif metric_type == "by_agency":
-            response_data = get_agency_breakdown(days)
+            response_data = get_agency_breakdown(
+                start_date, end_date,
+                hour_from=hour_from, hour_to=hour_to,
+                agency_filter=agency_filter,
+            )
         elif metric_type == "by_user":
-            response_data = get_user_breakdown(days)
+            response_data = get_user_breakdown(
+                start_date, end_date,
+                agency_filter=agency_filter,
+                hour_from=hour_from, hour_to=hour_to,
+            )
         else:
-            session_metrics = summarize_session_metrics()
+            session_metrics = summarize_session_metrics(start_date, end_date, hour_from, hour_to)
             response_data = {
                 "unique_users": session_metrics["unique_users"],
                 "total_sessions": session_metrics["total_sessions"],
@@ -400,8 +539,12 @@ def lambda_handler(event, context):
                 "daily_breakdown": session_metrics["daily_breakdown"],
                 "avg_messages_per_session": session_metrics["avg_messages_per_session"],
                 "peak_hour": session_metrics["peak_hour"],
+                "hour_by_weekday": session_metrics["hour_by_weekday"],
+                "hourly_distribution": session_metrics["hourly_distribution"],
+                "timezone": session_metrics["timezone"],
             }
 
+        response_data["range"] = range_meta
         return json_response(200, response_data, encoder=DecimalJSONEncoder)
     except Exception:
         logger.exception("Error in metrics handler")

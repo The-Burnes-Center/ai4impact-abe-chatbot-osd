@@ -240,114 +240,101 @@ export class MetricClient {
     return uses['Items'].length / users;
   }
 
-  async getMetrics() {
+  private buildMetricsParams(type: string, filters?: MetricsFilters): URLSearchParams {
+    const params = new URLSearchParams();
+    if (type) params.set("type", type);
+    if (filters?.from) params.set("from", filters.from);
+    if (filters?.to) params.set("to", filters.to);
+    if (filters?.from === undefined && filters?.to === undefined) {
+      params.set("days", String(filters?.days ?? 30));
+    }
+    if (filters?.agency) params.set("agency", filters.agency);
+    if (typeof filters?.hourFrom === "number") params.set("hour_from", String(filters.hourFrom));
+    if (typeof filters?.hourTo === "number") params.set("hour_to", String(filters.hourTo));
+    return params;
+  }
+
+  private async fetchMetrics(type: string, filters?: MetricsFilters) {
+    const auth = await Utils.authenticate();
+    const params = this.buildMetricsParams(type, filters);
+    const qs = params.toString();
+    const url = qs ? `${this.API}/metrics?${qs}` : `${this.API}/metrics`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: auth,
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch metrics (${type || "overview"}): ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async getMetrics(filters?: MetricsFilters) {
     try {
-      const auth = await Utils.authenticate();
-      const response = await fetch(this.API + '/metrics', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': auth,
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch metrics: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await this.fetchMetrics("", filters);
     } catch (err) {
       devLog("Error retrieving metrics:", err);
       throw err;
     }
   }
 
-  async getFAQInsights(days: number = 30) {
+  async getFAQInsights(filters?: MetricsFilters | number) {
     try {
-      const auth = await Utils.authenticate();
-      const response = await fetch(`${this.API}/metrics?type=faq&days=${days}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': auth,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch FAQ insights: ${response.statusText}`);
-      }
-
-      return await response.json();
+      return await this.fetchMetrics("faq", normalizeFilters(filters));
     } catch (err) {
       devLog("Error retrieving FAQ insights:", err);
       throw err;
     }
   }
 
-  async getAgencyBreakdown(days: number = 30) {
+  async getAgencyBreakdown(filters?: MetricsFilters | number) {
     try {
-      const auth = await Utils.authenticate();
-      const response = await fetch(`${this.API}/metrics?type=by_agency&days=${days}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': auth,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch agency breakdown: ${response.statusText}`);
-      }
-
-      return await response.json();
+      return await this.fetchMetrics("by_agency", normalizeFilters(filters));
     } catch (err) {
       devLog("Error retrieving agency breakdown:", err);
       throw err;
     }
   }
 
-  async getUserBreakdown(days: number = 30) {
+  async getUserBreakdown(filters?: MetricsFilters | number) {
     try {
-      const auth = await Utils.authenticate();
-      const response = await fetch(`${this.API}/metrics?type=by_user&days=${days}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': auth,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch user breakdown: ${response.statusText}`);
-      }
-
-      return await response.json();
+      return await this.fetchMetrics("by_user", normalizeFilters(filters));
     } catch (err) {
       devLog("Error retrieving user breakdown:", err);
       throw err;
     }
   }
 
-  async getTrafficDetails(days: number = 30) {
+  async getTrafficDetails(filters?: MetricsFilters | number) {
     try {
-      const auth = await Utils.authenticate();
-      const response = await fetch(`${this.API}/metrics?type=traffic&days=${days}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': auth,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch traffic details: ${response.statusText}`);
-      }
-
-      return await response.json();
+      return await this.fetchMetrics("traffic", normalizeFilters(filters));
     } catch (err) {
       devLog("Error retrieving traffic details:", err);
       throw err;
     }
   }
 
+}
+
+export interface MetricsFilters {
+  /** ISO date YYYY-MM-DD (ET). If provided, takes precedence over `days`. */
+  from?: string;
+  /** ISO date YYYY-MM-DD (ET). If provided, takes precedence over `days`. */
+  to?: string;
+  /** Trailing-N-days lookback (fallback when from/to omitted). */
+  days?: number;
+  /** Restrict to a single agency. */
+  agency?: string;
+  /** Hour-of-day window in ET, inclusive. 0–23. */
+  hourFrom?: number;
+  hourTo?: number;
+}
+
+function normalizeFilters(input?: MetricsFilters | number): MetricsFilters | undefined {
+  if (input === undefined) return undefined;
+  if (typeof input === "number") return { days: input };
+  return input;
 }
