@@ -133,12 +133,24 @@ def get_user_display_map():
     return user_map
 
 
-def summarize_session_metrics(start_date=None, end_date=None, hour_from=None, hour_to=None):
+def summarize_session_metrics(start_date=None, end_date=None, hour_from=None, hour_to=None, agency_filter=None):
     """
     Aggregate ChatHistoryTable activity. Days, hours, and weekdays are bucketed in ET so that
-    "9 AM" reads as Eastern for MA admins. start_date / end_date / hour window are optional;
-    if omitted, all data is summarized.
+    "9 AM" reads as Eastern for MA admins. start_date / end_date / hour window / agency are
+    optional; if omitted, all data is summarized.
+
+    ChatHistoryTable has no agency column — when agency_filter is set we look up the user→agency
+    map from AnalyticsTable and skip sessions whose user_id isn't in that agency.
     """
+    user_display_map = get_user_display_map()
+    if agency_filter:
+        allowed_user_ids = {
+            uid for uid, info in user_display_map.items()
+            if info.get("agency") == agency_filter
+        }
+    else:
+        allowed_user_ids = None
+
     unique_users = set()
     total_sessions = 0
     total_messages = 0
@@ -172,6 +184,8 @@ def summarize_session_metrics(start_date=None, end_date=None, hour_from=None, ho
                 continue
 
             user_id = item.get("user_id")
+            if allowed_user_ids is not None and user_id not in allowed_user_ids:
+                continue
             if user_id:
                 unique_users.add(user_id)
 
@@ -194,8 +208,6 @@ def summarize_session_metrics(start_date=None, end_date=None, hour_from=None, ho
         last_evaluated_key = response.get("LastEvaluatedKey")
         if not last_evaluated_key:
             break
-
-    user_display_map = get_user_display_map()
 
     daily_breakdown = []
     for d, stats in sorted(daily_stats.items()):
@@ -509,7 +521,10 @@ def lambda_handler(event, context):
                 hour_from=hour_from, hour_to=hour_to,
             )
         elif metric_type == "traffic":
-            session_metrics = summarize_session_metrics(start_date, end_date, hour_from, hour_to)
+            session_metrics = summarize_session_metrics(
+                start_date, end_date, hour_from, hour_to,
+                agency_filter=agency_filter,
+            )
             response_data = {
                 "daily_breakdown": session_metrics["daily_breakdown"],
                 "hourly_distribution": session_metrics["hourly_distribution"],
@@ -531,7 +546,10 @@ def lambda_handler(event, context):
                 hour_from=hour_from, hour_to=hour_to,
             )
         else:
-            session_metrics = summarize_session_metrics(start_date, end_date, hour_from, hour_to)
+            session_metrics = summarize_session_metrics(
+                start_date, end_date, hour_from, hour_to,
+                agency_filter=agency_filter,
+            )
             response_data = {
                 "unique_users": session_metrics["unique_users"],
                 "total_sessions": session_metrics["total_sessions"],
