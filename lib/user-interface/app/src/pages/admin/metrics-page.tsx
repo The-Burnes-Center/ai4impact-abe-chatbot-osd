@@ -28,7 +28,6 @@ import {
   TextField,
   MenuItem,
   InputAdornment,
-  Slider,
   FormControlLabel,
   Switch,
   Paper,
@@ -176,15 +175,13 @@ interface FilterState {
   from: string; // YYYY-MM-DD
   to: string;   // YYYY-MM-DD
   agency: string; // "" = all
-  hourFrom: number; // 0..23
-  hourTo: number;   // 0..23
   compare: boolean;
 }
 
 function defaultFilters(): FilterState {
   const to = todayISO();
   const from = addDaysISO(to, -29);
-  return { preset: "30d", from, to, agency: "", hourFrom: 0, hourTo: 23, compare: false };
+  return { preset: "30d", from, to, agency: "", compare: false };
 }
 
 function presetToRange(key: PresetKey, currentFrom: string, currentTo: string): { from: string; to: string } {
@@ -201,8 +198,6 @@ function filtersFromSearchParams(params: URLSearchParams): FilterState {
   const fromParam = params.get("from");
   const toParam = params.get("to");
   const agency = params.get("agency") || "";
-  const hourFrom = Number.parseInt(params.get("hourFrom") || "", 10);
-  const hourTo = Number.parseInt(params.get("hourTo") || "", 10);
   const compare = params.get("compare") === "1";
 
   let from = base.from;
@@ -216,15 +211,7 @@ function filtersFromSearchParams(params: URLSearchParams): FilterState {
     to = r.to;
   }
 
-  return {
-    preset,
-    from,
-    to,
-    agency,
-    hourFrom: Number.isFinite(hourFrom) ? Math.max(0, Math.min(23, hourFrom)) : base.hourFrom,
-    hourTo: Number.isFinite(hourTo) ? Math.max(0, Math.min(23, hourTo)) : base.hourTo,
-    compare,
-  };
+  return { preset, from, to, agency, compare };
 }
 
 function filtersToSearchParams(state: FilterState): URLSearchParams {
@@ -235,10 +222,6 @@ function filtersToSearchParams(state: FilterState): URLSearchParams {
     params.set("to", state.to);
   }
   if (state.agency) params.set("agency", state.agency);
-  if (state.hourFrom !== 0 || state.hourTo !== 23) {
-    params.set("hourFrom", String(state.hourFrom));
-    params.set("hourTo", String(state.hourTo));
-  }
   if (state.compare) params.set("compare", "1");
   return params;
 }
@@ -246,10 +229,6 @@ function filtersToSearchParams(state: FilterState): URLSearchParams {
 function filterStateToApiFilters(state: FilterState): MetricsFilters {
   const filters: MetricsFilters = { from: state.from, to: state.to };
   if (state.agency) filters.agency = state.agency;
-  if (state.hourFrom !== 0 || state.hourTo !== 23) {
-    filters.hourFrom = state.hourFrom;
-    filters.hourTo = state.hourTo;
-  }
   return filters;
 }
 
@@ -259,10 +238,6 @@ function previousPeriodFilters(state: FilterState): MetricsFilters {
   const from = addDaysISO(to, -(span - 1));
   const filters: MetricsFilters = { from, to };
   if (state.agency) filters.agency = state.agency;
-  if (state.hourFrom !== 0 || state.hourTo !== 23) {
-    filters.hourFrom = state.hourFrom;
-    filters.hourTo = state.hourTo;
-  }
   return filters;
 }
 
@@ -464,29 +439,6 @@ function FilterBar({ state, onChange, agencies }: FilterBarProps) {
               </MenuItem>
             ))}
           </TextField>
-
-          <Box sx={{ minWidth: 280, px: 1 }}>
-            <Typography variant="caption" color="text.secondary">
-              Hour of day (ET): {state.hourFrom}:00 – {state.hourTo}:59
-            </Typography>
-            <Slider
-              size="small"
-              value={[state.hourFrom, state.hourTo]}
-              onChange={(_, v) => {
-                const [lo, hi] = v as number[];
-                onChange({ ...state, hourFrom: lo, hourTo: hi });
-              }}
-              valueLabelDisplay="auto"
-              min={0}
-              max={23}
-              marks={[
-                { value: 0, label: "0" },
-                { value: 9, label: "9" },
-                { value: 17, label: "17" },
-                { value: 23, label: "23" },
-              ]}
-            />
-          </Box>
 
           <FormControlLabel
             control={
