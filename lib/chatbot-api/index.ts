@@ -73,8 +73,7 @@ export class ChatBotApi extends Construct {
     
     const openSearch = new OpenSearchStack(this,"OpenSearchStack",{})
     const knowledgeBase = new KnowledgeBaseStack(this,"KnowledgeBaseStack",{ openSearch : openSearch,
-      s3bucket : buckets.knowledgeBucket,
-      supplementalBucket: buckets.knowledgeBaseSupplementalBucket})
+      s3bucket : buckets.knowledgeBucket})
 
     const restBackend = new RestBackendAPI(this, "RestBackend", { allowedOrigin: props.allowedOrigin })
     this.httpAPI = restBackend;

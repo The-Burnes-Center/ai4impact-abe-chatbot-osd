@@ -10,12 +10,6 @@ import { OpenSearchStack } from "../opensearch/opensearch";
 export interface KnowledgeBaseStackProps {
   readonly openSearch: OpenSearchStack;
   readonly s3bucket: s3.Bucket;
-  /**
-   * Supplemental storage bucket required when the data source uses
-   * parsingModality=MULTIMODAL. The Bedrock parser writes extracted page
-   * images and visual elements here; the KB reads them back at query time.
-   */
-  readonly supplementalBucket: s3.Bucket;
 }
 
 export class KnowledgeBaseStack extends Construct {
@@ -47,18 +41,6 @@ export class KnowledgeBaseStack extends Construct {
       resources: [props.s3bucket.bucketArn, props.s3bucket.bucketArn + "/*"],
     }));
 
-    // Bedrock KB needs read+write on the supplemental bucket so the multimodal
-    // parser can persist extracted page images during ingestion and the KB can
-    // retrieve them at query time.
-    props.openSearch.knowledgeBaseRole.addToPolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket'],
-      resources: [
-        props.supplementalBucket.bucketArn,
-        props.supplementalBucket.bucketArn + "/*",
-      ],
-    }));
-
     props.openSearch.knowledgeBaseRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['bedrock:InvokeModel'],
@@ -81,18 +63,6 @@ export class KnowledgeBaseStack extends Construct {
         type: 'VECTOR',
         vectorKnowledgeBaseConfiguration: {
           embeddingModelArn: `arn:aws:bedrock:${stack.region}::foundation-model/amazon.titan-embed-text-v2:0`,
-          // Required by Bedrock when any data source uses parsingModality=MULTIMODAL.
-          // The parser writes extracted images/visual elements here during ingestion.
-          supplementalDataStorageConfiguration: {
-            supplementalDataStorageLocations: [
-              {
-                supplementalDataStorageLocationType: 'S3',
-                s3Location: {
-                  uri: `s3://${props.supplementalBucket.bucketName}/`,
-                },
-              },
-            ],
-          },
         },
       },
       name: `${stack.stackName}-kb`,
