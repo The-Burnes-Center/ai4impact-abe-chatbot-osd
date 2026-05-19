@@ -339,6 +339,11 @@ export class LambdaFunctionStack extends Construct {
       layers: [pythonCommonLayer],
       environment: {
         "BUCKET": props.knowledgeBucket.bucketName,
+        // Used to remove a doc's chunks from the KB (DeleteKnowledgeBaseDocuments)
+        // before deleting the S3 source, so the chatbot can't keep citing
+        // a file an admin just removed.
+        "KB_ID": props.knowledgeBase.attrKnowledgeBaseId,
+        "DATA_SOURCE_ID": props.knowledgeBaseSource.attrDataSourceId,
       },
       timeout: cdk.Duration.seconds(30),
     });
@@ -351,6 +356,14 @@ export class LambdaFunctionStack extends Construct {
         's3:ListBucket',
       ],
       resources: [props.knowledgeBucket.bucketArn,props.knowledgeBucket.bucketArn+"/*"]
+    }));
+
+    deleteS3APIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'bedrock:DeleteKnowledgeBaseDocuments',
+      ],
+      resources: [props.knowledgeBase.attrKnowledgeBaseArn]
     }));
     this.deleteS3Function = deleteS3APIHandlerFunction;
 
