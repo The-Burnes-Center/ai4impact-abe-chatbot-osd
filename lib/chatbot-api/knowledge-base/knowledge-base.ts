@@ -62,28 +62,23 @@ export class KnowledgeBaseStack extends Construct {
     props.openSearch.knowledgeBaseRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       // InvokeModel: actually call the model during ingestion.
-      // GetInferenceProfile: Bedrock validates inference-profile ARNs at
-      //   DataSource create time when the parser references one. Without
-      //   this, the DataSource create fails with "Not authorized to call
-      //   GetInferenceProfile" even though InvokeModel is granted.
-      // GetFoundationModel: similar validation step for foundation-model
-      //   ARNs; granted defensively to avoid another deploy cycle.
+      // GetFoundationModel: Bedrock validates the parser model at DataSource
+      //   create time and reads it during ingestion. Without this the create
+      //   fails. Earlier attempts using a cross-region inference profile
+      //   needed bedrock:GetInferenceProfile too, but that validation races
+      //   IAM propagation (CFN reports the policy complete before IAM has
+      //   actually published it, so the call fails). Using a direct
+      //   foundation-model ARN here sidesteps that race entirely.
       actions: [
         'bedrock:InvokeModel',
-        'bedrock:GetInferenceProfile',
         'bedrock:GetFoundationModel',
       ],
       resources: [
         `arn:aws:bedrock:${stack.region}::foundation-model/amazon.titan-embed-text-v2:0`,
-        // Parser model for BEDROCK_FOUNDATION_MODEL parsingStrategy (vision-capable
-        // layout extraction so checkbox state survives ingestion).
-        `arn:aws:bedrock:${stack.region}::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0`,
-        `arn:aws:bedrock:${stack.region}:${stack.account}:inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0`,
-        // The us. inference profile dispatches across these regions; AWS requires
-        // explicit permission on each underlying foundation-model ARN.
-        `arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0`,
-        `arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0`,
-        `arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0`,
+        // Parser model for BEDROCK_FOUNDATION_MODEL parsingStrategy (Claude 3
+        // Sonnet — vision-capable, available natively in us-east-1, no
+        // inference profile required, documented as supported for KB parsing).
+        `arn:aws:bedrock:${stack.region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0`,
       ],
     }));
 
@@ -173,9 +168,11 @@ export class KnowledgeBaseStack extends Construct {
         parsingConfiguration: {
           parsingStrategy: 'BEDROCK_FOUNDATION_MODEL',
           bedrockFoundationModelConfiguration: {
-            // Cross-region inference profile — required for Claude 3.5 Sonnet
-            // v2 in us-east-1 and routes between us-east-1/2 and us-west-2.
-            modelArn: `arn:aws:bedrock:${stack.region}:${stack.account}:inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0`,
+            // Direct foundation-model ARN — avoids the inference-profile
+            // validation step at DataSource create time, which races IAM
+            // propagation (see role policy comment above). Claude 3 Sonnet is
+            // vision-capable and documented as supported for KB parsing.
+            modelArn: `arn:aws:bedrock:${stack.region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0`,
             // MULTIMODAL is essential — without it the FM parser falls back to
             // text-only extraction and the checkbox glyphs are still lost.
             parsingModality: 'MULTIMODAL',
@@ -200,6 +197,15 @@ export class KnowledgeBaseStack extends Construct {
     });
 
     dataSource.addDependency(knowledgeBase);
+
+    // The DataSource also calls Bedrock to validate the parser model at
+    // create time and Bedrock checks the role's permissions then. Even with
+    // the KB -> policy dep above, the dataSource needs its own dependency
+    // because CFN's transitive resolution doesn't always wait long enough for
+    // IAM propagation between resources.
+    if (kbRoleDefaultPolicy) {
+      dataSource.node.addDependency(kbRoleDefaultPolicy);
+    }
 
     dataSource.addPropertyOverride(
       'VectorIngestionConfiguration.ChunkingConfiguration.SemanticChunkingConfiguration',
