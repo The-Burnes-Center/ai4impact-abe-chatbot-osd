@@ -149,6 +149,9 @@ function renderWithCitations(
         if (source) {
           return <CitationBadge key={`${keyPrefix}-${i}`} source={source} onCitationClick={onCitationClick} />;
         }
+        // Source was filtered out (e.g., metadata.txt) — hide the dangling
+        // [N] rather than leaking it as literal text in the response.
+        return null;
       }
       return part;
     });
@@ -245,6 +248,23 @@ interface SourceGroup {
   cards: MergedCard[];
 }
 
+// When the LLM calls retrieve_full_document, it pulls many chunks from one
+// file, so the cited-pages list can balloon into a 12+ comma soup that's
+// hard to scan. Collapse anything past ~5 distinct pages into a count with
+// the page range, and detect the contiguous-from-zero case as 'Full document'.
+function formatPageList(pages: number[]): string {
+  if (pages.length === 0) return "";
+  if (pages.length === 1) return `Page ${pages[0]}`;
+  if (pages.length <= 5) return `Pages ${pages.join(", ")}`;
+  const min = pages[0];
+  const max = pages[pages.length - 1];
+  const isContiguous = max - min + 1 === pages.length;
+  if (isContiguous && min <= 1) {
+    return `Full document · ${pages.length} pages`;
+  }
+  return `${pages.length} pages cited · ${min}–${max}`;
+}
+
 function groupSources(sources: SourceItem[]): SourceGroup[] {
   const docGroups: Map<string, { title: string; s3Key: string | null; sourceType: SourceItem["sourceType"]; items: SourceItem[] }> = new Map();
   for (const src of sources) {
@@ -325,7 +345,16 @@ function ChatMessage(props: ChatMessageProps) {
 
   const sourcesArray: SourceItem[] = useMemo(() => {
     if (!props.message.metadata?.Sources) return [];
-    return (props.message.metadata.Sources as any[]);
+    // metadata.txt is an internal KB summary index, not a real reference doc.
+    // Drop it here so it disappears from both the inline [N] badges and the
+    // sources panel; chunkIndex-based lookups in renderWithCitations gracefully
+    // omit any [N] whose source got filtered out. Only KB sources are filtered
+    // — Excel index lookups (statewide contracts, etc.) always pass through.
+    return (props.message.metadata.Sources as SourceItem[]).filter((s) => {
+      if (s.sourceType !== "knowledgeBase") return true;
+      const name = (s.title || s.s3Key || "").toLowerCase();
+      return name !== "metadata.txt" && !name.endsWith("/metadata.txt");
+    });
   }, [props.message.metadata?.Sources]);
 
   const citedSources = useMemo(() => sourcesArray.filter(s => s.cited === true), [sourcesArray]);
@@ -760,9 +789,7 @@ function ChatMessage(props: ChatMessageProps) {
                             </Typography>
                             {allPages.length > 0 && (
                               <Typography variant="caption" className={styles.sourceRowMeta}>
-                                {allPages.length === 1
-                                  ? `Page ${allPages[0]}`
-                                  : `Pages ${allPages.join(", ")}`}
+                                {formatPageList(allPages)}
                               </Typography>
                             )}
                           </div>

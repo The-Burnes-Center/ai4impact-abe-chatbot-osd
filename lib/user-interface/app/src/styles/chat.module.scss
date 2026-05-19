@@ -417,15 +417,22 @@
 }
 
 .sourceRowHighlight {
-  animation: sourceHighlightPulse 1.5s ease-out;
+  animation: sourceHighlightPulse 1.8s ease-out;
+  border-color: var(--abe-primary, #14558f) !important;
 }
 
 @keyframes sourceHighlightPulse {
   0% {
     background-color: var(--abe-primaryLight, #e8f2fc);
+    box-shadow: 0 0 0 3px var(--abe-primaryLight, #e8f2fc);
+  }
+  60% {
+    background-color: var(--abe-primaryLight, #e8f2fc);
+    box-shadow: 0 0 0 0 transparent;
   }
   100% {
-    background-color: transparent;
+    background-color: var(--abe-surface, #ffffff);
+    box-shadow: 0 0 0 0 transparent;
   }
 }
 
