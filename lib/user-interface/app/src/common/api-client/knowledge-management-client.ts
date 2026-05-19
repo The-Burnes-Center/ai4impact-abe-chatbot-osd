@@ -63,25 +63,45 @@ export class KnowledgeManagementClient {
     }
   }
 
-  // Returns a list of documents in the S3 bucket (hard-coded on the backend)
-  async getDocuments(continuationToken?: string, pageIndex?: number) {
+  // Fast path: lists every file in the KB bucket with metadata-presence
+  // flags but no per-doc Bedrock sync status. The sync chips hydrate
+  // separately via getSyncStatusMap() so the table can render in ~300-500ms
+  // instead of blocking on Bedrock's paginated ListKnowledgeBaseDocuments.
+  async getDocuments() {
     const auth = await Utils.authenticate();
     const response = await fetch(this.API + '/s3-bucket-data', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization' : auth
+        'Authorization': auth,
       },
-      body: JSON.stringify({
-        continuationToken: continuationToken,
-        pageIndex: pageIndex,
-      }),
+      body: JSON.stringify({ mode: 'files' }),
     });
     if (!response.ok) {
       throw new Error('Failed to get files');
     }
-    const result = await response.json();
-    return result;
+    return await response.json();
+  }
+
+  // Per-document sync status keyed by S3 key. The backend caches this for
+  // 30s in the warm Lambda container, so repeat polls are effectively free.
+  // Pass refresh=true to bypass the cache (e.g. right after a sync finishes).
+  async getSyncStatusMap(
+    refresh = false,
+  ): Promise<{ syncStatus: Record<string, "synced" | "syncing" | "failed" | "not_yet_synced">; cached: boolean; ageMs: number }> {
+    const auth = await Utils.authenticate();
+    const response = await fetch(this.API + '/s3-bucket-data', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': auth,
+      },
+      body: JSON.stringify({ mode: 'syncStatus', refreshStatus: refresh }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to get sync status');
+    }
+    return await response.json();
   }
 
   // Deletes a given file on the S3 bucket (hardcoded on the backend!)

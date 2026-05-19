@@ -20,11 +20,15 @@ import {
   Collapse,
   TextField,
   InputAdornment,
+  Skeleton,
+  Alert,
+  Tooltip,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import AddIcon from "@mui/icons-material/Add";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import ClearIcon from "@mui/icons-material/Clear";
 import { useCallback, useContext, useEffect, useMemo, useState, useRef } from "react";
 import { AdminDataType } from "../../common/types";
 import { ApiClient } from "../../common/api-client/api-client";
@@ -64,22 +68,26 @@ export interface DocumentsTabProps {
 }
 
 const PAGE_SIZE = 25;
+type SyncChipStatus = "synced" | "syncing" | "failed" | "not_yet_synced";
 
 type DocItem = {
   Key?: string;
   LastModified?: string;
   Size?: number;
   HasMetadata?: boolean;
-  // Per-document Bedrock KB ingestion state -- determined entirely on the
-  // backend (get-s3 Lambda calls ListKnowledgeBaseDocuments and maps
-  // Bedrock's wider status vocabulary into one of these four values).
-  SyncStatus?: "synced" | "syncing" | "failed" | "not_yet_synced";
+  // Per-document Bedrock KB ingestion state -- hydrated from a separate
+  // /s3-bucket-data?mode=syncStatus call so the file table can render
+  // before Bedrock's slow paginated list returns. Undefined means we
+  // haven't heard back from Bedrock yet for this file.
+  SyncStatus?: SyncChipStatus;
 };
 
 export default function DocumentsTab(props: DocumentsTabProps) {
   const appContext = useContext(AppContext);
-  const apiClient = new ApiClient(appContext!);
-  const [loading, setLoading] = useState(true);
+  const apiClient = useMemo(() => new ApiClient(appContext!), [appContext]);
+  const [filesLoading, setFilesLoading] = useState(true);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncStats, setSyncStats] = useState<SyncStatistics | undefined>(undefined);
   const [currentPageIndex, setCurrentPageIndex] = useState(1);
@@ -88,25 +96,30 @@ export default function DocumentsTab(props: DocumentsTabProps) {
   const [showModalDelete, setShowModalDelete] = useState(false);
   const [showUploadArea, setShowUploadArea] = useState(false);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const { addNotification } = useNotifications();
   const previousSyncStatusRef = useRef<boolean>(false);
-  const syncPollCountRef = useRef(0);
+
+  // Debounce search input so each keystroke doesn't re-run the filter +
+  // reset pagination. 200ms is short enough to feel instant but lets a
+  // typist complete a word before re-rendering 500 rows.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim().toLowerCase()), 200);
+    return () => clearTimeout(t);
+  }, [search]);
 
   useEffect(() => {
     if (!props.lastSyncTime) {
       props.setShowUnsyncedAlert(false);
       return;
     }
-
     try {
       const lastSyncDate = new Date(props.lastSyncTime);
-
       if (isNaN(lastSyncDate.getTime())) {
         devError("Invalid lastSyncTime format:", props.lastSyncTime);
         props.setShowUnsyncedAlert(false);
         return;
       }
-
       // A file counts as "unsynced" only if it's both newer than the last
       // KB ingestion AND still missing an AI-generated summary. The
       // metadata-handler self-copies each processed file to write its
@@ -118,7 +131,6 @@ export default function DocumentsTab(props: DocumentsTabProps) {
         if (!file.LastModified) return false;
         return new Date(file.LastModified) > lastSyncDate;
       });
-
       props.setShowUnsyncedAlert(hasUnsyncedFiles);
     } catch (error) {
       devError("Error comparing sync time:", error);
@@ -126,65 +138,107 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     }
   }, [allItems, props.lastSyncTime, props.setShowUnsyncedAlert]);
 
-  // Load the entire bucket inventory in one call. The KB has at most a few
-  // hundred files, the backend already pages internally through
-  // ContinuationToken, and search needs to match across everything -- so
-  // there's no benefit to per-click server-side pagination, and big downside
-  // (search was scoped to the current page only). Pagination is purely
-  // client-side over the filtered set below.
+  // Load the file list (fast path -- S3 list + metadata flags only). The
+  // sync-status column is hydrated separately by loadSyncStatuses() so the
+  // table appears in ~300-500ms instead of blocking on Bedrock.
   const loadDocuments = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
-    if (!silent) setLoading(true);
+    if (!silent) setFilesLoading(true);
     try {
       const result = await apiClient.knowledgeManagement.getDocuments();
       const contents: DocItem[] = Array.isArray(result?.Contents) ? result.Contents : [];
-      setAllItems(contents);
-      await props.statusRefreshFunction();
+      setAllItems((prev) => {
+        // Preserve already-hydrated SyncStatus values so the chips don't
+        // flicker back to "Loading…" on every silent refresh.
+        const prevByKey = new Map(prev.map((p) => [p.Key, p.SyncStatus]));
+        return contents.map((c) => ({ ...c, SyncStatus: prevByKey.get(c.Key) }));
+      });
+      props.statusRefreshFunction();
     } catch (error) {
       devError(Utils.getErrorMessage(error));
+    } finally {
+      if (!silent) setFilesLoading(false);
     }
-    if (!silent) setLoading(false);
-  }, [appContext, props.documentType]);
+  }, [apiClient, props.statusRefreshFunction]);
+
+  const loadSyncStatuses = useCallback(
+    async ({ silent = false, refresh = false }: { silent?: boolean; refresh?: boolean } = {}) => {
+      if (!silent) setStatusLoading(true);
+      setStatusError(null);
+      try {
+        const { syncStatus } = await apiClient.knowledgeManagement.getSyncStatusMap(refresh);
+        setAllItems((prev) =>
+          prev.map((item) =>
+            item.Key ? { ...item, SyncStatus: syncStatus[item.Key] || "not_yet_synced" } : item,
+          ),
+        );
+      } catch (e) {
+        devError("Error loading sync statuses:", e);
+        if (!silent) setStatusError("Could not load sync status — chips may be out of date.");
+      } finally {
+        if (!silent) setStatusLoading(false);
+      }
+    },
+    [apiClient],
+  );
 
   useEffect(() => {
     loadDocuments();
-  }, [loadDocuments]);
+    loadSyncStatuses();
+  }, [loadDocuments, loadSyncStatuses]);
 
   const refreshPage = async () => {
-    await loadDocuments();
+    await Promise.all([loadDocuments(), loadSyncStatuses({ refresh: true })]);
   };
 
-  const columnDefinitions = getColumnDefinition(props.documentType, () => {});
+  const columnDefinitions = useMemo(
+    () => getColumnDefinition(props.documentType, () => {}, { syncStatusLoading: statusLoading }),
+    [props.documentType, statusLoading],
+  );
 
   const deleteSelectedFiles = async () => {
     if (!appContext) return;
-    setLoading(true);
+    setFilesLoading(true);
     setShowModalDelete(false);
 
-    const apiClient = new ApiClient(appContext!);
-    try {
-      await Promise.all(
-        selectedItems.map((s) =>
-          apiClient.knowledgeManagement.deleteFile(s.Key!)
-        )
+    const results = await Promise.allSettled(
+      selectedItems.map((s) => apiClient.knowledgeManagement.deleteFile(s.Key!)),
+    );
+    const failed = results
+      .map((r, i) => (r.status === "rejected" ? selectedItems[i].Key : null))
+      .filter((k): k is string => !!k);
+
+    if (failed.length === 0) {
+      addNotification("success", `Deleted ${selectedItems.length} file${selectedItems.length === 1 ? "" : "s"}.`);
+    } else if (failed.length === selectedItems.length) {
+      addNotification("error", "Could not delete files. Please try again.");
+    } else {
+      addNotification(
+        "warning",
+        `Deleted ${selectedItems.length - failed.length} file${selectedItems.length - failed.length === 1 ? "" : "s"}. ${failed.length} failed: ${failed.slice(0, 3).join(", ")}${failed.length > 3 ? "…" : ""}`,
       );
-    } catch (e) {
-      addNotification("error", "Error deleting files");
-      devError(e);
     }
-    await loadDocuments();
 
     setSelectedItems([]);
-    setLoading(false);
+    await loadDocuments();
+    loadSyncStatuses({ silent: true, refresh: true });
+    setFilesLoading(false);
   };
 
+  // Sync status polling. When syncing is in progress we poll Bedrock
+  // ingestion stats every 5s and refresh per-doc sync chips every 15s
+  // (without re-listing the full bucket). When idle we poll every 10s
+  // mainly to detect background scheduled syncs starting.
   useEffect(() => {
     if (!appContext) return undefined;
-    const apiClient = new ApiClient(appContext!);
-    let intervalId: NodeJS.Timeout | null = null;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    let cancelled = false;
+    let pollCount = 0;
 
-    const getStatus = async () => {
+    const tick = async () => {
       try {
         const result = await apiClient.knowledgeManagement.kendraIsSyncing();
+        if (cancelled) return;
+
         const isCurrentlySyncing = result.status === "STILL_SYNCING";
         const wasSyncing = previousSyncStatusRef.current;
 
@@ -192,58 +246,45 @@ export default function DocumentsTab(props: DocumentsTabProps) {
         setSyncStats(isCurrentlySyncing ? result.statistics : undefined);
 
         if (wasSyncing && !isCurrentlySyncing) {
-          // Sync just transitioned to done -- without this, the SYNC column
-          // keeps showing 'Syncing' / 'Not synced' until the user manually
-          // refreshes, even though the work is finished. Wait a beat for
-          // Bedrock to commit per-doc status, then re-pull the doc list
-          // silently so the table updates in place.
-          syncPollCountRef.current = 0;
-          try {
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-            await Promise.all([
-              props.statusRefreshFunction(),
-              loadDocuments({ silent: true }),
-            ]);
-          } catch (error) {
-            devError("Error refreshing after sync completion:", error);
-          }
+          // Sync just finished. Wait briefly for Bedrock to commit per-doc
+          // status, then refresh chips (bypassing the 30s cache) without
+          // re-listing the full bucket.
+          pollCount = 0;
+          setTimeout(() => {
+            if (!cancelled) {
+              loadSyncStatuses({ silent: true, refresh: true });
+              props.statusRefreshFunction();
+            }
+          }, 1200);
         } else if (isCurrentlySyncing) {
-          // Roughly every 15s (every 3rd 5s poll), silently re-pull the doc
-          // list so users see the SYNC column flip from 'Not synced' to
-          // 'Synced' progressively, instead of having to refresh manually.
-          syncPollCountRef.current += 1;
-          if (syncPollCountRef.current >= 3) {
-            syncPollCountRef.current = 0;
-            loadDocuments({ silent: true }).catch((e) =>
-              devError("Error silently refreshing docs during sync:", e),
-            );
+          // Roughly every 15s (every 3rd 5s poll), refresh the sync chips
+          // so admins see "Not synced" → "Synced" flip live. We DON'T
+          // re-list the bucket -- that's expensive and rarely useful
+          // mid-sync.
+          pollCount += 1;
+          if (pollCount >= 3) {
+            pollCount = 0;
+            loadSyncStatuses({ silent: true, refresh: true });
           }
         }
 
         previousSyncStatusRef.current = isCurrentlySyncing;
-
-        if (intervalId) {
-          clearInterval(intervalId);
-        }
-        const pollInterval = isCurrentlySyncing ? 5000 : 10000;
-        intervalId = setInterval(getStatus, pollInterval);
       } catch (error) {
-        addNotification(
-          "error",
-          "Error checking sync status, please try again later."
-        );
         devError("Error checking sync status:", error);
+      } finally {
+        if (!cancelled) {
+          if (intervalId) clearInterval(intervalId);
+          intervalId = setInterval(tick, previousSyncStatusRef.current ? 5000 : 10000);
+        }
       }
     };
 
-    getStatus();
-
+    tick();
     return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
+      cancelled = true;
+      if (intervalId) clearInterval(intervalId);
     };
-  }, [appContext, props, loadDocuments]);
+  }, [appContext, apiClient, loadSyncStatuses, props.statusRefreshFunction]);
 
   const syncKendra = async () => {
     if (syncing) return;
@@ -256,25 +297,9 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       // Bedrock ingestion. The endpoint kicks the orchestrator off
       // asynchronously and returns immediately; if the HTTP call resolves
       // without throwing, the dispatch succeeded. The Bedrock ingestion
-      // status is polled separately below via kendraIsSyncing().
+      // status is polled separately above via kendraIsSyncing().
       await apiClient.sync.triggerSyncNow();
-      setTimeout(async () => {
-        try {
-          const status = await apiClient.knowledgeManagement.kendraIsSyncing();
-          const isCurrentlySyncing = status.status === "STILL_SYNCING";
-          setSyncing(isCurrentlySyncing);
-          setSyncStats(isCurrentlySyncing ? status.statistics : undefined);
-          previousSyncStatusRef.current = isCurrentlySyncing;
-          if (!isCurrentlySyncing) {
-            await Promise.all([
-              props.statusRefreshFunction(),
-              loadDocuments({ silent: true }),
-            ]);
-          }
-        } catch (error) {
-          devError("Error in immediate status check:", error);
-        }
-      }, 2000);
+      addNotification("info", "Sync started. The status will update automatically.");
     } catch (error) {
       devError(error);
       // Show the backend's specific error (e.g. model-access / Marketplace
@@ -283,7 +308,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       const reason = Utils.getErrorMessage(error);
       addNotification(
         "error",
-        reason ? `Sync failed: ${reason}` : "Sync failed. Please try again later."
+        reason ? `Sync failed: ${reason}` : "Sync failed. Please try again later.",
       );
       setSyncing(false);
       previousSyncStatusRef.current = false;
@@ -296,26 +321,24 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     props.setShowUnsyncedAlert(true);
   };
 
-  const q = search.trim().toLowerCase();
-
-  // Filter the FULL inventory by search query. Previously search only saw
-  // the current S3 page, so most matches were invisible until the user
-  // paginated to them -- defeating the point of a search box.
+  // Filter the FULL inventory by debounced search query. Previously search
+  // only saw the current S3 page, so most matches were invisible until the
+  // user paginated to them.
   const filteredItems = useMemo(
     () =>
-      !q
+      !debouncedSearch
         ? allItems
         : allItems.filter((item) =>
-            (item.Key ?? "").toLowerCase().includes(q)
+            (item.Key ?? "").toLowerCase().includes(debouncedSearch),
           ),
-    [allItems, q]
+    [allItems, debouncedSearch],
   );
 
-  // Reset to page 1 whenever the search query changes so the user always
-  // sees their results from the top, not page 4 of stale pagination.
+  // Reset to page 1 whenever the (debounced) search query changes so the
+  // user always sees their results from the top.
   useEffect(() => {
     setCurrentPageIndex(1);
-  }, [q]);
+  }, [debouncedSearch]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const safePageIndex = Math.min(currentPageIndex, totalPages);
@@ -327,9 +350,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
 
   const toggleSelection = (item: DocItem) => {
     setSelectedItems((prev) =>
-      isSelected(item)
-        ? prev.filter((s) => s.Key !== item.Key)
-        : [...prev, item]
+      isSelected(item) ? prev.filter((s) => s.Key !== item.Key) : [...prev, item],
     );
   };
 
@@ -342,7 +363,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
   const togglePageSelectAll = () => {
     if (allPageSelected) {
       setSelectedItems((prev) =>
-        prev.filter((s) => !pageItems.some((f) => f.Key === s.Key))
+        prev.filter((s) => !pageItems.some((f) => f.Key === s.Key)),
       );
     } else {
       setSelectedItems((prev) => {
@@ -359,28 +380,77 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     }
   };
 
+  const totalSelectedSize = useMemo(
+    () => selectedItems.reduce((sum, s) => sum + (s.Size ?? 0), 0),
+    [selectedItems],
+  );
+
+  const showSkeletonRows = filesLoading && allItems.length === 0;
+  const skeletonRowCount = 6;
+
   return (
     <>
       <Dialog
         open={showModalDelete}
         onClose={() => setShowModalDelete(false)}
         aria-labelledby="delete-files-dialog-title"
+        maxWidth="sm"
+        fullWidth
       >
         <DialogTitle id="delete-files-dialog-title">
-          {"Delete file" + (selectedItems.length > 1 ? "s" : "")}
+          {selectedItems.length === 1
+            ? "Delete file?"
+            : `Delete ${selectedItems.length} files?`}
         </DialogTitle>
         <DialogContent>
-          <Typography>
-            Do you want to delete{" "}
-            {selectedItems.length === 1
-              ? `file ${selectedItems[0]?.Key}?`
-              : `${selectedItems.length} files?`}
+          <Typography variant="body2" sx={{ mb: 1.5 }}>
+            This permanently removes the file
+            {selectedItems.length === 1 ? "" : "s"} from the knowledge bucket.
+            The chatbot will stop citing
+            {selectedItems.length === 1 ? " it" : " them"} on the next sync.
+          </Typography>
+          <Paper
+            variant="outlined"
+            sx={{ maxHeight: 200, overflowY: "auto", p: 1.25 }}
+          >
+            <Stack spacing={0.5}>
+              {selectedItems.slice(0, 50).map((item) => (
+                <Stack
+                  key={item.Key}
+                  direction="row"
+                  justifyContent="space-between"
+                  spacing={2}
+                >
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {item.Key}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {Utils.bytesToSize(item.Size ?? 0)}
+                  </Typography>
+                </Stack>
+              ))}
+              {selectedItems.length > 50 && (
+                <Typography variant="caption" color="text.secondary">
+                  …and {selectedItems.length - 50} more
+                </Typography>
+              )}
+            </Stack>
+          </Paper>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+            Total: {Utils.bytesToSize(totalSelectedSize)}
           </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowModalDelete(false)}>Cancel</Button>
-          <Button onClick={deleteSelectedFiles} variant="contained">
-            Ok
+          <Button onClick={deleteSelectedFiles} variant="contained" color="error">
+            Delete
           </Button>
         </DialogActions>
       </Dialog>
@@ -388,15 +458,16 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       <Stack spacing={2}>
         {/* Toolbar */}
         <Stack
-          direction="row"
+          direction={{ xs: "column", md: "row" }}
           justifyContent="space-between"
-          alignItems="center"
+          alignItems={{ xs: "stretch", md: "flex-end" }}
+          spacing={2}
         >
-          <Box sx={{ minWidth: 0, flex: 1, pr: 2 }}>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
             <Typography variant="h6" component="h2">Files</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Please expect a delay for your changes to be reflected. Press
-              the refresh button to see the latest changes.
+              Files in the knowledge bucket. After uploading or deleting, run a
+              sync so the chatbot reflects the changes.
             </Typography>
             <TextField
               size="small"
@@ -411,14 +482,34 @@ export default function DocumentsTab(props: DocumentsTabProps) {
                     <SearchIcon fontSize="small" color="action" />
                   </InputAdornment>
                 ),
+                endAdornment: search ? (
+                  <InputAdornment position="end">
+                    <IconButton
+                      size="small"
+                      onClick={() => setSearch("")}
+                      aria-label="Clear search"
+                      edge="end"
+                    >
+                      <ClearIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ) : undefined,
               }}
               sx={{ maxWidth: 420 }}
             />
           </Box>
-          <Stack direction="row" spacing={1}>
-            <IconButton onClick={refreshPage} aria-label="Refresh">
-              <RefreshIcon />
-            </IconButton>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Tooltip title="Refresh file list and sync status">
+              <span>
+                <IconButton
+                  onClick={refreshPage}
+                  aria-label="Refresh"
+                  disabled={filesLoading}
+                >
+                  <RefreshIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
             <Button
               onClick={() => setShowUploadArea((v) => !v)}
               variant={showUploadArea ? "contained" : "outlined"}
@@ -428,7 +519,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
               {showUploadArea ? "Close" : "Add Files"}
             </Button>
             <Button
-              variant="contained"
+              variant="outlined"
               color="error"
               size="small"
               disabled={selectedItems.length === 0}
@@ -436,7 +527,9 @@ export default function DocumentsTab(props: DocumentsTabProps) {
                 if (selectedItems.length > 0) setShowModalDelete(true);
               }}
             >
-              Delete
+              {selectedItems.length > 0
+                ? `Delete (${selectedItems.length})`
+                : "Delete"}
             </Button>
             <Button
               variant="contained"
@@ -456,6 +549,8 @@ export default function DocumentsTab(props: DocumentsTabProps) {
           </Stack>
         </Stack>
 
+        {statusError && <Alert severity="warning" onClose={() => setStatusError(null)}>{statusError}</Alert>}
+
         {/* Inline upload area */}
         <Collapse in={showUploadArea} unmountOnExit>
           <Paper sx={{ p: 2.5 }}>
@@ -467,32 +562,70 @@ export default function DocumentsTab(props: DocumentsTabProps) {
         </Collapse>
 
         {/* File table */}
-        {loading ? (
-          <Box
-            role="status"
-            aria-label="Loading files"
-            sx={{ display: "flex", justifyContent: "center", p: 4 }}
-          >
-            <CircularProgress aria-hidden="true" />
-          </Box>
+        {showSkeletonRows ? (
+          <TableContainer component={Paper}>
+            <Table size="small" aria-label="Loading documents">
+              <TableHead>
+                <TableRow>
+                  <TableCell padding="checkbox">
+                    <Checkbox disabled />
+                  </TableCell>
+                  {columnDefinitions.map((col) => (
+                    <TableCell key={col.id} sx={{ fontWeight: "bold" }}>
+                      {col.header}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {Array.from({ length: skeletonRowCount }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell padding="checkbox">
+                      <Checkbox disabled />
+                    </TableCell>
+                    {columnDefinitions.map((col) => (
+                      <TableCell key={col.id}>
+                        <Skeleton variant="text" width={col.id === "name" ? "60%" : "70%"} />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
         ) : allItems.length === 0 ? (
-          <Box sx={{ textAlign: "center", p: 4 }}>
+          <Paper sx={{ textAlign: "center", p: 5 }}>
             <Typography variant="subtitle1" component="h3" gutterBottom>
               No files yet
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Add files to the knowledge base using the &ldquo;Add Files&rdquo; button above.
             </Typography>
-          </Box>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={() => setShowUploadArea(true)}
+            >
+              Add Files
+            </Button>
+          </Paper>
         ) : filteredItems.length === 0 ? (
-          <Box sx={{ textAlign: "center", p: 4 }}>
+          <Paper sx={{ textAlign: "center", p: 5 }}>
             <Typography variant="subtitle1" component="h3" gutterBottom>
               No matching files
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              No files match your search.
+              No files match &ldquo;{debouncedSearch}&rdquo;.
             </Typography>
-          </Box>
+            <Button
+              size="small"
+              onClick={() => setSearch("")}
+              sx={{ mt: 1 }}
+            >
+              Clear search
+            </Button>
+          </Paper>
         ) : (
           <TableContainer component={Paper}>
             <Table size="small" aria-label="Documents">
@@ -548,13 +681,13 @@ export default function DocumentsTab(props: DocumentsTabProps) {
             sx={{ py: 1 }}
           >
             <Typography variant="body2" color="text.secondary">
-              {q
+              {debouncedSearch
                 ? `${filteredItems.length} of ${allItems.length} file${allItems.length === 1 ? "" : "s"}`
                 : `${allItems.length} file${allItems.length === 1 ? "" : "s"}`}
               {filteredItems.length > 0 &&
                 ` — showing ${pageStart + 1}–${Math.min(
                   pageStart + PAGE_SIZE,
-                  filteredItems.length
+                  filteredItems.length,
                 )}`}
             </Typography>
             <Stack direction="row" spacing={2} alignItems="center">

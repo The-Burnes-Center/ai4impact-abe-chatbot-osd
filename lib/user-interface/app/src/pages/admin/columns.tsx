@@ -3,7 +3,7 @@ import { AdminDataType } from "../../common/types";
 import { DateTime } from "luxon";
 import { Utils } from "../../common/utils";
 import { useNavigate } from "react-router-dom";
-import { Button, Tooltip, Chip, Stack, Typography, Box, IconButton } from "@mui/material";
+import { Button, Tooltip, Chip, Stack, Typography, Box, IconButton, Skeleton } from "@mui/material";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { TruncatedTextCell } from "../../components/truncated-text-call";
@@ -84,7 +84,7 @@ function CellTooltipContent({ metrics }: { metrics: { label: string; pct: number
 export function getColumnDefinition(
   documentType: AdminDataType,
   onProblemClick: (item: any) => void,
-  options?: { onDeleteEvaluation?: (item: any) => void }
+  options?: { onDeleteEvaluation?: (item: any) => void; syncStatusLoading?: boolean }
 ): ColumnDefinition[] {
   function ViewDetailsButton({ evaluationId, evalName }: { evaluationId: string; evalName?: string }) {
     const navigate = useNavigate();
@@ -391,6 +391,12 @@ export function getColumnDefinition(
         />
       ),
       cell: (item) => {
+        // While Bedrock status is still loading we render a skeleton chip
+        // instead of defaulting to "Not synced", which would lie to admins
+        // for the first second or two of every page load.
+        if (item.SyncStatus === undefined && options?.syncStatusLoading) {
+          return <Skeleton variant="rounded" width={72} height={24} />;
+        }
         const chip = SYNC_STATUS_CHIPS[item.SyncStatus] ?? SYNC_STATUS_CHIPS.not_yet_synced;
         return (
           <Tooltip title={chip.tip} arrow>
