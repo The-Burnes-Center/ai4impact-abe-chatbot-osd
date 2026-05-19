@@ -160,7 +160,18 @@ export class EvaluationsClient {
       },
       body: JSON.stringify({ fileName, fileType }),
     });
-    if (!response.ok) throw new Error("Failed to get upload URL");
+    if (!response.ok) {
+      // Surface the backend's specific error (e.g. which character in the
+      // filename was rejected) instead of a generic "Failed to get upload URL".
+      let serverMessage: string | undefined;
+      try {
+        const errorBody = await response.json();
+        serverMessage = errorBody?.error || errorBody?.message;
+      } catch {
+        // Response body wasn't JSON; fall through to generic message.
+      }
+      throw new Error(serverMessage ?? "Failed to get upload URL.");
+    }
     const data = await response.json();
     return data.signedUrl;
   }
