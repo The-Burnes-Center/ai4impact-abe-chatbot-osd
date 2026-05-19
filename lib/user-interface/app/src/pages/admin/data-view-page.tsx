@@ -30,6 +30,8 @@ export default function DataPage() {
     status: string;
     startedAt: string | null;
     completedAt: string | null;
+    // Present when status === "FAILED"; Bedrock's failure reason string.
+    failureMessage?: string | null;
   } | null>(null);
   const [showUnsyncedAlert, setShowUnsyncedAlert] = useState(false);
   const [syncSchedule, setSyncSchedule] = useState<SyncSchedule | null>(null);
@@ -41,6 +43,11 @@ export default function DataPage() {
       setLastSyncData(syncData);
       if (syncData.status === "COMPLETE" && syncData.completedAt) {
         setLastSyncTime(Utils.formatToEasternTime(syncData.completedAt));
+      } else if (syncData.status === "FAILED") {
+        const when = syncData.completedAt
+          ? Utils.formatToEasternTime(syncData.completedAt)
+          : "recently";
+        setLastSyncTime(`Failed ${when}`);
       } else if (syncData.status === "NO_SYNC_HISTORY") {
         setLastSyncTime("No sync history available");
       } else {
@@ -59,6 +66,7 @@ export default function DataPage() {
   const kbChipVariant = (): StatusVariant => {
     if (!lastSyncData) return "empty";
     if (lastSyncData.status === "COMPLETE") return "ready";
+    if (lastSyncData.status === "FAILED") return "error";
     if (lastSyncData.status === "NO_SYNC_HISTORY") return "empty";
     return "processing";
   };
@@ -66,6 +74,7 @@ export default function DataPage() {
   const kbChipLabel = (): string => {
     if (!lastSyncData) return "Loading";
     if (lastSyncData.status === "COMPLETE") return "Synced";
+    if (lastSyncData.status === "FAILED") return "Sync failed";
     if (lastSyncData.status === "NO_SYNC_HISTORY") return "Never synced";
     return "Syncing";
   };
@@ -73,6 +82,14 @@ export default function DataPage() {
   const kbDetail = (): string => {
     if (lastSyncData?.status === "COMPLETE" && lastSyncTime) {
       return lastSyncTime;
+    }
+    if (lastSyncData?.status === "FAILED") {
+      // Show "Failed <when>" plus the Bedrock reason if we got one, so the
+      // admin can see *why* it failed without digging into CloudWatch.
+      const base = lastSyncTime || "Sync failed";
+      return lastSyncData.failureMessage
+        ? `${base} — ${lastSyncData.failureMessage}`
+        : base;
     }
     return lastSyncTime || "";
   };

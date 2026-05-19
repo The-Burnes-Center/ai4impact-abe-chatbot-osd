@@ -120,7 +120,19 @@ export class SyncClient {
         Authorization: auth,
       },
     });
-    if (!response.ok) throw new Error("Failed to trigger sync");
+    if (!response.ok) {
+      // Surface the backend's specific error (e.g. "Model access is denied
+      // due to ...") instead of a generic "Failed to trigger sync" message
+      // that gives admins no clue what's actually wrong.
+      let serverMessage: string | undefined;
+      try {
+        const errorBody = await response.json();
+        serverMessage = errorBody?.error || errorBody?.message;
+      } catch {
+        // Response body wasn't JSON; fall through to generic message.
+      }
+      throw new Error(serverMessage ?? "Failed to trigger sync.");
+    }
     return response.json();
   }
 }

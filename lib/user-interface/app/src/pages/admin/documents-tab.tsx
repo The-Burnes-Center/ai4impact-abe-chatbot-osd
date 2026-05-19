@@ -228,9 +228,13 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       }, 2000);
     } catch (error) {
       devError(error);
+      // Show the backend's specific error (e.g. model-access / Marketplace
+      // subscription problems) rather than a generic "try again later" that
+      // leaves admins guessing whether it's transient or actually broken.
+      const reason = Utils.getErrorMessage(error);
       addNotification(
         "error",
-        "Error running sync, please try again later."
+        reason ? `Sync failed: ${reason}` : "Sync failed. Please try again later."
       );
       setSyncing(false);
       previousSyncStatusRef.current = false;

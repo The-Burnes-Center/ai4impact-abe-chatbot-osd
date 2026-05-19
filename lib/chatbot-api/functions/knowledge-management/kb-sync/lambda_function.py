@@ -59,10 +59,15 @@ def check_running():
         return True
     return False
 
-def get_last_sync():    
+def get_last_sync():
     logger.info(f"Getting last sync time. KB_ID: {kb_index}, Source: {source_index}")
-    
+
     try:
+        # Include FAILED jobs alongside COMPLETE so the UI can show a "Failed"
+        # state when the most recent ingestion attempt didn't succeed.
+        # Previously this only returned COMPLETE jobs, so a failed ingestion
+        # was invisible -- the chip kept showing the previous successful sync
+        # as if everything were fine.
         syncs = client.list_ingestion_jobs(
             dataSourceId=source_index,
             knowledgeBaseId=kb_index,
@@ -71,13 +76,14 @@ def get_last_sync():
                 'operator': 'EQ',
                 'values': [
                     'COMPLETE',
+                    'FAILED',
                 ]
             }]
         )
         hist = syncs["ingestionJobSummaries"]
-        
+
         if len(hist) == 0:
-            logger.warning("No completed sync jobs found")
+            logger.warning("No completed or failed sync jobs found")
             return {
                 'statusCode': 200,
                 'headers': {'Access-Control-Allow-Origin': '*'},
@@ -88,33 +94,40 @@ def get_last_sync():
                     'completedAt': None
                 })
             }
-        
+
         # Sort by updatedAt descending to get the most recent sync job
         # The API might not return results in chronological order
         # For COMPLETE jobs, updatedAt represents the completion time
         hist_sorted = sorted(hist, key=lambda x: x["updatedAt"], reverse=True)
         most_recent = hist_sorted[0]
-        
-        logger.info(f"Found {len(hist)} completed sync job(s). Most recent: {most_recent.get('ingestionJobId', 'N/A')}")
+        most_recent_status = most_recent.get('status', 'COMPLETE')
+
+        logger.info(f"Found {len(hist)} terminal sync job(s). Most recent: {most_recent.get('ingestionJobId', 'N/A')} status={most_recent_status}")
         logger.info(f"Most recent sync startedAt: {most_recent.get('startedAt')}")
         logger.info(f"Most recent sync updatedAt (completion): {most_recent['updatedAt']}")
-        
+
         from datetime import timezone
         started_at = most_recent.get('startedAt')
         completed_at = most_recent['updatedAt']
-        
+
         if started_at and started_at.tzinfo is None:
             started_at = started_at.replace(tzinfo=timezone.utc)
         if completed_at.tzinfo is None:
             completed_at = completed_at.replace(tzinfo=timezone.utc)
-        
+
         started_at_iso = started_at.isoformat().replace('+00:00', 'Z') if started_at else None
         completed_at_iso = completed_at.isoformat().replace('+00:00', 'Z')
-        
+
+        # For FAILED jobs, surface the failure reason if Bedrock provided one
+        # so the dashboard can show it inline next to the chip.
+        failure_reasons = most_recent.get('failureReasons') or []
+        failure_message = '; '.join(failure_reasons) if failure_reasons else None
+
         response_data = {
-            'status': 'COMPLETE',
+            'status': most_recent_status,  # 'COMPLETE' or 'FAILED'
             'startedAt': started_at_iso,
-            'completedAt': completed_at_iso
+            'completedAt': completed_at_iso,
+            'failureMessage': failure_message,
         }
         
         logger.info(f"Returning sync data: {response_data}")
