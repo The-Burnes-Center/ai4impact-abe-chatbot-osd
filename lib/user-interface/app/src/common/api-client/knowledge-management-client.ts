@@ -4,6 +4,19 @@ import {
 
 import { AppConfig } from "../types";
 
+export interface SyncStatistics {
+  scanned: number;
+  indexed: number;
+  modified: number;
+  deleted: number;
+  failed: number;
+}
+
+export interface SyncStatus {
+  status: "STILL_SYNCING" | "DONE_SYNCING";
+  statistics?: SyncStatistics;
+}
+
 export class KnowledgeManagementClient {
 
   private readonly API;
@@ -103,8 +116,9 @@ export class KnowledgeManagementClient {
     return await response.json()
   }
 
-  // Checks if Kendra is currently syncing (used to disable the sync button)
-  async kendraIsSyncing() : Promise<string> {
+  // Checks if Bedrock KB is currently syncing. Returns the live ingestion
+  // job statistics while in-progress so the UI can show a progress percent.
+  async kendraIsSyncing() : Promise<SyncStatus> {
     const auth = await Utils.authenticate();
     const response = await fetch(this.API + '/kb-sync/still-syncing', {headers: {
       'Content-Type': 'application/json',
@@ -113,7 +127,14 @@ export class KnowledgeManagementClient {
     if (!response.ok) {
       throw new Error('Failed to check sync status');
     }
-    return await response.json()
+    const raw = await response.json();
+    // The Lambda historically returned a plain "STILL SYNCING" / "DONE SYNCING"
+    // string. Accept that too so a partial deploy (frontend ahead of backend
+    // or vice versa) doesn't blow up the admin page.
+    if (typeof raw === 'string') {
+      return { status: raw === 'DONE SYNCING' ? 'DONE_SYNCING' : 'STILL_SYNCING' };
+    }
+    return raw as SyncStatus;
   }
 
   // Checks the last time Kendra was synced

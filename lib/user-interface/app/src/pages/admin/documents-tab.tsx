@@ -33,9 +33,24 @@ import { getColumnDefinition } from "./columns";
 import { Utils } from "../../common/utils";
 import { useNotifications } from "../../components/notif-manager";
 import DataFileUpload from "./file-upload-tab";
+import type { SyncStatistics } from "../../common/api-client/knowledge-management-client";
 
 function devError(...args: unknown[]) {
   if (import.meta.env.DEV) console.error(...args);
+}
+
+// `total` comes from the S3 listing (excluding metadata.txt) and may drift
+// by a doc or two against what Bedrock counts, so clamp the percent to 100
+// and fall back to a raw counter if total isn't ready yet.
+function formatSyncLabel(stats: SyncStatistics | undefined, total: number): string {
+  if (!stats) return "Syncing data...";
+  const scanned = stats.scanned ?? 0;
+  if (total > 0) {
+    const pct = Math.min(100, Math.round((scanned / total) * 100));
+    return `Syncing ${scanned}/${total} (${pct}%)`;
+  }
+  if (scanned > 0) return `Syncing ${scanned} docs...`;
+  return "Syncing data...";
 }
 
 export interface DocumentsTabProps {
@@ -63,6 +78,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
   const apiClient = new ApiClient(appContext!);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [syncStats, setSyncStats] = useState<SyncStatistics | undefined>(undefined);
   const [currentPageIndex, setCurrentPageIndex] = useState(1);
   const [allItems, setAllItems] = useState<DocItem[]>([]);
   const [selectedItems, setSelectedItems] = useState<DocItem[]>([]);
@@ -165,10 +181,11 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     const getStatus = async () => {
       try {
         const result = await apiClient.knowledgeManagement.kendraIsSyncing();
-        const isCurrentlySyncing = result !== "DONE SYNCING";
+        const isCurrentlySyncing = result.status === "STILL_SYNCING";
         const wasSyncing = previousSyncStatusRef.current;
 
         setSyncing(isCurrentlySyncing);
+        setSyncStats(isCurrentlySyncing ? result.statistics : undefined);
 
         if (wasSyncing && !isCurrentlySyncing) {
           try {
@@ -220,8 +237,9 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       setTimeout(async () => {
         try {
           const status = await apiClient.knowledgeManagement.kendraIsSyncing();
-          const isCurrentlySyncing = status !== "DONE SYNCING";
+          const isCurrentlySyncing = status.status === "STILL_SYNCING";
           setSyncing(isCurrentlySyncing);
+          setSyncStats(isCurrentlySyncing ? status.statistics : undefined);
           previousSyncStatusRef.current = isCurrentlySyncing;
           if (!isCurrentlySyncing) {
             await props.statusRefreshFunction();
@@ -401,7 +419,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
             >
               {syncing ? (
                 <Stack direction="row" spacing={1} alignItems="center">
-                  <span>Syncing data...</span>
+                  <span>{formatSyncLabel(syncStats, allItems.length)}</span>
                   <CircularProgress size={16} color="inherit" aria-hidden="true" />
                 </Stack>
               ) : (

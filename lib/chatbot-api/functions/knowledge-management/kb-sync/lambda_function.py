@@ -14,50 +14,62 @@ source_index = os.environ['SOURCE']
 # Initialize a Bedrock Agent client
 client = boto3.client('bedrock-agent')
 
-def check_running():
+def get_active_job():
     """
-    Check if any sync jobs for the specified data source and index are currently running.
-
-    Returns:
-        bool: True if there are any ongoing sync or sync-indexing jobs, False otherwise.
+    Return the most recent in-progress or starting ingestion job summary, or
+    None if no sync is running. Bedrock's list_ingestion_jobs filter only
+    accepts one status value per call, so we make two calls and merge.
     """
     logger.info(f"Checking for running sync jobs. KB_ID: {kb_index}, Source: {source_index}")
-    
-    # List ongoing sync jobs with status 'SYNCING'
+
     syncing = client.list_ingestion_jobs(
         dataSourceId=source_index,
         knowledgeBaseId=kb_index,
-        filters=[{
-            'attribute': 'STATUS',
-            'operator': 'EQ',
-            'values': [
-                'IN_PROGRESS',
-            ]
-        }]
+        filters=[{'attribute': 'STATUS', 'operator': 'EQ', 'values': ['IN_PROGRESS']}]
     )
-    
-    # List ongoing sync jobs with status 'STARTING'
     starting = client.list_ingestion_jobs(
         dataSourceId=source_index,
         knowledgeBaseId=kb_index,
-        filters=[{
-            'attribute': 'STATUS',
-            'operator': 'EQ',
-            'values': [
-                'STARTING',
-            ]
-        }]
+        filters=[{'attribute': 'STATUS', 'operator': 'EQ', 'values': ['STARTING']}]
     )
-    
-    # Combine the history of both job types
     hist = starting['ingestionJobSummaries'] + syncing['ingestionJobSummaries']
-    
     logger.info(f"Found {len(hist)} running sync job(s)")
-    
-    # Check if there are any jobs in the history
-    if len(hist) > 0:
-        return True
-    return False
+    if not hist:
+        return None
+    return sorted(hist, key=lambda j: j['startedAt'], reverse=True)[0]
+
+
+def check_running():
+    """Backwards-compatible boolean wrapper used by the sync-start handler."""
+    return get_active_job() is not None
+
+
+def get_job_progress(job_summary):
+    """
+    Pull the live statistics dict off the active ingestion job. Bedrock's
+    list_ingestion_jobs response includes statistics on the summary itself,
+    so we don't need an extra get_ingestion_job call; if the field is
+    missing for any reason we fall back to a get_ingestion_job lookup.
+    """
+    stats = job_summary.get('statistics')
+    if not stats:
+        try:
+            detail = client.get_ingestion_job(
+                knowledgeBaseId=kb_index,
+                dataSourceId=source_index,
+                ingestionJobId=job_summary['ingestionJobId'],
+            )
+            stats = detail.get('ingestionJob', {}).get('statistics') or {}
+        except Exception as e:
+            logger.warning(f"Could not fetch ingestion job stats: {e}")
+            stats = {}
+    return {
+        'scanned': stats.get('numberOfDocumentsScanned', 0),
+        'indexed': stats.get('numberOfNewDocumentsIndexed', 0),
+        'modified': stats.get('numberOfModifiedDocumentsIndexed', 0),
+        'deleted': stats.get('numberOfDocumentsDeleted', 0),
+        'failed': stats.get('numberOfDocumentsFailed', 0),
+    }
 
 def get_last_sync():
     logger.info(f"Getting last sync time. KB_ID: {kb_index}, Source: {source_index}")
@@ -222,17 +234,26 @@ def lambda_handler(event, context):
                 'body': json.dumps('STARTED SYNCING')
             }
    
-    # Check if the request is for checking the sync status        
+    # Check if the request is for checking the sync status
     elif "still-syncing" in resource_path:
         logger.info("Processing still-syncing status check")
-        is_running = check_running()
-        status_msg = 'STILL SYNCING' if is_running else 'DONE SYNCING'
-        logger.info(f"Sync status: {status_msg}")
+        active = get_active_job()
+        if active is None:
+            return {
+                'statusCode': 200,
+                'headers': {'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'status': 'DONE_SYNCING'})
+            }
+        progress = get_job_progress(active)
+        logger.info(f"Sync in progress: {progress}")
         return {
             'statusCode': 200,
             'headers': {'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps(status_msg)
-            }
+            'body': json.dumps({
+                'status': 'STILL_SYNCING',
+                'statistics': progress,
+            })
+        }
     elif "last-sync" in resource_path:
         logger.info("Processing last-sync request")
         return get_last_sync()
