@@ -95,7 +95,13 @@ export class KnowledgeBaseStack extends Construct {
           },
         },
       },
-      name: `${stack.stackName}-kb`,
+      // -v2 suffix forces a clean create-then-delete in CloudFormation when the
+      // KB is replaced (e.g. enabling multimodal parsing requires replacement,
+      // and CFN would otherwise try to create a new resource with the same name
+      // as the existing one and fail with AlreadyExists). The OpenSearch
+      // collection + vector index are shared; orphan chunks from the old KB
+      // remain in the index, filtered out at retrieval by KB-ID metadata.
+      name: `${stack.stackName}-kb-v2`,
       roleArn: props.openSearch.knowledgeBaseRole.roleArn,
       storageConfiguration: {
         type: 'OPENSEARCH_SERVERLESS',
