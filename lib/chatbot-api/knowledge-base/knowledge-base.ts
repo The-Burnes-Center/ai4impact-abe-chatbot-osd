@@ -28,6 +28,28 @@ export class KnowledgeBaseStack extends Construct {
 
     const stack = cdk.Stack.of(this);
 
+    // Parser model for BEDROCK_FOUNDATION_MODEL parsing. Bedrock KB only
+    // accepts a static list of model IDs as parsers and requires the model
+    // to be (a) on that allowlist, (b) directly available as a foundation
+    // model in this region (cross-region inference profiles are rejected),
+    // and (c) Marketplace-subscribed in the account.
+    //
+    // Default = Claude 3 Sonnet: on the parser allowlist, directly
+    // available in us-east-1, requires a one-time Marketplace bootstrap
+    // by an admin with aws-marketplace:Subscribe (see ops runbook).
+    //
+    // Preferred = Claude 3.5 Sonnet v1 (better quality): also on the
+    // allowlist, but in some us-east-1 accounts only reachable through a
+    // cross-region inference profile -- which the KB parser rejects. Try
+    // it with:
+    //   cdk deploy -c kbParserModel=anthropic.claude-3-5-sonnet-20240620-v1:0
+    //
+    // IAM grants below cover both models, so swapping is just a redeploy
+    // with the context flag -- no IAM change needed.
+    const PARSER_MODEL_ID: string =
+      stack.node.tryGetContext('kbParserModel') ??
+      'anthropic.claude-3-sonnet-20240229-v1:0';
+
     // Resources use `scope` (not `this`) to preserve existing CloudFormation
     // logical IDs. Switching to `this` would change IDs and recreate resources.
 
@@ -75,10 +97,10 @@ export class KnowledgeBaseStack extends Construct {
       ],
       resources: [
         `arn:aws:bedrock:${stack.region}::foundation-model/amazon.titan-embed-text-v2:0`,
-        // Parser model for BEDROCK_FOUNDATION_MODEL parsingStrategy (Claude 3
-        // Sonnet — vision-capable, available natively in us-east-1, no
-        // inference profile required, documented as supported for KB parsing).
-        `arn:aws:bedrock:${stack.region}::foundation-model/anthropic.claude-sonnet-4-6`,
+        // Allow both candidate parser models so switching between them
+        // (via the kbParserModel CDK context) doesn't need an IAM update.
+        `arn:aws:bedrock:${stack.region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0`,
+        `arn:aws:bedrock:${stack.region}::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0`,
       ],
     }));
 
@@ -170,9 +192,10 @@ export class KnowledgeBaseStack extends Construct {
           bedrockFoundationModelConfiguration: {
             // Direct foundation-model ARN — avoids the inference-profile
             // validation step at DataSource create time, which races IAM
-            // propagation (see role policy comment above). Claude 3 Sonnet is
-            // vision-capable and documented as supported for KB parsing.
-            modelArn: `arn:aws:bedrock:${stack.region}::foundation-model/anthropic.claude-sonnet-4-6`,
+            // propagation. Model ID is parameterized via PARSER_MODEL_ID
+            // (see top of constructor) so switching between candidate
+            // parsers is one `-c kbParserModel=...` flag.
+            modelArn: `arn:aws:bedrock:${stack.region}::foundation-model/${PARSER_MODEL_ID}`,
             // MULTIMODAL is essential — without it the FM parser falls back to
             // text-only extraction and the checkbox glyphs are still lost.
             parsingModality: 'MULTIMODAL',
