@@ -78,7 +78,7 @@ export class KnowledgeBaseStack extends Construct {
         // Parser model for BEDROCK_FOUNDATION_MODEL parsingStrategy (Claude 3
         // Sonnet — vision-capable, available natively in us-east-1, no
         // inference profile required, documented as supported for KB parsing).
-        `arn:aws:bedrock:${stack.region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0`,
+        `arn:aws:bedrock:${stack.region}::foundation-model/anthropic.claude-sonnet-4-6`,
       ],
     }));
 
@@ -172,7 +172,7 @@ export class KnowledgeBaseStack extends Construct {
             // validation step at DataSource create time, which races IAM
             // propagation (see role policy comment above). Claude 3 Sonnet is
             // vision-capable and documented as supported for KB parsing.
-            modelArn: `arn:aws:bedrock:${stack.region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0`,
+            modelArn: `arn:aws:bedrock:${stack.region}::foundation-model/anthropic.claude-sonnet-4-6`,
             // MULTIMODAL is essential — without it the FM parser falls back to
             // text-only extraction and the checkbox glyphs are still lost.
             parsingModality: 'MULTIMODAL',
