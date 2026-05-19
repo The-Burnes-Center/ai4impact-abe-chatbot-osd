@@ -40,14 +40,17 @@ function devError(...args: unknown[]) {
 }
 
 // `total` comes from the S3 listing (excluding metadata.txt) and may drift
-// by a doc or two against what Bedrock counts, so clamp the percent to 100
-// and fall back to a raw counter if total isn't ready yet.
+// against Bedrock's count -- Bedrock can include the metadata.txt summary
+// file or briefly count docs flagged for delete, so scanned > total is
+// possible. Clamp both the count and the percent so we never display
+// nonsense like "200/199 (100%)".
 function formatSyncLabel(stats: SyncStatistics | undefined, total: number): string {
   if (!stats) return "Syncing data...";
   const scanned = stats.scanned ?? 0;
   if (total > 0) {
+    const display = Math.min(scanned, total);
     const pct = Math.min(100, Math.round((scanned / total) * 100));
-    return `Syncing ${scanned}/${total} (${pct}%)`;
+    return `Syncing ${display}/${total} (${pct}%)`;
   }
   if (scanned > 0) return `Syncing ${scanned} docs...`;
   return "Syncing data...";
@@ -87,6 +90,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
   const [search, setSearch] = useState("");
   const { addNotification } = useNotifications();
   const previousSyncStatusRef = useRef<boolean>(false);
+  const syncPollCountRef = useRef(0);
 
   useEffect(() => {
     if (!props.lastSyncTime) {
@@ -128,8 +132,8 @@ export default function DocumentsTab(props: DocumentsTabProps) {
   // there's no benefit to per-click server-side pagination, and big downside
   // (search was scoped to the current page only). Pagination is purely
   // client-side over the filtered set below.
-  const loadDocuments = useCallback(async () => {
-    setLoading(true);
+  const loadDocuments = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const result = await apiClient.knowledgeManagement.getDocuments();
       const contents: DocItem[] = Array.isArray(result?.Contents) ? result.Contents : [];
@@ -138,7 +142,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     } catch (error) {
       devError(Utils.getErrorMessage(error));
     }
-    setLoading(false);
+    if (!silent) setLoading(false);
   }, [appContext, props.documentType]);
 
   useEffect(() => {
@@ -188,11 +192,31 @@ export default function DocumentsTab(props: DocumentsTabProps) {
         setSyncStats(isCurrentlySyncing ? result.statistics : undefined);
 
         if (wasSyncing && !isCurrentlySyncing) {
+          // Sync just transitioned to done -- without this, the SYNC column
+          // keeps showing 'Syncing' / 'Not synced' until the user manually
+          // refreshes, even though the work is finished. Wait a beat for
+          // Bedrock to commit per-doc status, then re-pull the doc list
+          // silently so the table updates in place.
+          syncPollCountRef.current = 0;
           try {
             await new Promise((resolve) => setTimeout(resolve, 1000));
-            await props.statusRefreshFunction();
+            await Promise.all([
+              props.statusRefreshFunction(),
+              loadDocuments({ silent: true }),
+            ]);
           } catch (error) {
-            devError("Error calling statusRefreshFunction():", error);
+            devError("Error refreshing after sync completion:", error);
+          }
+        } else if (isCurrentlySyncing) {
+          // Roughly every 15s (every 3rd 5s poll), silently re-pull the doc
+          // list so users see the SYNC column flip from 'Not synced' to
+          // 'Synced' progressively, instead of having to refresh manually.
+          syncPollCountRef.current += 1;
+          if (syncPollCountRef.current >= 3) {
+            syncPollCountRef.current = 0;
+            loadDocuments({ silent: true }).catch((e) =>
+              devError("Error silently refreshing docs during sync:", e),
+            );
           }
         }
 
@@ -219,7 +243,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
         clearInterval(intervalId);
       }
     };
-  }, [appContext, props]);
+  }, [appContext, props, loadDocuments]);
 
   const syncKendra = async () => {
     if (syncing) return;
@@ -242,7 +266,10 @@ export default function DocumentsTab(props: DocumentsTabProps) {
           setSyncStats(isCurrentlySyncing ? status.statistics : undefined);
           previousSyncStatusRef.current = isCurrentlySyncing;
           if (!isCurrentlySyncing) {
-            await props.statusRefreshFunction();
+            await Promise.all([
+              props.statusRefreshFunction(),
+              loadDocuments({ silent: true }),
+            ]);
           }
         } catch (error) {
           devError("Error in immediate status check:", error);
