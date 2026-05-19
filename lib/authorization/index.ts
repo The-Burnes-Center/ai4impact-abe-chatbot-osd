@@ -8,11 +8,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { MANAGED_LOGIN_BRANDING_SETTINGS } from './managed-login-branding';
 
-const STATE_SEAL_PATH = path.join(
+// The Cognito Managed Login screen shows the OSD logo (not the state seal
+// used in the in-app header) so users see the brand of the agency that owns
+// the tool at sign-in.
+const LOGIN_LOGO_PATH = path.join(
   __dirname,
-  '../user-interface/app/public/images/stateseal-color.png',
+  '../user-interface/app/public/images/osd-logo.png',
 );
-const STATE_SEAL_BASE64 = fs.readFileSync(STATE_SEAL_PATH).toString('base64');
+const LOGIN_LOGO_BASE64 = fs.readFileSync(LOGIN_LOGO_PATH).toString('base64');
 
 export class AuthorizationStack extends Construct {
   public readonly lambdaAuthorizer : lambda.Function;
@@ -95,7 +98,7 @@ export class AuthorizationStack extends Construct {
       settings: MANAGED_LOGIN_BRANDING_SETTINGS,
       assets: [
         {
-          bytes: STATE_SEAL_BASE64,
+          bytes: LOGIN_LOGO_BASE64,
           category: 'FORM_LOGO',
           colorMode: 'LIGHT',
           extension: 'PNG',
