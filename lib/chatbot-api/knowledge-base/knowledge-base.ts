@@ -61,7 +61,18 @@ export class KnowledgeBaseStack extends Construct {
 
     props.openSearch.knowledgeBaseRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      actions: ['bedrock:InvokeModel'],
+      // InvokeModel: actually call the model during ingestion.
+      // GetInferenceProfile: Bedrock validates inference-profile ARNs at
+      //   DataSource create time when the parser references one. Without
+      //   this, the DataSource create fails with "Not authorized to call
+      //   GetInferenceProfile" even though InvokeModel is granted.
+      // GetFoundationModel: similar validation step for foundation-model
+      //   ARNs; granted defensively to avoid another deploy cycle.
+      actions: [
+        'bedrock:InvokeModel',
+        'bedrock:GetInferenceProfile',
+        'bedrock:GetFoundationModel',
+      ],
       resources: [
         `arn:aws:bedrock:${stack.region}::foundation-model/amazon.titan-embed-text-v2:0`,
         // Parser model for BEDROCK_FOUNDATION_MODEL parsingStrategy (vision-capable
