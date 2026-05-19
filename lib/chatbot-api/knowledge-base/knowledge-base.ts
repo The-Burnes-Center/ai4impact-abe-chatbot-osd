@@ -121,6 +121,22 @@ export class KnowledgeBaseStack extends Construct {
     knowledgeBase.addDependency(props.openSearch.openSearchCollection);
     knowledgeBase.node.addDependency(props.openSearch.lambdaCustomResource);
 
+    // Bedrock validates the KB role's bucket access at CreateKnowledgeBase
+    // time. Without an explicit dep, CFN runs the role's default-policy
+    // update in parallel with the KB create call, causing "IAM role doesn't
+    // have access to the specified bucket" failures when the supplemental
+    // bucket grant hasn't propagated yet. addToPolicy() above attaches all
+    // statements to the role's auto-generated DefaultPolicy resource; force
+    // CFN to finish that update before attempting the KB create.
+    const kbRoleDefaultPolicy = props.openSearch.knowledgeBaseRole.node.tryFindChild('DefaultPolicy');
+    if (kbRoleDefaultPolicy) {
+      knowledgeBase.node.addDependency(kbRoleDefaultPolicy);
+    }
+    // Also depend on the supplemental bucket directly; CDK normally derives
+    // this from the bucketName reference, but L1 CfnKnowledgeBase doesn't
+    // always pick it up cleanly.
+    knowledgeBase.node.addDependency(props.supplementalBucket);
+
     const dataSource = new bedrock.CfnDataSource(scope, 'S3DataSource', {
       dataSourceConfiguration: {
         type: 'S3',
