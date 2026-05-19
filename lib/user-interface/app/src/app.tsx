@@ -62,6 +62,8 @@ function App() {
         display: "flex",
         flexDirection: "column",
         width: "100%",
+        height: "100vh",
+        overflow: "hidden",
       }}
     >
       <BrowserRouter>
@@ -72,7 +74,9 @@ function App() {
           sx={{
             display: "flex",
             flexDirection: "column",
-            minHeight: "100vh",
+            flex: 1,
+            minHeight: 0,
+            overflow: "auto",
           }}
         >
           <ErrorBoundary>

@@ -23,9 +23,10 @@ import { v4 as uuidv4 } from "uuid";
 
 interface GlobalHeaderProps {
   onMenuClick?: () => void;
+  menuExpanded?: boolean;
 }
 
-export default function GlobalHeader({ onMenuClick }: GlobalHeaderProps) {
+export default function GlobalHeader({ onMenuClick, menuExpanded }: GlobalHeaderProps) {
   const navigate = useNavigate();
   const [userName, setUserName] = useState<string | null>(null);
   const [theme, setTheme] = useState<ThemeMode>(StorageHelper.getTheme());
@@ -83,8 +84,9 @@ export default function GlobalHeader({ onMenuClick }: GlobalHeaderProps) {
             color="inherit"
             edge="start"
             onClick={onMenuClick}
-            aria-label="Open navigation menu"
-            sx={{ mr: 1, display: { md: "none" } }}
+            aria-label={menuExpanded ? "Hide navigation menu" : "Show navigation menu"}
+            aria-expanded={menuExpanded}
+            sx={{ mr: 1 }}
           >
             <MenuIcon />
           </IconButton>

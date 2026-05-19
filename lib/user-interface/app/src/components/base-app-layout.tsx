@@ -9,6 +9,7 @@ import { NotificationProvider } from "./notif-manager";
 import NotificationBar from "./notif-flashbar";
 import { DRAWER_WIDTH } from "../common/theme";
 import GlobalHeader from "./global-header";
+import { StorageHelper } from "../common/helpers/storage-helper";
 
 interface BaseAppLayoutProps {
   children?: ReactElement | ReactElement[];
@@ -19,19 +20,36 @@ export default function BaseAppLayout({ children }: BaseAppLayoutProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [desktopCollapsed, setDesktopCollapsed] = useState(
+    () => StorageHelper.getNavigationPanelState().collapsed ?? false,
+  );
   const [needsRefresh, setNeedsRefresh] = useState(true);
 
   const drawerContent = <NavigationPanel />;
 
+  const handleMenuClick = () => {
+    if (isMobile) {
+      setMobileOpen((v) => !v);
+    } else {
+      setDesktopCollapsed((prev) => {
+        const next = !prev;
+        StorageHelper.setNavigationPanelState({ collapsed: next });
+        return next;
+      });
+    }
+  };
+
   return (
     <SessionRefreshContext.Provider value={{ needsRefresh, setNeedsRefresh }}>
       <NotificationProvider>
-        {/* Pin the app shell to exactly viewport height so the drawer + main
-            content area form a self-contained flex column. Without this, the
-            html/body chain only sets min-height: 100%, so a long session list
-            grows the drawer past the viewport and pushes Admin off-screen. */}
-        <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-          <GlobalHeader onMenuClick={isMobile ? () => setMobileOpen(!mobileOpen) : undefined} />
+        {/* Fills the slot the parent gives us (between BrandBanner and Footer
+            in App), so the whole shell — banner, header, body, footer — fits
+            in one viewport with the body as the only scrollable region. */}
+        <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+          <GlobalHeader
+            onMenuClick={handleMenuClick}
+            menuExpanded={isMobile ? mobileOpen : !desktopCollapsed}
+          />
 
           <Box sx={{ display: "flex", flex: 1, minHeight: 0 }}>
             {/* Mobile drawer */}
@@ -49,13 +67,13 @@ export default function BaseAppLayout({ children }: BaseAppLayoutProps) {
               {drawerContent}
             </Drawer>
 
-            {/* Desktop drawer — paper must fill the available height so the
-                NavigationPanel's internal flex layout (pinned top/bottom,
-                scrollable middle) can take effect. */}
+            {/* Desktop drawer — hidden when collapsed so main content reclaims
+                the full width. Paper fills available height so NavigationPanel's
+                pinned-top/bottom + scrollable-middle layout can take effect. */}
             <Drawer
               variant="permanent"
               sx={{
-                display: { xs: "none", md: "block" },
+                display: { xs: "none", md: desktopCollapsed ? "none" : "block" },
                 width: DRAWER_WIDTH,
                 flexShrink: 0,
                 "& .MuiDrawer-paper": {
@@ -76,7 +94,9 @@ export default function BaseAppLayout({ children }: BaseAppLayoutProps) {
               tabIndex={-1}
               sx={{
                 flexGrow: 1,
-                width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
+                width: {
+                  md: desktopCollapsed ? "100%" : `calc(100% - ${DRAWER_WIDTH}px)`,
+                },
                 display: "flex",
                 flexDirection: "column",
                 "&:focus:not(:focus-visible)": { outline: "none" },
