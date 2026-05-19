@@ -107,7 +107,7 @@ function CitationBadge({ source, onCitationClick }: { source: SourceItem; onCita
                 )}
                 {source.page != null && (
                   <Typography variant="caption" sx={{ fontSize: "0.6875rem", color: "text.secondary" }}>
-                    Page {source.page}
+                    Page {displayPage(source.page)}
                   </Typography>
                 )}
               </div>
@@ -248,21 +248,29 @@ interface SourceGroup {
   cards: MergedCard[];
 }
 
+// Bedrock KB stores page indices as 0-based (page 0 = first page), but
+// readers expect 'Page 1' to be the first page. Shift to 1-based for any
+// user-facing label.
+function displayPage(page: number): number {
+  return page + 1;
+}
+
 // When the LLM calls retrieve_full_document, it pulls many chunks from one
 // file, so the cited-pages list can balloon into a 12+ comma soup that's
 // hard to scan. Collapse anything past ~5 distinct pages into a count with
 // the page range, and detect the contiguous-from-zero case as 'Full document'.
 function formatPageList(pages: number[]): string {
   if (pages.length === 0) return "";
-  if (pages.length === 1) return `Page ${pages[0]}`;
-  if (pages.length <= 5) return `Pages ${pages.join(", ")}`;
-  const min = pages[0];
-  const max = pages[pages.length - 1];
-  const isContiguous = max - min + 1 === pages.length;
-  if (isContiguous && min <= 1) {
-    return `Full document · ${pages.length} pages`;
+  const display = pages.map(displayPage);
+  if (display.length === 1) return `Page ${display[0]}`;
+  if (display.length <= 5) return `Pages ${display.join(", ")}`;
+  const min = display[0];
+  const max = display[display.length - 1];
+  const isContiguous = max - min + 1 === display.length;
+  if (isContiguous && min <= 2) {
+    return `Full document · ${display.length} pages`;
   }
-  return `${pages.length} pages cited · ${min}–${max}`;
+  return `${display.length} pages cited · ${min}–${max}`;
 }
 
 function groupSources(sources: SourceItem[]): SourceGroup[] {
