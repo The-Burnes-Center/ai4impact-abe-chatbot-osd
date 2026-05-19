@@ -46,15 +46,6 @@ export class KnowledgeBaseStack extends Construct {
       actions: ['bedrock:InvokeModel'],
       resources: [
         `arn:aws:bedrock:${stack.region}::foundation-model/amazon.titan-embed-text-v2:0`,
-        // Parser model for BEDROCK_FOUNDATION_MODEL parsingStrategy (vision-capable
-        // layout extraction so checkbox state survives ingestion).
-        `arn:aws:bedrock:${stack.region}::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0`,
-        `arn:aws:bedrock:${stack.region}:${stack.account}:inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0`,
-        // The us. inference profile dispatches across these regions; AWS requires
-        // explicit permission on each underlying foundation-model ARN.
-        `arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0`,
-        `arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0`,
-        `arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0`,
       ],
     }));
 
@@ -101,38 +92,6 @@ export class KnowledgeBaseStack extends Construct {
         chunkingConfiguration: {
           chunkingStrategy: 'SEMANTIC',
         } as bedrock.CfnDataSource.ChunkingConfigurationProperty,
-        // Use a vision-capable Claude model to parse PDFs at ingestion time.
-        // The default Bedrock parser is text-only and drops form-field state
-        // (e.g. RFR section 1.4.6 acquisition-method checkboxes), which made
-        // ABE unable to identify which option was marked. Multimodal parsing
-        // renders each page as an image and transcribes form fields with
-        // their state preserved.
-        parsingConfiguration: {
-          parsingStrategy: 'BEDROCK_FOUNDATION_MODEL',
-          bedrockFoundationModelConfiguration: {
-            // Cross-region inference profile — required for Claude 3.5 Sonnet
-            // v2 in us-east-1 and routes between us-east-1/2 and us-west-2.
-            modelArn: `arn:aws:bedrock:${stack.region}:${stack.account}:inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0`,
-            // MULTIMODAL is essential — without it the FM parser falls back to
-            // text-only extraction and the checkbox glyphs are still lost.
-            parsingModality: 'MULTIMODAL',
-            parsingPrompt: {
-              parsingPromptText: [
-                'Transcribe this document into plain text while preserving its structure.',
-                '',
-                'CRITICAL — Form fields:',
-                '- When you see a checkbox table, render each row as `[X] Label` if the checkbox is marked (filled, checked, or contains an X/✓/✗) and `[ ] Label` if it is empty. Do not omit any row.',
-                '- Preserve the *state* of every checkbox, radio button, and form field. The selection is often the most important content on the page.',
-                '- For signature/initial fields, write `[signed]` if filled, `[not signed]` if empty.',
-                '',
-                'Tables: render as Markdown tables with column headers. Keep numeric values verbatim.',
-                'Headings: preserve the document\'s section numbering (e.g. "1.4.6 Acquisition Method(s)").',
-                'Reading order: top-to-bottom, left-to-right. Multi-column layouts should be linearized correctly.',
-                'Do not summarize, paraphrase, or add commentary. Output only the transcribed document content.',
-              ].join('\n'),
-            },
-          },
-        },
       },
     });
 
