@@ -342,6 +342,35 @@ export function getColumnDefinition(
     { id: "prompt", header: "User Prompt", cell: (item) => item.UserPrompt },
   ];
 
+  // Renders the SyncStatus value the backend stamps on each document. All
+  // determination logic lives in the get-s3 Lambda (ListKnowledgeBaseDocuments
+  // + status mapping); the UI just picks a label and color.
+  const SYNC_STATUS_CHIPS: Record<
+    string,
+    { label: string; color: "success" | "info" | "error" | "default"; tip: string }
+  > = {
+    synced: {
+      label: "Synced",
+      color: "success",
+      tip: "Indexed in the knowledge base and available to the chatbot.",
+    },
+    syncing: {
+      label: "Syncing",
+      color: "info",
+      tip: "Currently being ingested by Bedrock. Refresh to see status updates.",
+    },
+    failed: {
+      label: "Failed",
+      color: "error",
+      tip: "Bedrock could not ingest this file. Try syncing again; if it keeps failing, the file may need to be re-uploaded.",
+    },
+    not_yet_synced: {
+      label: "Not synced",
+      color: "default",
+      tip: "Uploaded but not yet indexed. Run a sync to add it to the knowledge base.",
+    },
+  };
+
   const FILES_COLUMN_DEFINITIONS: ColumnDefinition[] = [
     { id: "name", header: "Name", cell: (item) => item.Key },
     {
@@ -353,6 +382,30 @@ export function getColumnDefinition(
         ),
     },
     { id: "size", header: "Size", cell: (item) => Utils.bytesToSize(item.Size) },
+    {
+      id: "syncStatus",
+      header: (
+        <HeaderWithInfo
+          label="Sync"
+          tooltip="Whether this file is currently in the knowledge base. Updated when you refresh or run a sync."
+        />
+      ),
+      cell: (item) => {
+        const chip = SYNC_STATUS_CHIPS[item.SyncStatus] ?? SYNC_STATUS_CHIPS.not_yet_synced;
+        return (
+          <Tooltip title={chip.tip} arrow>
+            <Chip
+              label={chip.label}
+              color={chip.color}
+              size="small"
+              variant="outlined"
+              sx={{ cursor: "help" }}
+            />
+          </Tooltip>
+        );
+      },
+      width: "120px",
+    },
     {
       id: "metadata",
       header: (

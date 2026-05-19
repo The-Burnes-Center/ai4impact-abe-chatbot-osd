@@ -52,6 +52,10 @@ type DocItem = {
   LastModified?: string;
   Size?: number;
   HasMetadata?: boolean;
+  // Per-document Bedrock KB ingestion state -- determined entirely on the
+  // backend (get-s3 Lambda calls ListKnowledgeBaseDocuments and maps
+  // Bedrock's wider status vocabulary into one of these four values).
+  SyncStatus?: "synced" | "syncing" | "failed" | "not_yet_synced";
 };
 
 export default function DocumentsTab(props: DocumentsTabProps) {

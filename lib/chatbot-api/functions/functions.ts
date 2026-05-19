@@ -361,6 +361,10 @@ export class LambdaFunctionStack extends Construct {
       handler: 'index.handler',
       environment: {
         "BUCKET": props.knowledgeBucket.bucketName,
+        // Used to hydrate the per-document SyncStatus column in the admin
+        // documents table via ListKnowledgeBaseDocuments.
+        "KB_ID": props.knowledgeBase.attrKnowledgeBaseId,
+        "DATA_SOURCE_ID": props.knowledgeBaseSource.attrDataSourceId,
       },
       timeout: cdk.Duration.seconds(30),
     });
@@ -372,6 +376,18 @@ export class LambdaFunctionStack extends Construct {
         's3:ListBucket',
       ],
       resources: [props.knowledgeBucket.bucketArn,props.knowledgeBucket.bucketArn+"/*"]
+    }));
+
+    // Read-only access to KB metadata so the admin documents table can
+    // show per-document sync status (synced / syncing / failed / not yet
+    // synced). No write actions -- the sync orchestrator and kb-sync
+    // Lambda are the only writers.
+    getS3APIHandlerFunction.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'bedrock:ListKnowledgeBaseDocuments',
+      ],
+      resources: [props.knowledgeBase.attrKnowledgeBaseArn]
     }));
     this.getS3Function = getS3APIHandlerFunction;
 
