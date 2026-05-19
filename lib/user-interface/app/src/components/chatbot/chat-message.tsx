@@ -724,68 +724,52 @@ function ChatMessage(props: ChatMessageProps) {
                 </button>
                 <Collapse in={sourcesOpen} timeout={200}>
                   <div id="sources-list" className={styles.sourcesList} ref={sourcesListRef}>
-                    {sourceGroups.map((group, gi) => (
-                      <div key={`group-${gi}`} className={styles.sourceGroup}>
-                        <div className={styles.sourceGroupHeader}>
+                    {sourceGroups.map((group, gi) => {
+                      const allChunkIndices = group.cards.flatMap((c) => c.chunkIndices);
+                      const allPages = [
+                        ...new Set(group.cards.map((c) => c.page).filter((p): p is number => p != null)),
+                      ].sort((a, b) => a - b);
+                      const isHighlighted =
+                        highlightedChunk != null && allChunkIndices.includes(highlightedChunk);
+                      const canOpen = Boolean(group.s3Key || group.cards[0]?.uri);
+                      const openSource = () => {
+                        if (group.s3Key && props.onOpenSource) {
+                          props.onOpenSource(group.s3Key);
+                        } else if (group.cards[0]?.uri) {
+                          window.open(group.cards[0].uri, "_blank", "noopener,noreferrer");
+                        }
+                      };
+                      return (
+                        <button
+                          key={`group-${gi}`}
+                          type="button"
+                          className={`${styles.sourceRow} ${isHighlighted ? styles.sourceRowHighlight : ""}`}
+                          data-chunk-indices={allChunkIndices.join(" ")}
+                          onClick={canOpen ? openSource : undefined}
+                          disabled={!canOpen}
+                          aria-label={canOpen ? `Open ${group.documentTitle}` : group.documentTitle}
+                        >
                           {group.sourceType === "excelIndex" ? (
-                            <TableChartOutlinedIcon sx={{ fontSize: 16, color: "var(--abe-primary, #14558f)", flexShrink: 0 }} />
+                            <TableChartOutlinedIcon className={styles.sourceRowIcon} />
                           ) : (
-                            <DescriptionOutlinedIcon sx={{ fontSize: 16, color: "var(--abe-primary, #14558f)", flexShrink: 0 }} />
+                            <DescriptionOutlinedIcon className={styles.sourceRowIcon} />
                           )}
-                          <Typography variant="body2" className={styles.sourceGroupTitle} noWrap>
-                            {group.documentTitle}
-                          </Typography>
-                          {(group.s3Key || group.cards[0]?.uri) && (
-                            <button
-                              type="button"
-                              className={styles.sourceCardLink}
-                              aria-label={`Open ${group.documentTitle}`}
-                              onClick={() => {
-                                if (group.s3Key && props.onOpenSource) {
-                                  props.onOpenSource(group.s3Key);
-                                } else if (group.cards[0]?.uri) {
-                                  window.open(group.cards[0].uri, "_blank", "noopener,noreferrer");
-                                }
-                              }}
-                            >
-                              <OpenInNewIcon sx={{ fontSize: 14 }} />
-                            </button>
-                          )}
-                        </div>
-                        {group.cards.map((card, ci) => {
-                          const isHighlighted = highlightedChunk != null && card.chunkIndices.includes(highlightedChunk);
-                          return (
-                          <div
-                            key={`src-${gi}-${ci}`}
-                            className={`${styles.sourceCard} ${isHighlighted ? styles.sourceCardHighlight : ""}`}
-                            data-chunk-indices={card.chunkIndices.join(" ")}
-                          >
-                            <div className={styles.sourceCardTop}>
-                              {card.chunkIndices.length > 0 && (
-                                <span className={styles.sourceCardBadges}>
-                                  {card.chunkIndices.map((idx) => (
-                                    <span key={idx} className={styles.sourceCardBadge}>{idx}</span>
-                                  ))}
-                                </span>
-                              )}
-                              <div className={styles.sourceCardInfo}>
-                                {card.page != null && (
-                                  <Typography variant="caption" sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
-                                    Page {card.page}
-                                  </Typography>
-                                )}
-                              </div>
-                            </div>
-                            {card.excerpt && (
-                              <Typography variant="body2" className={styles.sourceCardExcerpt}>
-                                {card.excerpt.length > 250 ? card.excerpt.slice(0, 250) + "..." : card.excerpt}
+                          <div className={styles.sourceRowBody}>
+                            <Typography variant="body2" className={styles.sourceRowTitle} noWrap>
+                              {group.documentTitle}
+                            </Typography>
+                            {allPages.length > 0 && (
+                              <Typography variant="caption" className={styles.sourceRowMeta}>
+                                {allPages.length === 1
+                                  ? `Page ${allPages[0]}`
+                                  : `Pages ${allPages.join(", ")}`}
                               </Typography>
                             )}
                           </div>
-                          );
-                        })}
-                      </div>
-                    ))}
+                          {canOpen && <OpenInNewIcon className={styles.sourceRowOpen} />}
+                        </button>
+                      );
+                    })}
                   </div>
                 </Collapse>
               </Box>

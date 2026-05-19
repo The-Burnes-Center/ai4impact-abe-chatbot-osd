@@ -378,53 +378,45 @@
 .sourcesList {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   margin-top: 8px;
   padding: 4px 0;
 }
 
-/* Source group: one per document */
-.sourceGroup {
-  border: 1px solid var(--abe-borderSubtle, #eef0f3);
-  border-radius: var(--abe-radius-sm, 8px);
-  overflow: hidden;
-}
-
-.sourceGroupHeader {
+/* One row per cited document. The whole row is the click target — opens the
+   source. Inline [N] badges in the response remain the per-citation pointers. */
+.sourceRow {
+  width: 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 10px 12px;
-  background-color: var(--abe-tableHeaderBg, #f2f4f7);
-  border-bottom: 1px solid var(--abe-borderSubtle, #eef0f3);
-}
+  background: var(--abe-surface, #ffffff);
+  border: 1px solid var(--abe-borderSubtle, #eef0f3);
+  border-radius: var(--abe-radius-sm, 8px);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: background-color var(--abe-transition-fast, 150ms),
+    border-color var(--abe-transition-fast, 150ms);
 
-.sourceGroupTitle {
-  font-weight: 600 !important;
-  font-size: 0.8125rem !important;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--abe-textPrimary, #1a1d23);
-}
-
-/* Individual source card within a group */
-.sourceCard {
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--abe-borderSubtle, #eef0f3);
-  transition: background-color var(--abe-transition-fast, 150ms);
-
-  &:last-child {
-    border-bottom: none;
+  &:hover:not(:disabled) {
+    background: var(--abe-hoverBg, rgba(0, 0, 0, 0.02));
+    border-color: var(--abe-border, #e2e5ea);
   }
 
-  &:hover {
-    background-color: var(--abe-hoverBg, rgba(0, 0, 0, 0.02));
+  &:focus-visible {
+    outline: 2px solid var(--abe-primary, #14558f);
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    cursor: default;
   }
 }
 
-.sourceCardHighlight {
+.sourceRowHighlight {
   animation: sourceHighlightPulse 1.5s ease-out;
 }
 
@@ -437,79 +429,38 @@
   }
 }
 
-.sourceCardTop {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.sourceCardBadges {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  flex-shrink: 0;
-}
-
-.sourceCardBadge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 5px;
-  border-radius: 10px;
-  background-color: var(--abe-primaryLight, #e8f2fc);
+.sourceRowIcon {
+  font-size: 18px !important;
   color: var(--abe-primary, #14558f);
-  font-size: 0.6875rem;
-  font-weight: 700;
   flex-shrink: 0;
 }
 
-.sourceCardInfo {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.sourceRowBody {
   flex: 1;
   min-width: 0;
-}
-
-.sourceCardLink {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--abe-radius-xs, 4px);
-  color: var(--abe-primary, #14558f);
-  text-decoration: none;
-  flex-shrink: 0;
-  transition: background-color var(--abe-transition-fast, 150ms);
-  border: none;
-  background: none;
-  padding: 0;
-  cursor: pointer;
-  font: inherit;
-
-  &:hover {
-    background-color: var(--abe-hoverBg, rgba(0, 0, 0, 0.04));
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--abe-primary, #14558f);
-    outline-offset: 1px;
-  }
+  flex-direction: column;
+  gap: 2px;
 }
 
-.sourceCardExcerpt {
+.sourceRowTitle {
+  font-weight: 600 !important;
+  font-size: 0.8125rem !important;
+  color: var(--abe-textPrimary, #1a1d23) !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sourceRowMeta {
   font-size: 0.75rem !important;
   color: var(--abe-textSecondary, #555d6b) !important;
   line-height: 1.4 !important;
-  margin-top: 4px;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  word-break: break-word;
+}
+
+.sourceRowOpen {
+  font-size: 16px !important;
+  color: var(--abe-textTertiary, #8a919e);
+  flex-shrink: 0;
 }
 
 /* Status indicator (e.g. "Thinking…", "Searching knowledge base...") */
