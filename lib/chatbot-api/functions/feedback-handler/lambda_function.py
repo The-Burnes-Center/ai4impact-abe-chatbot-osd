@@ -148,6 +148,23 @@ def ensure_admin(event: dict[str, Any]):
         raise PermissionError("Forbidden: Admin access required")
 
 
+def get_caller_id(event: dict[str, Any]) -> str:
+    """Return the canonical caller id used for ownership checks.
+
+    Matches the value stored by the WebSocket authorizer's `cognito_username`
+    context field (lib/authorization/websocket-api-authorizer/lambda_function.py),
+    so that ResponseTrace.UserId and feedback CreatedBySub written by the chat
+    Lambda compare cleanly against the JWT claims on this HTTP request.
+    """
+    claims = get_claims(event)
+    return str(
+        claims.get("cognito:username")
+        or claims.get("username")
+        or claims.get("sub")
+        or ""
+    ).strip()
+
+
 def get_prompt_table_item(version_id: str) -> dict[str, Any] | None:
     response = prompt_registry_table.get_item(
         Key={"PromptFamily": PROMPT_FAMILY, "VersionId": version_id}
@@ -492,6 +509,10 @@ def create_feedback(event: dict[str, Any]):
     if not message_id:
         return validation_error("messageId", "messageId is required")
 
+    caller_id = get_caller_id(event)
+    if not caller_id:
+        return json_response(401, {"error": "unauthorized", "message": "Missing user identity"})
+
     try:
         trace = get_response_trace(message_id)
     except Exception:
@@ -499,6 +520,23 @@ def create_feedback(event: dict[str, Any]):
         return json_response(502, {"error": "upstream_error", "message": "Could not look up the original response. Please try again."})
     if not trace:
         return json_response(404, {"error": "not_found", "message": "Response trace not found"})
+
+    # Ownership check: only the user who originally received this response may
+    # submit feedback against it. Without this, any authenticated user with a
+    # leaked messageId can read back the question + answer via the returned
+    # candidateMonitoringCase fields. Admin role bypasses for triage/testing.
+    trace_owner = str(trace.get("UserId") or "").strip()
+    if trace_owner:
+        if trace_owner != caller_id and not is_admin_request(event):
+            logger.warning(
+                "Rejected cross-user feedback creation: caller=%s trace_owner=%s message_id=%s",
+                caller_id, trace_owner, message_id,
+            )
+            return json_response(404, {"error": "not_found", "message": "Response trace not found"})
+    else:
+        # Legacy trace written before UserId was added. Allow but log so we
+        # can monitor exposure during the migration window.
+        logger.info("Legacy trace without UserId: message_id=%s caller=%s", message_id, caller_id)
 
     feedback_kind = str(payload.get("feedbackKind", "not_helpful")).strip() or "not_helpful"
     if feedback_kind not in ALLOWED_FEEDBACK_KINDS:
@@ -536,6 +574,7 @@ def create_feedback(event: dict[str, Any]):
         "AdminNotes": "",
         "Owner": "",
         "ResolutionNote": "",
+        "CreatedBySub": caller_id,
     }
 
     if feedback_kind != "helpful":
@@ -569,6 +608,26 @@ def append_feedback_follow_up(event: dict[str, Any], feedback_id: str):
     item = feedback_records_table.get_item(Key={"FeedbackId": feedback_id}).get("Item")
     if not item:
         return json_response(404, {"error": "Feedback not found"})
+
+    caller_id = get_caller_id(event)
+    if not caller_id:
+        return json_response(401, {"error": "unauthorized", "message": "Missing user identity"})
+
+    # Ownership check: only the user who created this feedback record may
+    # append follow-up details. Without this, any authenticated user can
+    # overwrite another user's submitted comments/tags by guessing or leaking
+    # the feedback id. Admin role bypasses for moderation/cleanup.
+    owner_sub = str(item.get("CreatedBySub") or "").strip()
+    if owner_sub:
+        if owner_sub != caller_id and not is_admin_request(event):
+            logger.warning(
+                "Rejected cross-user follow-up: caller=%s owner=%s feedback_id=%s",
+                caller_id, owner_sub, feedback_id,
+            )
+            return json_response(404, {"error": "Feedback not found"})
+    else:
+        # Legacy record written before CreatedBySub was added. Allow but log.
+        logger.info("Legacy feedback without CreatedBySub: feedback_id=%s caller=%s", feedback_id, caller_id)
 
     for field_name, attr_name in (
         ("userComment", "UserComment"),
