@@ -96,6 +96,38 @@ export class Utils {
     return String(error);
   }
 
+  /**
+   * Pulls the server-supplied error reason out of a non-OK fetch Response,
+   * tolerating the two shapes our Python Lambdas return:
+   *   - `json.dumps({ "error": "...", "message": "..." })` (object body)
+   *   - `json.dumps("plain string message")` (string body)
+   * Falls back to the HTTP status text and finally to the supplied default
+   * so the caller always gets something user-meaningful to surface in a
+   * notification instead of a generic "request failed".
+   */
+  static async extractServerError(
+    response: Response,
+    fallback: string,
+  ): Promise<string> {
+    try {
+      const body = await response.json();
+      if (typeof body === "string" && body.trim().length > 0) return body;
+      if (body && typeof body === "object") {
+        const fromObject =
+          (body as { error?: string }).error ??
+          (body as { message?: string }).message ??
+          (body as { detail?: string }).detail;
+        if (typeof fromObject === "string" && fromObject.trim().length > 0) {
+          return fromObject;
+        }
+      }
+    } catch {
+      // Body wasn't JSON (or was empty); fall through to statusText / fallback.
+    }
+    if (response.statusText) return `${fallback} (${response.status} ${response.statusText})`;
+    return fallback;
+  }
+
   static urlSearchParamsToRecord(
     params: URLSearchParams
   ): Record<string, string> {

@@ -99,6 +99,15 @@ export default function DocumentsTab(props: DocumentsTabProps) {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const { addNotification } = useNotifications();
   const previousSyncStatusRef = useRef<boolean>(false);
+  // Stash the parent's status-refresh callback in a ref so loadDocuments and
+  // the sync-poll effect don't depend on its identity. If the parent passes
+  // a non-memoized callback (which previously caused this tab to spam the
+  // backend with /still-syncing calls on every render), the ref absorbs the
+  // identity churn without retriggering the effects.
+  const statusRefreshRef = useRef(props.statusRefreshFunction);
+  useEffect(() => {
+    statusRefreshRef.current = props.statusRefreshFunction;
+  });
 
   // Debounce search input so each keystroke doesn't re-run the filter +
   // reset pagination. 200ms is short enough to feel instant but lets a
@@ -152,13 +161,18 @@ export default function DocumentsTab(props: DocumentsTabProps) {
         const prevByKey = new Map(prev.map((p) => [p.Key, p.SyncStatus]));
         return contents.map((c) => ({ ...c, SyncStatus: prevByKey.get(c.Key) }));
       });
-      props.statusRefreshFunction();
+      statusRefreshRef.current();
     } catch (error) {
-      devError(Utils.getErrorMessage(error));
+      const reason = Utils.getErrorMessage(error);
+      devError("Failed to load documents:", reason);
+      // The skeleton state can't tell admins *why* their list is empty;
+      // surface the reason once so they know whether to retry, fix perms,
+      // or escalate.
+      if (!silent) addNotification("error", `Could not load files: ${reason}`);
     } finally {
       if (!silent) setFilesLoading(false);
     }
-  }, [apiClient, props.statusRefreshFunction]);
+  }, [apiClient, addNotification]);
 
   const loadSyncStatuses = useCallback(
     async ({ silent = false, refresh = false }: { silent?: boolean; refresh?: boolean } = {}) => {
@@ -203,18 +217,45 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     const results = await Promise.allSettled(
       selectedItems.map((s) => apiClient.knowledgeManagement.deleteFile(s.Key!)),
     );
-    const failed = results
-      .map((r, i) => (r.status === "rejected" ? selectedItems[i].Key : null))
-      .filter((k): k is string => !!k);
+    // Pair each rejection with its file key + the server-supplied reason
+    // (e.g. "User is not authorized..." or "Failed to remove document from
+    // knowledge base..."). Without the reason, the admin can't tell whether
+    // it's a permissions issue, a KB cleanup failure, or transient network.
+    const failures = results
+      .map((r, i) => {
+        if (r.status !== "rejected") return null;
+        return {
+          key: selectedItems[i].Key ?? "(unknown)",
+          reason: Utils.getErrorMessage(r.reason),
+        };
+      })
+      .filter((f): f is { key: string; reason: string } => !!f);
 
-    if (failed.length === 0) {
+    // Most batch deletes share a root cause (e.g. all 403s). Showing the
+    // *common* reason once is more useful than 50 truncated rows.
+    const uniqueReasons = Array.from(new Set(failures.map((f) => f.reason).filter(Boolean)));
+
+    if (failures.length === 0) {
       addNotification("success", `Deleted ${selectedItems.length} file${selectedItems.length === 1 ? "" : "s"}.`);
-    } else if (failed.length === selectedItems.length) {
-      addNotification("error", "Could not delete files. Please try again.");
+    } else if (failures.length === selectedItems.length) {
+      const reasonLine =
+        uniqueReasons.length === 1
+          ? uniqueReasons[0]
+          : uniqueReasons.length > 1
+            ? uniqueReasons.join("; ")
+            : "Please try again.";
+      addNotification(
+        "error",
+        `Could not delete ${failures.length === 1 ? "file" : `${failures.length} files`}: ${reasonLine}`,
+      );
     } else {
+      const deleted = selectedItems.length - failures.length;
+      const filesPreview = failures.slice(0, 3).map((f) => f.key).join(", ");
+      const reasonHint =
+        uniqueReasons.length === 1 ? ` (${uniqueReasons[0]})` : "";
       addNotification(
         "warning",
-        `Deleted ${selectedItems.length - failed.length} file${selectedItems.length - failed.length === 1 ? "" : "s"}. ${failed.length} failed: ${failed.slice(0, 3).join(", ")}${failed.length > 3 ? "…" : ""}`,
+        `Deleted ${deleted} file${deleted === 1 ? "" : "s"}. ${failures.length} failed${reasonHint}: ${filesPreview}${failures.length > 3 ? "…" : ""}`,
       );
     }
 
@@ -223,6 +264,15 @@ export default function DocumentsTab(props: DocumentsTabProps) {
     loadSyncStatuses({ silent: true, refresh: true });
     setFilesLoading(false);
   };
+
+  // Mirror loadSyncStatuses in a ref so the polling effect below doesn't
+  // need it in its dependency array -- otherwise every loadSyncStatuses
+  // identity change tears down + restarts the interval (and immediately
+  // re-fires kendraIsSyncing), causing the chip flicker users were seeing.
+  const loadSyncStatusesRef = useRef(loadSyncStatuses);
+  useEffect(() => {
+    loadSyncStatusesRef.current = loadSyncStatuses;
+  }, [loadSyncStatuses]);
 
   // Sync status polling. When syncing is in progress we poll Bedrock
   // ingestion stats every 5s and refresh per-doc sync chips every 15s
@@ -252,8 +302,8 @@ export default function DocumentsTab(props: DocumentsTabProps) {
           pollCount = 0;
           setTimeout(() => {
             if (!cancelled) {
-              loadSyncStatuses({ silent: true, refresh: true });
-              props.statusRefreshFunction();
+              loadSyncStatusesRef.current({ silent: true, refresh: true });
+              statusRefreshRef.current();
             }
           }, 1200);
         } else if (isCurrentlySyncing) {
@@ -264,7 +314,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
           pollCount += 1;
           if (pollCount >= 3) {
             pollCount = 0;
-            loadSyncStatuses({ silent: true, refresh: true });
+            loadSyncStatusesRef.current({ silent: true, refresh: true });
           }
         }
 
@@ -284,7 +334,7 @@ export default function DocumentsTab(props: DocumentsTabProps) {
       cancelled = true;
       if (intervalId) clearInterval(intervalId);
     };
-  }, [appContext, apiClient, loadSyncStatuses, props.statusRefreshFunction]);
+  }, [appContext, apiClient]);
 
   const syncKendra = async () => {
     if (syncing) return;

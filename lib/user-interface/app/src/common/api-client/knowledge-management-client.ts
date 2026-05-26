@@ -45,14 +45,7 @@ export class KnowledgeManagementClient {
         // Surface the backend's specific error (e.g. which character in the
         // filename was rejected) instead of swallowing it behind a generic
         // "Failed to get upload URL" — admins need to know what to fix.
-        let serverMessage: string | undefined;
-        try {
-          const errorBody = await response.json();
-          serverMessage = errorBody?.error || errorBody?.message;
-        } catch {
-          // Response body wasn't JSON; fall through to generic message.
-        }
-        throw new Error(serverMessage ?? 'Failed to get upload URL.');
+        throw new Error(await Utils.extractServerError(response, 'Failed to get upload URL.'));
       }
 
       const data = await response.json();
@@ -78,7 +71,7 @@ export class KnowledgeManagementClient {
       body: JSON.stringify({ mode: 'files' }),
     });
     if (!response.ok) {
-      throw new Error('Failed to get files');
+      throw new Error(await Utils.extractServerError(response, 'Failed to load files.'));
     }
     return await response.json();
   }
@@ -99,7 +92,7 @@ export class KnowledgeManagementClient {
       body: JSON.stringify({ mode: 'syncStatus', refreshStatus: refresh }),
     });
     if (!response.ok) {
-      throw new Error('Failed to get sync status');
+      throw new Error(await Utils.extractServerError(response, 'Failed to load sync status.'));
     }
     return await response.json();
   }
@@ -118,7 +111,10 @@ export class KnowledgeManagementClient {
       }),
     });
     if (!response.ok) {
-      throw new Error('Failed to delete file');
+      // The Lambda returns specific messages (auth failures, KB cleanup
+      // errors, etc.) -- propagate them so the admin sees *why* the delete
+      // failed instead of a generic "Failed to delete file".
+      throw new Error(await Utils.extractServerError(response, 'Failed to delete file.'));
     }
     return await response.json()
   }
@@ -131,7 +127,7 @@ export class KnowledgeManagementClient {
       'Authorization' : auth
     }})
     if (!response.ok) {
-      throw new Error('Failed to sync');
+      throw new Error(await Utils.extractServerError(response, 'Failed to start sync.'));
     }
     return await response.json()
   }
@@ -145,7 +141,7 @@ export class KnowledgeManagementClient {
       'Authorization' : auth
     }})
     if (!response.ok) {
-      throw new Error('Failed to check sync status');
+      throw new Error(await Utils.extractServerError(response, 'Failed to check sync status.'));
     }
     const raw = await response.json();
     // The Lambda historically returned a plain "STILL SYNCING" / "DONE SYNCING"
@@ -170,10 +166,10 @@ export class KnowledgeManagementClient {
       'Authorization' : auth
     }})
     if (!response.ok) {
-      throw new Error('Failed to check last status');
+      throw new Error(await Utils.extractServerError(response, 'Failed to load last sync time.'));
     }
     return await response.json()
   }
 
-  
+
 }

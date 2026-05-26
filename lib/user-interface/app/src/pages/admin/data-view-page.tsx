@@ -8,7 +8,7 @@ import {
   Stack,
   CircularProgress,
 } from "@mui/material";
-import { useState, useEffect, useContext } from "react";
+import { useState, useEffect, useContext, useMemo, useCallback } from "react";
 import { useDocumentTitle } from "../../common/hooks/use-document-title";
 import DocumentsTab from "./documents-tab";
 import DataIndexesTab from "./data-indexes-tab";
@@ -24,7 +24,12 @@ export default function DataPage() {
   useDocumentTitle("Admin \u00b7 Data");
   const [activeTab, setActiveTab] = useState(0);
   const appContext = useContext(AppContext);
-  const apiClient = new ApiClient(appContext!);
+  // Memoize the ApiClient so its identity is stable across re-renders.
+  // DocumentsTab depends on this (and on refreshSyncTime below) \u2014 without
+  // memoization both refs change every render, retriggering the init-load
+  // effect and the sync-poll interval and spamming the backend with
+  // /still-syncing + /s3-bucket-data calls.
+  const apiClient = useMemo(() => new ApiClient(appContext!), [appContext]);
   const [lastSyncTime, setLastSyncTime] = useState("");
   const [lastSyncData, setLastSyncData] = useState<{
     status: string;
@@ -36,7 +41,7 @@ export default function DataPage() {
   const [showUnsyncedAlert, setShowUnsyncedAlert] = useState(false);
   const [syncSchedule, setSyncSchedule] = useState<SyncSchedule | null>(null);
 
-  const refreshSyncTime = async () => {
+  const refreshSyncTime = useCallback(async () => {
     try {
       const syncData =
         await apiClient.knowledgeManagement.lastKendraSync();
@@ -53,15 +58,16 @@ export default function DataPage() {
       } else {
         setLastSyncTime("Unknown");
       }
-    } catch {
-      setLastSyncTime("Error loading sync time");
+    } catch (error) {
+      const reason = Utils.getErrorMessage(error);
+      setLastSyncTime(reason ? `Error loading sync time: ${reason}` : "Error loading sync time");
     }
-  };
+  }, [apiClient]);
 
   useEffect(() => {
     refreshSyncTime();
     apiClient.sync.getSyncSchedule().then(setSyncSchedule).catch(() => {});
-  }, []);
+  }, [apiClient, refreshSyncTime]);
 
   const kbChipVariant = (): StatusVariant => {
     if (!lastSyncData) return "empty";
