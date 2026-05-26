@@ -362,6 +362,11 @@ export class LambdaFunctionStack extends Construct {
       effect: iam.Effect.ALLOW,
       actions: [
         'bedrock:DeleteKnowledgeBaseDocuments',
+        // DeleteKnowledgeBaseDocuments internally kicks off an ingestion job
+        // to drop the doc's chunks from OpenSearch -- without this action
+        // Bedrock returns AccessDeniedException for bedrock:StartIngestionJob
+        // and the whole delete fails. Don't remove.
+        'bedrock:StartIngestionJob',
       ],
       resources: [props.knowledgeBase.attrKnowledgeBaseArn]
     }));
