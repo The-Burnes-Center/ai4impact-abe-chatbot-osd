@@ -12,3 +12,6 @@ cdk.out
 
 # Cursor IDE files
 .cursor/
+
+# Claude Code local files
+.claude/
