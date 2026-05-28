@@ -8,10 +8,10 @@ AI-powered procurement chatbot for Massachusetts OSD. Combines Bedrock Knowledge
 |-------|------|
 | IaC | AWS CDK v2 (TypeScript) |
 | Chat Lambda | Node.js 20 ESM + Bedrock streaming |
-| Other Lambdas | Python 3.12 (23 total) |
+| Other Lambdas | Python 3.12 (30 total) |
 | LLM | Claude Opus 4.6 (primary), Claude Sonnet 4.6 (fast) |
 | Vector DB | OpenSearch Serverless (Titan Embed v2, 1024-dim) |
-| Data | DynamoDB (13 tables), S3 (7 buckets), SQS (1 queue + DLQ) |
+| Data | DynamoDB (13 tables), S3 (8 buckets), SQS (1 queue + DLQ) |
 | Auth | Cognito + WebSocket JWT authorizer |
 | Frontend | React 18 + TypeScript + Vite + MUI v6 |
 | CI/CD | GitHub Actions → CDK deploy on push to `main` |
@@ -57,7 +57,7 @@ npx cdk deploy ABEStackNonProd -c alarmEmail=you@example.com  # With alerts
 ### Two Separate Data Systems
 | System | Bucket Path | Trigger | Storage | Tool |
 |--------|-------------|---------|---------|------|
-| Knowledge Base | `KnowledgeSourceBucket` | Manual "Sync" or scheduled (Sunday 6 AM UTC) | OpenSearch (semantic chunking, 512 tokens, 95th-percentile breakpoint) | `query_db` |
+| Knowledge Base | `KnowledgeSourceBucket` | Manual "Sync" or scheduled (Sunday 1 AM ET) | OpenSearch (semantic chunking, 512 tokens, 95th-percentile breakpoint) | `query_db` |
 | Excel Index | `indexes/{id}/latest.xlsx` | S3 event (automatic) | DynamoDB (`ExcelIndexDataTable`) | `query_excel_index` |
 
 **Critical:** Uploading an Excel file to the knowledge bucket does NOT populate the Excel index. They are independent pipelines.
@@ -67,7 +67,7 @@ npx cdk deploy ABEStackNonProd -c alarmEmail=you@example.com  # With alerts
 2. `SyncOrchestratorFunction` copies docs → KB bucket, indexes → Contract index bucket
 3. Triggers Bedrock KB ingestion job
 4. Records history in `SyncHistoryTable` (TTL auto-cleanup via `expiresAt`)
-5. Scheduled via EventBridge Scheduler (default: Sunday 6 AM UTC); configurable from admin UI
+5. Scheduled via EventBridge Scheduler (default: Sunday 1 AM America/New_York); configurable from admin UI
 
 ### Key Files
 | File | Role |
@@ -76,7 +76,7 @@ npx cdk deploy ABEStackNonProd -c alarmEmail=you@example.com  # With alerts
 | [lib/constants.ts](lib/constants.ts) | Stack name, Cognito domain, OIDC name |
 | [lib/gen-ai-mvp-stack.ts](lib/gen-ai-mvp-stack.ts) | Root stack — orchestrates all constructs, applies tags, CDK nag suppressions |
 | [lib/chatbot-api/index.ts](lib/chatbot-api/index.ts) | ChatBotApi construct — wires tables, buckets, OpenSearch, KB, APIs, Lambdas, routes, monitoring |
-| [lib/chatbot-api/functions/functions.ts](lib/chatbot-api/functions/functions.ts) | All 23 Lambda definitions with `LAMBDA_DEFAULTS` (ARM64, X-Ray, 1-month logs) |
+| [lib/chatbot-api/functions/functions.ts](lib/chatbot-api/functions/functions.ts) | All 24 Lambda definitions with `LAMBDA_DEFAULTS` (ARM64, X-Ray, 1-month logs) |
 | [lib/chatbot-api/functions/websocket-chat/index.mjs](lib/chatbot-api/functions/websocket-chat/index.mjs) | Chat handler + agentic tool-use loop (max 20 rounds, streaming, context compression) |
 | [lib/chatbot-api/functions/websocket-chat/prompt.mjs](lib/chatbot-api/functions/websocket-chat/prompt.mjs) | System prompt (cached at Bedrock ~4K tokens) |
 | [lib/chatbot-api/functions/websocket-chat/tools.mjs](lib/chatbot-api/functions/websocket-chat/tools.mjs) | Tool definitions (static + dynamic Excel tool from registry), token estimation, result capping |
@@ -87,11 +87,11 @@ npx cdk deploy ABEStackNonProd -c alarmEmail=you@example.com  # With alerts
 | [lib/chatbot-api/functions/excel-index/parser/lambda_function.py](lib/chatbot-api/functions/excel-index/parser/lambda_function.py) | S3 trigger → parse .xlsx → DynamoDB rows + auto-generate AI description via Bedrock |
 | [lib/chatbot-api/functions/excel-index/query/lambda_function.py](lib/chatbot-api/functions/excel-index/query/lambda_function.py) | DynamoDB queries (filters, free-text fuzzy match, date ranges, aggregations, sorting, pagination) |
 | [lib/chatbot-api/tables/tables.ts](lib/chatbot-api/tables/tables.ts) | All 13 DynamoDB tables + SQS queue definitions |
-| [lib/chatbot-api/buckets/buckets.ts](lib/chatbot-api/buckets/buckets.ts) | All 7 S3 bucket definitions |
-| [lib/chatbot-api/monitoring/monitoring.ts](lib/chatbot-api/monitoring/monitoring.ts) | CloudWatch dashboard + 20 alarms + SNS topic |
+| [lib/chatbot-api/buckets/buckets.ts](lib/chatbot-api/buckets/buckets.ts) | All 8 S3 bucket definitions |
+| [lib/chatbot-api/monitoring/monitoring.ts](lib/chatbot-api/monitoring/monitoring.ts) | CloudWatch dashboard + 43 alarms + SNS topic |
 | [lib/chatbot-api/knowledge-base/knowledge-base.ts](lib/chatbot-api/knowledge-base/knowledge-base.ts) | Bedrock KB with semantic chunking (Titan Embed v2) |
 | [lib/chatbot-api/opensearch/opensearch.ts](lib/chatbot-api/opensearch/opensearch.ts) | OpenSearch Serverless collection + security policies + vector index custom resource |
-| [lib/chatbot-api/functions/step-functions/step-functions.ts](lib/chatbot-api/functions/step-functions/step-functions.ts) | Evaluation pipeline: Step Functions state machine + 6 eval-related Lambdas |
+| [lib/chatbot-api/functions/step-functions/step-functions.ts](lib/chatbot-api/functions/step-functions/step-functions.ts) | Evaluation pipeline: Step Functions state machine + 7 eval-related Lambdas |
 | [lib/authorization/index.ts](lib/authorization/index.ts) | Cognito User Pool + domain + client + WebSocket Lambda authorizer |
 | [lib/user-interface/index.ts](lib/user-interface/index.ts) | CloudFront + S3 static site + BucketDeployment (builds React app) |
 | [lib/user-interface/app/src/app.tsx](lib/user-interface/app/src/app.tsx) | React router + lazy-loaded pages |
@@ -155,6 +155,7 @@ npx cdk deploy ABEStackNonProd -c alarmEmail=you@example.com  # With alerts
 | Bucket | Versioning | Purpose |
 |--------|------------|---------|
 | KnowledgeSourceBucket | Yes | KB documents (PDFs, policies) |
+| KnowledgeBaseSupplementalBucket | No | Bedrock KB multimodal parsing output (extracted page images/visual elements) |
 | FeedbackDownloadBucket | Yes | Feedback CSV exports |
 | EvalResultsBucket | Yes | LLM evaluation results |
 | EvalTestCasesBucket | Yes | Test case files (CSV/JSON) |
@@ -244,7 +245,7 @@ RAG_ENABLED=true
 
 ## Constraints & Gotchas
 
-- **KB sync is manual:** No auto-sync when files are uploaded to the knowledge bucket. Admin must click "Sync data now" in the UI (or wait for Sunday 6 AM UTC scheduled sync).
+- **KB sync is manual:** No auto-sync when files are uploaded to the knowledge bucket. Admin must click "Sync data now" in the UI (or wait for Sunday 1 AM ET scheduled sync).
 - **Excel index path:** Must be exactly `indexes/{index_id}/latest.xlsx` — other S3 paths are ignored by the parser.
 - **DynamoDB schema changes:** Changing partition/sort keys requires table recreation. Use the `scope` pattern to avoid unintended logical ID changes.
 - **System prompt caching:** Prompt is ~4K tokens, cached at Bedrock (5-min TTL). Modifying [prompt.mjs](lib/chatbot-api/functions/websocket-chat/prompt.mjs) invalidates the cache temporarily.
@@ -263,7 +264,7 @@ RAG_ENABLED=true
 
 CloudWatch dashboard: `ABEStackNonProd-Operations`
 
-20 active alarms (trigger SNS email):
+43 active alarms (trigger SNS email):
 - **Lambda** (per function): errors >= 3 in 5 min | throttles >= 1 in 5 min | chat avg duration > 60s
 - **API Gateway**: HTTP 5xx >= 10 in 5 min | HTTP 4xx >= 50 in 5 min (3 periods)
 - **WebSocket**: zero connections for 15 min (potential outage)

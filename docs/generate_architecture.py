@@ -1,4 +1,11 @@
-"""Generate ABE architecture diagram using the Python diagrams DSL."""
+"""Generate ABE architecture diagram using the Python diagrams DSL.
+
+Render with:
+    python -m venv .venv && . .venv/bin/activate
+    pip install diagrams           # requires the graphviz `dot` binary on PATH
+    python docs/generate_architecture.py
+Produces docs/architecture.png.
+"""
 import os
 from diagrams import Diagram, Cluster, Edge
 from diagrams.aws.compute import Lambda
@@ -6,7 +13,7 @@ from diagrams.aws.database import Dynamodb
 from diagrams.aws.network import CloudFront, APIGateway
 from diagrams.aws.security import WAF, Cognito
 from diagrams.aws.ml import Bedrock
-from diagrams.aws.integration import SQS, StepFunctions, SNS
+from diagrams.aws.integration import SQS, StepFunctions, SNS, Eventbridge
 from diagrams.aws.storage import S3
 from diagrams.aws.analytics import AmazonOpensearchService
 from diagrams.aws.management import Cloudwatch
@@ -21,7 +28,7 @@ graph_attr = {
     "bgcolor": "white",
     "pad": "0.5",
     "nodesep": "0.6",
-    "ranksep": "1.0",
+    "ranksep": "1.1",
 }
 
 edge_attr = {
@@ -49,30 +56,36 @@ with Diagram(
     with Cluster("CDN & Auth"):
         waf = WAF("WAF")
         cf = CloudFront("CloudFront")
-        cognito = Cognito("Cognito\n(OIDC/SSO)")
+        cognito = Cognito("Cognito\n(OIDC / SSO)")
         frontend = React("React App\n(Vite + MUI)")
 
     with Cluster("API Layer"):
         rest = APIGateway("REST API")
         ws = APIGateway("WebSocket API")
+        authorizer = Lambda("JWT Authorizer\n(Lambda)")
 
     with Cluster("Chat & RAG"):
-        chat_fn = Lambda("Chat Lambda\n(Node.js)")
-        bedrock_chat = Bedrock("Bedrock\nClaude Sonnet 4")
+        chat_fn = Lambda("Chat Lambda\n(Node.js, agentic loop)")
+        bedrock_chat = Bedrock("Bedrock\nClaude Opus 4.6 / Sonnet 4.6")
         kb = Bedrock("Bedrock\nKnowledge Base")
         opensearch = AmazonOpensearchService("OpenSearch\nServerless")
 
-    with Cluster("Contract & Trade Index"):
+    with Cluster("Excel Index"):
         idx_query = Lambda("Index Query\nLambda")
         idx_parser = Lambda("Index Parser\nLambda (S3 trigger)")
-        idx_ddb = Dynamodb("DynamoDB\nIndex Tables")
-        idx_s3 = S3("S3\nIndex Bucket")
+        idx_ddb = Dynamodb("DynamoDB\nExcelIndexData")
+        idx_s3 = S3("S3\nContract Index Bucket")
 
-    with Cluster("Session & Knowledge Mgmt"):
+    with Cluster("Data Ingestion & Sync"):
+        upload_fn = Lambda("Upload / Knowledge\nMgmt Lambdas")
+        staging_s3 = S3("S3\nData Staging")
+        sync_fn = Lambda("Sync Orchestrator\nLambda")
+        eventbridge = Eventbridge("EventBridge\nScheduler (weekly)")
+        kb_s3 = S3("S3\nKnowledge Source")
+
+    with Cluster("Sessions & Feedback"):
         session_fn = Lambda("Session / Feedback\nLambdas (Python)")
         session_ddb = Dynamodb("DynamoDB\nSessions & Feedback")
-        kb_mgmt = Lambda("Knowledge Mgmt\nLambdas")
-        kb_s3 = S3("S3\nKnowledge Bucket")
 
     with Cluster("LLM Evaluation Pipeline"):
         sfn = StepFunctions("Step Functions\n(Split > RAGAS > Agg > Save)")
@@ -80,7 +93,7 @@ with Diagram(
         eval_s3 = S3("S3\nEval Results")
 
     with Cluster("Feedback to Test Library"):
-        sqs = SQS("SQS Queue")
+        sqs = SQS("SQS Queue\n(+ DLQ)")
         process_fn = Lambda("Process Lambda")
         rewrite = Bedrock("Bedrock\n(Rewrite Q)")
         test_lib = Dynamodb("DynamoDB\nTest Library")
@@ -99,28 +112,38 @@ with Diagram(
     frontend >> rest
     frontend >> ws
 
-    # Chat flow
+    # WebSocket connect is JWT-authorized by a Lambda authorizer
+    ws >> Edge(style="dashed", label="JWT") >> authorizer
+
+    # Chat flow + agent tools
     ws >> chat_fn
-    chat_fn >> bedrock_chat
-    chat_fn >> kb >> opensearch
-    chat_fn >> idx_query >> idx_ddb
+    chat_fn >> Edge(label="LLM") >> bedrock_chat
+    chat_fn >> Edge(label="query_db") >> kb >> opensearch
+    chat_fn >> Edge(label="query_excel_index") >> idx_query >> idx_ddb
 
-    # Contract index (admin uploads .xlsx via REST presigned URL → S3 → parser)
-    rest >> Edge(label="upload") >> idx_s3
-    idx_s3 >> idx_parser >> idx_ddb
+    # Excel index ingestion: index bucket S3 event -> parser -> DynamoDB
+    idx_s3 >> Edge(label="S3 event") >> idx_parser >> idx_ddb
 
-    # Session & Knowledge
-    rest >> session_fn >> session_ddb
-    rest >> kb_mgmt >> kb_s3
+    # Data ingestion & sync: upload to staging, then orchestrator fans out
+    rest >> upload_fn >> Edge(label="upload") >> staging_s3
+    eventbridge >> Edge(label="weekly") >> sync_fn
+    rest >> Edge(label="sync now") >> sync_fn
+    staging_s3 >> sync_fn
+    sync_fn >> Edge(label="docs") >> kb_s3
+    sync_fn >> Edge(label="indexes") >> idx_s3
+    sync_fn >> Edge(label="start ingestion") >> kb
     kb_s3 >> kb
+
+    # Sessions & feedback
+    rest >> session_fn >> session_ddb
 
     # Eval pipeline
     rest >> sfn
     sfn >> eval_ddb
     sfn >> eval_s3
 
-    # Feedback > Test Library
-    rest >> sqs >> process_fn >> rewrite >> test_lib
+    # Positive feedback > Test Library (SQS-buffered LLM rewrite)
+    session_fn >> Edge(label="thumbs-up") >> sqs >> process_fn >> rewrite >> test_lib
 
     # Analytics
     chat_fn - Edge(style="dashed") - faq_fn >> analytics_ddb

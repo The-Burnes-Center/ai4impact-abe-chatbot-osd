@@ -15,14 +15,14 @@ In the terminal
 The front-end of the base application is located in this repository. 
 To edit the user interface explore the /src/components and /src/pages/chatbot folders.
 Quick customizations:
-- To change the logo swap out the logo.png file.
-- /src/common/constants.ts change the name of the project on line 109.
+- To change the logo swap out /public/images/osd-logo.png (the state seal is /public/images/stateseal-color.png).
+- /src/common/constants.ts change the CHATBOT_NAME constant to rename the project.
 
 # AWS Tools Used
 AWS Amplify
 - Connects to Github repository (Super-Secret-Swag), agency specific branches
 MUI (Material UI) and React
-- Primary UI stack for new development; some legacy paths may still reference Cloudscape
+- Primary UI stack (MUI v6 + React 18 + TypeScript + Vite)
 
 ## Back-end
 The back-end code is a series of AWS lambda functions that serve as connectors between AWS services.
