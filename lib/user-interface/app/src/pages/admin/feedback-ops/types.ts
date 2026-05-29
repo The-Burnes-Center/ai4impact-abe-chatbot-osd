@@ -253,6 +253,13 @@ export function formatDate(value?: string): string {
   }
 }
 
+/** True when an item still needs a human to look at it (negative and not yet resolved/dismissed). */
+export function itemNeedsTriage(item: { feedbackKind?: string; reviewStatus?: string }): boolean {
+  if (item.feedbackKind === "helpful") return false;
+  if (item.reviewStatus === "actioned" || item.reviewStatus === "dismissed") return false;
+  return true;
+}
+
 /** Plain-language status choices staff pick from when reviewing an item. */
 export const REVIEW_STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "new", label: "New" },

@@ -22,6 +22,7 @@ import { AppContext } from "../../../common/app-context";
 import { ApiClient } from "../../../common/api-client/api-client";
 import { useNotifications } from "../../../components/notif-manager";
 import InboxView from "./InboxView";
+import FeedbackDetailView from "./FeedbackDetailView";
 import TrendsView from "./TrendsView";
 import PromptWorkspace from "./PromptWorkspace";
 import {
@@ -139,6 +140,7 @@ export default function FeedbackOpsPage() {
 
   const [tab, setTab] = useState<TabValue>("queue");
   const [loadingFeedback, setLoadingFeedback] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [activityLogError, setActivityLogError] = useState<string | null>(null);
   const [filters, setFilters] = useState<InboxFilters>({
@@ -180,8 +182,13 @@ export default function FeedbackOpsPage() {
   const loadFeedbackDetail = useCallback(
     async (id: string) => {
       if (!apiClient || !id) return;
-      const result = await apiClient.userFeedback.getAdminFeedbackDetail(id);
-      setSelectedFeedback(result);
+      try {
+        setLoadingDetail(true);
+        const result = await apiClient.userFeedback.getAdminFeedbackDetail(id);
+        setSelectedFeedback(result);
+      } finally {
+        setLoadingDetail(false);
+      }
     },
     [apiClient]
   );
@@ -284,6 +291,11 @@ export default function FeedbackOpsPage() {
     if (feedbackId) {
       setTab("queue");
       setSelectedFeedbackIds([feedbackId]);
+      // Clear stale detail when switching to a different item so the page shows a
+      // loading skeleton rather than the previous item's content.
+      if (previousDetailFeedbackIdRef.current !== feedbackId) {
+        setSelectedFeedback(null);
+      }
       loadFeedbackDetail(feedbackId);
       previousDetailFeedbackIdRef.current = feedbackId;
     } else {
@@ -352,6 +364,16 @@ export default function FeedbackOpsPage() {
       description="Review user feedback, spot trends, and improve ABE's responses."
       breadcrumbLabel="Feedback Manager"
     >
+      {feedbackId ? (
+        <FeedbackDetailView
+          detail={selectedFeedback}
+          feedbackItems={feedbackItems}
+          apiClient={apiClient}
+          loading={loadingDetail}
+          onUpdated={handleFeedbackUpdated}
+          onReloadDetail={loadFeedbackDetail}
+        />
+      ) : (
       <Stack spacing={2.5}>
         {/* Compact header row */}
         <Stack direction="row" justifyContent="flex-end" alignItems="center" flexWrap="wrap" gap={1}>
@@ -440,18 +462,11 @@ export default function FeedbackOpsPage() {
           <Box role="tabpanel" id="feedback-tabpanel-queue" aria-labelledby="feedback-tab-queue">
           <InboxView
             feedbackItems={feedbackItems}
-            selectedFeedback={selectedFeedback}
             filters={filters}
             loadingFeedback={loadingFeedback}
             loadingMeta={loadingMeta}
-            apiClient={apiClient}
             onFiltersChange={setFilters}
             onRefresh={refreshAll}
-            onSelectFeedback={setSelectedFeedback}
-            onLoadFeedbackDetail={loadFeedbackDetail}
-            onFeedbackUpdated={handleFeedbackUpdated}
-            selectedFeedbackIds={selectedFeedbackIds}
-            onSelectedFeedbackIdsChange={setSelectedFeedbackIds}
           />
           </Box>
         )}
@@ -479,6 +494,7 @@ export default function FeedbackOpsPage() {
           </Box>
         )}
       </Stack>
+      )}
 
       {/* Activity log drawer */}
       {/* Lift above the global AppBar (which sits at zIndex.drawer+1) so the
