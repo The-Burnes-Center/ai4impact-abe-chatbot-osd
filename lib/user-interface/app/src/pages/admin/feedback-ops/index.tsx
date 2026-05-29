@@ -341,7 +341,7 @@ export default function FeedbackOpsPage() {
   );
 
   const pendingCount = feedbackItems.filter(
-    (i) => i.feedbackKind !== "helpful" && i.reviewStatus !== "actioned"
+    (i) => i.feedbackKind !== "helpful" && i.reviewStatus !== "actioned" && i.reviewStatus !== "dismissed"
   ).length;
 
   const anyLoading = loadingFeedback || loadingMeta;
@@ -354,18 +354,7 @@ export default function FeedbackOpsPage() {
     >
       <Stack spacing={2.5}>
         {/* Compact header row */}
-        <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
-          <Stack direction="row" gap={1} alignItems="center">
-            {promptData.liveVersionId && (
-              <Chip
-                size="small"
-                label={`Live prompt: ${promptData.liveVersionId}`}
-                color="success"
-                variant="outlined"
-                sx={{ fontSize: "0.75rem", height: 26 }}
-              />
-            )}
-          </Stack>
+        <Stack direction="row" justifyContent="flex-end" alignItems="center" flexWrap="wrap" gap={1}>
           <Stack direction="row" gap={0.5} alignItems="center">
             <Tooltip
               title={
@@ -419,7 +408,7 @@ export default function FeedbackOpsPage() {
               aria-controls="feedback-tabpanel-queue"
               label={
                 <Stack direction="row" gap={0.75} alignItems="center">
-                  Review Queue
+                  Feedback
                   {pendingCount > 0 && (
                     <Chip
                       size="small"
@@ -441,7 +430,7 @@ export default function FeedbackOpsPage() {
               value="prompts"
               id="feedback-tab-prompts"
               aria-controls="feedback-tabpanel-prompts"
-              label="Prompts"
+              label="Instructions"
             />
           </Tabs>
         </Paper>

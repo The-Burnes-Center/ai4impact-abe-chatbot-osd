@@ -224,8 +224,8 @@ export const LABELS: Record<string, string> = {
 
   // Review statuses (simple workflow)
   "new": "New",
-  "analyzed": "AI analyzed",
-  "in_review": "Reviewing",
+  "analyzed": "AI reviewed",
+  "in_review": "In progress",
   "actioned": "Resolved",
   "dismissed": "Dismissed",
 
@@ -251,4 +251,24 @@ export function formatDate(value?: string): string {
   } catch {
     return value;
   }
+}
+
+/** Plain-language status choices staff pick from when reviewing an item. */
+export const REVIEW_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: "new", label: "New" },
+  { value: "in_review", label: "In progress" },
+  { value: "actioned", label: "Resolved" },
+  { value: "dismissed", label: "Dismissed" },
+];
+
+/** One clear, human status chip for a feedback item — what a non-technical reviewer needs to see at a glance. */
+export function feedbackStatusChip(item: {
+  feedbackKind?: string;
+  reviewStatus?: string;
+}): { label: string; color: "success" | "warning" | "info" | "default" } {
+  if (item.feedbackKind === "helpful") return { label: "Helpful", color: "success" };
+  if (item.reviewStatus === "actioned") return { label: "Resolved", color: "success" };
+  if (item.reviewStatus === "dismissed") return { label: "Dismissed", color: "default" };
+  if (item.reviewStatus === "in_review") return { label: "In progress", color: "info" };
+  return { label: "Needs review", color: "warning" };
 }

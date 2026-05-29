@@ -4,7 +4,6 @@ import {
   Box,
   Button,
   Chip,
-  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -15,17 +14,16 @@ import {
   InputAdornment,
   LinearProgress,
   Link,
-  MenuItem,
   Paper,
   Skeleton,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import NavigateBeforeIcon from "@mui/icons-material/NavigateBefore";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -36,48 +34,44 @@ import ThumbUpOutlinedIcon from "@mui/icons-material/ThumbUpOutlined";
 import ThumbDownOutlinedIcon from "@mui/icons-material/ThumbDownOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import SearchIcon from "@mui/icons-material/Search";
+import AutoAwesomeOutlinedIcon from "@mui/icons-material/AutoAwesomeOutlined";
 import {
-  DISPOSITIONS,
   FeedbackItem,
   FeedbackDetail,
   InboxFilters,
+  REVIEW_STATUS_OPTIONS,
+  feedbackStatusChip,
   formatDate,
-  label,
 } from "./types";
 import { ApiClient } from "../../../common/api-client/api-client";
 import AdminMarkdown from "../../../components/admin-markdown";
 import { useNotifications } from "../../../components/notif-manager";
 
-const ROOT_CAUSE_CHIPS: Record<string, { label: string; color: "error" | "warning" | "info" | "default" }> = {
+/** Plain-language name for the AI's guess at what went wrong. */
+const ISSUE_LABELS: Record<string, { label: string; color: "error" | "warning" | "info" | "default" }> = {
   retrieval_gap: { label: "Missing info", color: "warning" },
   grounding_error: { label: "Wrong answer", color: "error" },
   prompt_issue: { label: "Response style", color: "info" },
   answer_quality: { label: "Low quality", color: "warning" },
   product_bug: { label: "System bug", color: "error" },
-  needs_human_review: { label: "Needs review", color: "default" },
-  positive_signal: { label: "Helpful", color: "info" },
 };
 
-
-/** Short label for dense card footers; full id in tooltip */
-function promptVersionFootnote(id?: string): string {
-  if (!id) return "";
-  const trimmed = id.replace(/^v-?/i, "");
-  if (trimmed.length <= 22) return trimmed;
-  return `${trimmed.slice(0, 10)}…${trimmed.slice(-8)}`;
-}
-
-function sourceLineForCard(item: FeedbackItem): string {
-  const sources = item.sourceTitles || [];
-  if (sources.length === 0) return "No sources recorded for this turn.";
-  if (sources.length === 1) return sources[0];
-  return `${sources[0]} and ${sources.length - 1} other source${sources.length > 2 ? "s" : ""}`;
-}
+type ViewFilter = "needs" | "helpful" | "all";
 
 function itemNeedsTriage(item: FeedbackItem): boolean {
   if (item.feedbackKind === "helpful") return false;
   if (item.reviewStatus === "actioned" || item.reviewStatus === "dismissed") return false;
   return true;
+}
+
+function plainPreview(text: string | undefined, fallback: string): string {
+  if (!text) return fallback;
+  // Strip the most common markdown noise so a one-line card preview reads cleanly.
+  return text
+    .replace(/[#*_>`~]/g, "")
+    .replace(/\[(\d+)\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim() || fallback;
 }
 
 interface InboxViewProps {
@@ -100,34 +94,22 @@ function InboxSkeleton() {
   return (
     <Stack spacing={2}>
       <Skeleton variant="rounded" height={48} />
-      <Skeleton variant="rounded" height={400} />
+      <Skeleton variant="rounded" height={120} />
+      <Skeleton variant="rounded" height={120} />
+      <Skeleton variant="rounded" height={120} />
     </Stack>
   );
 }
 
-function EmptyInbox() {
+function EmptyState({ title, body }: { title: string; body: string }) {
   return (
     <Paper variant="outlined" sx={{ p: 6, textAlign: "center" }}>
       <InboxOutlinedIcon sx={{ fontSize: 48, color: "text.disabled", mb: 2 }} />
       <Typography variant="h6" color="text.secondary" gutterBottom>
-        No feedback yet
+        {title}
       </Typography>
       <Typography variant="body2" color="text.secondary">
-        Feedback from chat users will appear here once submitted.
-      </Typography>
-    </Paper>
-  );
-}
-
-function FilteredEmptyInbox() {
-  return (
-    <Paper variant="outlined" sx={{ p: 6, textAlign: "center" }}>
-      <InboxOutlinedIcon sx={{ fontSize: 48, color: "text.disabled", mb: 2 }} />
-      <Typography variant="h6" color="text.secondary" gutterBottom>
-        No results match these filters
-      </Typography>
-      <Typography variant="body2" color="text.secondary">
-        Try clearing the date range or broadening the queue filters.
+        {body}
       </Typography>
     </Paper>
   );
@@ -151,80 +133,67 @@ export default function InboxView(props: InboxViewProps) {
 
   const navigate = useNavigate();
   const { addNotification } = useNotifications();
-  const [owner, setOwner] = useState("");
-  const [resolutionNote, setResolutionNote] = useState("");
-  const [adminNotes, setAdminNotes] = useState("");
+
+  const [notes, setNotes] = useState("");
   const [reviewStatus, setReviewStatus] = useState("new");
-  const [disposition, setDisposition] = useState("pending");
   const [actionLoading, setActionLoading] = useState(false);
   const [page, setPage] = useState(0);
+  const [view, setView] = useState<ViewFilter>("needs");
   const [detailOpen, setDetailOpen] = useState(false);
-  const [confirmDialog, setConfirmDialog] = useState<{
-    open: boolean;
-    item: FeedbackItem | null;
-    action: "test_library" | "fix_prompt";
-  }>({ open: false, item: null, action: "test_library" });
-  const [deleteDialog, setDeleteDialog] = useState<{
-    open: boolean;
-    feedbackId: string;
-    question: string;
-  }>({ open: false, feedbackId: "", question: "" });
-  const [filtersExpanded, setFiltersExpanded] = useState(true);
+  const [exampleDialog, setExampleDialog] = useState<FeedbackItem | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; feedbackId: string; question: string }>({
+    open: false,
+    feedbackId: "",
+    question: "",
+  });
   const [searchDraft, setSearchDraft] = useState(filters.search);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
 
   const pageSize = 25;
-  const totalPages = Math.ceil(feedbackItems.length / pageSize);
-  const pagedItems = useMemo(
-    () => feedbackItems.slice(page * pageSize, (page + 1) * pageSize),
-    [feedbackItems, page]
-  );
-  const queueStats = useMemo(
+
+  const counts = useMemo(
     () => ({
-      shown: feedbackItems.length,
-      needsReview: feedbackItems.filter((item) => item.feedbackKind !== "helpful" && item.reviewStatus !== "actioned").length,
-      resolved: feedbackItems.filter((item) => item.reviewStatus === "actioned").length,
-      positive: feedbackItems.filter((item) => item.feedbackKind === "helpful").length,
+      needs: feedbackItems.filter(itemNeedsTriage).length,
+      helpful: feedbackItems.filter((i) => i.feedbackKind === "helpful").length,
+      all: feedbackItems.length,
     }),
     [feedbackItems]
   );
 
+  const visibleItems = useMemo(() => {
+    if (view === "needs") return feedbackItems.filter(itemNeedsTriage);
+    if (view === "helpful") return feedbackItems.filter((i) => i.feedbackKind === "helpful");
+    return feedbackItems;
+  }, [feedbackItems, view]);
+
+  const totalPages = Math.ceil(visibleItems.length / pageSize);
+  const pagedItems = useMemo(
+    () => visibleItems.slice(page * pageSize, (page + 1) * pageSize),
+    [visibleItems, page]
+  );
+
   useEffect(() => {
-    if (selectedFeedback?.feedback) {
-      const fb = selectedFeedback.feedback;
-      setOwner(fb.Owner || "");
-      setResolutionNote(fb.ResolutionNote || "");
-      setAdminNotes(fb.AdminNotes || "");
-      setReviewStatus(fb.ReviewStatus || "new");
-      setDisposition(fb.Disposition || "pending");
-    } else {
-      setOwner("");
-      setResolutionNote("");
-      setAdminNotes("");
-      setReviewStatus("new");
-      setDisposition("pending");
-    }
+    const fb = selectedFeedback?.feedback;
+    setNotes(fb?.ResolutionNote || fb?.AdminNotes || "");
+    setReviewStatus(fb?.ReviewStatus === "analyzed" ? "new" : fb?.ReviewStatus || "new");
   }, [selectedFeedback]);
 
   useEffect(() => {
-    setPage((currentPage) => {
-      if (feedbackItems.length === 0) {
-        return 0;
-      }
-      return Math.min(currentPage, Math.max(0, Math.ceil(feedbackItems.length / pageSize) - 1));
-    });
-  }, [feedbackItems.length]);
+    setPage(0);
+  }, [view]);
+
+  useEffect(() => {
+    setPage((currentPage) => Math.min(currentPage, Math.max(0, totalPages - 1)));
+  }, [totalPages]);
 
   useEffect(() => {
     setSearchDraft(filters.search);
   }, [filters.search]);
 
   useEffect(() => {
-    if (searchDraft === filtersRef.current.search) {
-      return undefined;
-    }
+    if (searchDraft === filtersRef.current.search) return undefined;
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     searchDebounceRef.current = setTimeout(() => {
       searchDebounceRef.current = null;
@@ -235,42 +204,6 @@ export default function InboxView(props: InboxViewProps) {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     };
   }, [searchDraft, onFiltersChange]);
-
-  const updateFilter = useCallback(
-    (key: keyof InboxFilters, value: string) => {
-      const nextFilters = { ...filters, [key]: value };
-      if (key === "dateFrom" && value && nextFilters.dateTo && value > nextFilters.dateTo) {
-        nextFilters.dateTo = value;
-      }
-      if (key === "dateTo" && value && nextFilters.dateFrom && value < nextFilters.dateFrom) {
-        nextFilters.dateTo = nextFilters.dateFrom;
-      }
-      onFiltersChange(nextFilters);
-      setPage(0);
-    },
-    [filters, onFiltersChange]
-  );
-
-  const clearFilters = useCallback(() => {
-    onFiltersChange({
-      feedbackKind: "",
-      reviewStatus: "",
-      disposition: "",
-      issueTag: "",
-      promptVersionId: "",
-      sourceTitle: "",
-      dateFrom: "",
-      dateTo: "",
-      search: "",
-    });
-    setPage(0);
-  }, [onFiltersChange]);
-
-  const hasActiveFilters = Object.values(filters).some(Boolean);
-  const activeFilterCount = useMemo(
-    () => Object.values(filters).filter((v) => Boolean(v)).length,
-    [filters]
-  );
 
   const handleOpenDetail = useCallback(
     async (id: string) => {
@@ -290,24 +223,23 @@ export default function InboxView(props: InboxViewProps) {
   }, [onSelectFeedback, onSelectedFeedbackIdsChange, navigate]);
 
   const handleSaveReview = async () => {
-    if (!apiClient || !selectedFeedback?.feedback?.FeedbackId) return;
+    const fb = selectedFeedback?.feedback;
+    if (!apiClient || !fb?.FeedbackId) return;
     try {
       setActionLoading(true);
-      await apiClient.userFeedback.setFeedbackDisposition(
-        selectedFeedback.feedback.FeedbackId,
-        {
-          reviewStatus,
-          disposition,
-          owner,
-          resolutionNote,
-          adminNotes,
-        }
-      );
-      await onLoadFeedbackDetail(selectedFeedback.feedback.FeedbackId);
+      // Preserve fields we no longer surface (owner/disposition) so saving never wipes existing data.
+      await apiClient.userFeedback.setFeedbackDisposition(fb.FeedbackId, {
+        reviewStatus,
+        disposition: fb.Disposition || "pending",
+        owner: fb.Owner || "",
+        resolutionNote: notes,
+        adminNotes: notes,
+      });
+      await onLoadFeedbackDetail(fb.FeedbackId);
       await onFeedbackUpdated();
-      addNotification("success", "Review saved.");
+      addNotification("success", "Saved.");
     } catch (error: unknown) {
-      addNotification("error", error instanceof Error ? error.message : "Could not save review.");
+      addNotification("error", error instanceof Error ? error.message : "Could not save.");
     } finally {
       setActionLoading(false);
     }
@@ -315,54 +247,44 @@ export default function InboxView(props: InboxViewProps) {
 
   const handleSaveAndNext = async () => {
     await handleSaveReview();
-    const currentIndex = feedbackItems.findIndex(
-      (i) => i.feedbackId === selectedFeedback?.feedback?.FeedbackId
-    );
-    const nextUnreviewed = feedbackItems.find(
-      (item, idx) => idx > currentIndex && itemNeedsTriage(item)
-    );
-    if (nextUnreviewed) {
-      await handleOpenDetail(nextUnreviewed.feedbackId);
+    const currentIndex = visibleItems.findIndex((i) => i.feedbackId === selectedFeedback?.feedback?.FeedbackId);
+    const next = visibleItems.find((item, idx) => idx > currentIndex && itemNeedsTriage(item));
+    if (next) {
+      await handleOpenDetail(next.feedbackId);
     } else {
-      addNotification("info", "No more items to review.");
+      addNotification("info", "That was the last item needing review.");
     }
   };
 
-  const handleReanalyze = async () => {
-    if (!apiClient || !selectedFeedback?.feedback?.FeedbackId) return;
+  const handleSummarize = async () => {
+    const fb = selectedFeedback?.feedback;
+    if (!apiClient || !fb?.FeedbackId) return;
     try {
       setActionLoading(true);
-      await apiClient.userFeedback.analyzeFeedback(selectedFeedback.feedback.FeedbackId);
-      await onLoadFeedbackDetail(selectedFeedback.feedback.FeedbackId);
+      await apiClient.userFeedback.analyzeFeedback(fb.FeedbackId);
+      await onLoadFeedbackDetail(fb.FeedbackId);
       await onFeedbackUpdated();
-      addNotification("success", "AI analysis complete.");
+      addNotification("success", "AI summary updated.");
     } catch (error: unknown) {
-      addNotification("error", error instanceof Error ? error.message : "Could not rerun analysis.");
+      addNotification("error", error instanceof Error ? error.message : "Could not generate an AI summary.");
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleAddToTestLibrary = async (item: FeedbackItem) => {
+  const handleSaveAsExample = async (item: FeedbackItem) => {
     if (!apiClient) return;
     try {
       setActionLoading(true);
       await apiClient.userFeedback.promoteToCandidate(item.feedbackId);
       await onFeedbackUpdated();
-      addNotification(
-        "success",
-        "Queued for test library. Inline source markers like [1] are removed from the answer; the question is lightly edited for evaluations."
-      );
+      addNotification("success", "Saved as a good example for quality checks.");
     } catch (error: unknown) {
-      addNotification("error", error instanceof Error ? error.message : "Could not add to test library.");
+      addNotification("error", error instanceof Error ? error.message : "Could not save this example.");
     } finally {
       setActionLoading(false);
-      setConfirmDialog({ open: false, item: null, action: "test_library" });
+      setExampleDialog(null);
     }
-  };
-
-  const handleQuickFixPrompt = (item: FeedbackItem) => {
-    handleOpenDetail(item.feedbackId);
   };
 
   const handleDeleteFeedback = async () => {
@@ -374,28 +296,17 @@ export default function InboxView(props: InboxViewProps) {
         handleCloseDetail();
       }
       await onFeedbackUpdated();
-      addNotification("success", "Feedback deleted.");
+      addNotification("success", "Deleted.");
     } catch (error: unknown) {
-      addNotification("error", error instanceof Error ? error.message : "Could not delete feedback.");
+      addNotification("error", error instanceof Error ? error.message : "Could not delete.");
     } finally {
       setActionLoading(false);
       setDeleteDialog({ open: false, feedbackId: "", question: "" });
     }
   };
 
-  const openConfirmDialog = (item: FeedbackItem, action: "test_library" | "fix_prompt", e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (action === "fix_prompt") {
-      handleQuickFixPrompt(item);
-      return;
-    }
-    setConfirmDialog({ open: true, item, action });
-  };
-
   useEffect(() => {
-    if (selectedFeedback && !detailOpen) {
-      setDetailOpen(true);
-    }
+    if (selectedFeedback && !detailOpen) setDetailOpen(true);
   }, [detailOpen, selectedFeedback]);
 
   if (loadingFeedback && feedbackItems.length === 0) {
@@ -403,229 +314,93 @@ export default function InboxView(props: InboxViewProps) {
   }
 
   const listBusy = loadingFeedback || loadingMeta || actionLoading;
-
-  const isPositive = (item: FeedbackItem) => item.feedbackKind === "helpful";
+  const selected = selectedFeedback?.feedback;
+  const isHelpful = selected?.FeedbackKind === "helpful";
+  const aiSummary = selected?.Analysis?.summary;
+  const aiIssue = selected?.Analysis?.likelyRootCause ? ISSUE_LABELS[selected.Analysis.likelyRootCause] : undefined;
 
   return (
-    <Stack spacing={1.5}>
+    <Stack spacing={2}>
       {listBusy && (
-        <Box
-          role="progressbar"
-          aria-label="Loading feedback queue"
-          aria-busy="true"
-          sx={{ borderRadius: 1 }}
-        >
+        <Box role="progressbar" aria-label="Loading feedback" aria-busy="true" sx={{ borderRadius: 1 }}>
           <LinearProgress sx={{ borderRadius: 1 }} />
         </Box>
       )}
 
-      <Paper variant="outlined" sx={{ p: 1.5 }}>
-        <Stack spacing={1.25}>
-          {/* Always visible: toggle more filters, search, refresh */}
-          <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-            <Button
-              size="small"
-              variant="text"
-              color="inherit"
-              onClick={() => setFiltersExpanded((v) => !v)}
-              aria-expanded={filtersExpanded}
-              aria-controls="inbox-advanced-filters"
-              id="inbox-filters-toggle"
-              startIcon={filtersExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-              sx={{
-                textTransform: "none",
-                fontWeight: 600,
-                fontSize: "0.8125rem",
-                color: "text.primary",
-                minWidth: "auto",
-                px: 0.75,
-              }}
-            >
-              {filtersExpanded ? "Hide filters" : "More filters"}
-            </Button>
-            {!filtersExpanded && activeFilterCount > 0 && (
-              <Chip
-                size="small"
-                label={`${activeFilterCount} active`}
-                color="primary"
-                variant="outlined"
-                sx={{ height: 24, fontSize: "0.75rem" }}
-              />
-            )}
-            {!filtersExpanded && hasActiveFilters && (
-              <Chip
-                label="Clear filters"
-                size="small"
-                variant="outlined"
-                onDelete={clearFilters}
-                onClick={clearFilters}
-                sx={{ fontSize: "0.75rem", height: 28 }}
-              />
-            )}
-            <TextField
-              size="small"
-              label="Search queue"
-              value={searchDraft}
-              onChange={(e) => setSearchDraft(e.target.value)}
-              sx={{ flex: 1, minWidth: { xs: "100%", sm: 200 } }}
-              inputProps={{ "aria-label": "Search the feedback queue" }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon fontSize="small" />
-                  </InputAdornment>
-                ),
-              }}
-            />
-            <Tooltip title="Refresh queue and analytics">
-              <IconButton
-                onClick={onRefresh}
-                disabled={listBusy}
-                size="small"
-                aria-label="Refresh"
-                sx={{ "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 } }}
-              >
+      {/* Simple controls: what to show + search */}
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        gap={1.5}
+        alignItems={{ sm: "center" }}
+        justifyContent="space-between"
+      >
+        <ToggleButtonGroup
+          value={view}
+          exclusive
+          size="small"
+          onChange={(_, value: ViewFilter | null) => {
+            if (value) setView(value);
+          }}
+          aria-label="Which feedback to show"
+        >
+          <ToggleButton value="needs" sx={{ textTransform: "none", px: 1.75 }}>
+            Needs review{counts.needs > 0 ? ` (${counts.needs})` : ""}
+          </ToggleButton>
+          <ToggleButton value="helpful" sx={{ textTransform: "none", px: 1.75 }}>
+            Helpful{counts.helpful > 0 ? ` (${counts.helpful})` : ""}
+          </ToggleButton>
+          <ToggleButton value="all" sx={{ textTransform: "none", px: 1.75 }}>
+            All ({counts.all})
+          </ToggleButton>
+        </ToggleButtonGroup>
+
+        <Stack direction="row" gap={1} alignItems="center" sx={{ flex: 1, maxWidth: { sm: 360 } }}>
+          <TextField
+            size="small"
+            placeholder="Search feedback"
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            sx={{ flex: 1 }}
+            inputProps={{ "aria-label": "Search feedback" }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
+          <Tooltip title="Refresh">
+            <span>
+              <IconButton onClick={onRefresh} disabled={listBusy} size="small" aria-label="Refresh">
                 <RefreshIcon fontSize="small" />
               </IconButton>
-            </Tooltip>
-          </Stack>
-
-          <Collapse in={filtersExpanded} id="inbox-advanced-filters" role="region" aria-labelledby="inbox-filters-toggle">
-            <Stack spacing={1.25}>
-              <Stack direction={{ xs: "column", xl: "row" }} gap={1} alignItems={{ xl: "center" }}>
-                <TextField
-                  select
-                  size="small"
-                  label="Feedback"
-                  value={filters.feedbackKind}
-                  onChange={(e) => updateFilter("feedbackKind", e.target.value)}
-                  sx={{ minWidth: 150 }}
-                  inputProps={{ "aria-label": "Filter by feedback type" }}
-                >
-                  <MenuItem value="">All signals</MenuItem>
-                  <MenuItem value="not_helpful">Needs attention</MenuItem>
-                  <MenuItem value="helpful">Helpful</MenuItem>
-                </TextField>
-                <TextField
-                  select
-                  size="small"
-                  label="Status"
-                  value={filters.reviewStatus}
-                  onChange={(e) => updateFilter("reviewStatus", e.target.value)}
-                  sx={{ minWidth: 150 }}
-                  inputProps={{ "aria-label": "Filter by review status" }}
-                >
-                  <MenuItem value="">Any status</MenuItem>
-                  <MenuItem value="new">New</MenuItem>
-                  <MenuItem value="analyzed">AI analyzed</MenuItem>
-                  <MenuItem value="in_review">Reviewing</MenuItem>
-                  <MenuItem value="actioned">Resolved</MenuItem>
-                  <MenuItem value="dismissed">Dismissed</MenuItem>
-                </TextField>
-                <TextField
-                  size="small"
-                  label="Issue tag"
-                  value={filters.issueTag}
-                  onChange={(e) => updateFilter("issueTag", e.target.value)}
-                  sx={{ minWidth: 160 }}
-                  inputProps={{ "aria-label": "Filter by issue tag" }}
-                />
-                <TextField
-                  size="small"
-                  label="Prompt version ID"
-                  value={filters.promptVersionId}
-                  onChange={(e) => updateFilter("promptVersionId", e.target.value)}
-                  sx={{ minWidth: 180 }}
-                  inputProps={{ "aria-label": "Filter by prompt version id" }}
-                />
-                <TextField
-                  size="small"
-                  label="Source title"
-                  value={filters.sourceTitle}
-                  onChange={(e) => updateFilter("sourceTitle", e.target.value)}
-                  sx={{ minWidth: 200, flex: 1 }}
-                  inputProps={{ "aria-label": "Filter by source document title" }}
-                />
-              </Stack>
-
-              <Stack direction={{ xs: "column", lg: "row" }} gap={1} alignItems={{ lg: "flex-start" }}>
-                <TextField
-                  select
-                  size="small"
-                  label="Action"
-                  value={filters.disposition}
-                  onChange={(e) => updateFilter("disposition", e.target.value)}
-                  sx={{ minWidth: 170 }}
-                  inputProps={{ "aria-label": "Filter by disposition" }}
-                >
-                  <MenuItem value="">Any action</MenuItem>
-                  {DISPOSITIONS.map((option) => (
-                    <MenuItem key={option} value={option}>
-                      {label(option)}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  size="small"
-                  label="From"
-                  type="date"
-                  value={filters.dateFrom}
-                  onChange={(e) => updateFilter("dateFrom", e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ width: 160 }}
-                  inputProps={{ "aria-label": "From date", max: filters.dateTo || undefined }}
-                  helperText=" "
-                  FormHelperTextProps={{ sx: { minHeight: 20 } }}
-                />
-                <TextField
-                  size="small"
-                  label="To"
-                  type="date"
-                  value={filters.dateTo}
-                  onChange={(e) => updateFilter("dateTo", e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ width: 160 }}
-                  inputProps={{ "aria-label": "To date", min: filters.dateFrom || undefined }}
-                  helperText={filters.dateFrom ? "Inclusive range" : " "}
-                  FormHelperTextProps={{ sx: { minHeight: 20 } }}
-                />
-                {hasActiveFilters && (
-                  <Chip
-                    label="Clear filters"
-                    size="small"
-                    variant="outlined"
-                    onDelete={clearFilters}
-                    onClick={clearFilters}
-                    sx={{ fontSize: "0.75rem", height: 28 }}
-                  />
-                )}
-              </Stack>
-            </Stack>
-          </Collapse>
-
-          <Stack direction="row" gap={1} flexWrap="wrap" alignItems="center">
-            <Chip size="small" label={`${queueStats.shown} shown`} sx={{ height: 24, fontSize: "0.75rem" }} />
-            <Chip size="small" color="warning" variant="outlined" label={`${queueStats.needsReview} need review`} sx={{ height: 24, fontSize: "0.75rem" }} />
-            <Chip size="small" color="success" variant="outlined" label={`${queueStats.resolved} resolved`} sx={{ height: 24, fontSize: "0.75rem" }} />
-            <Chip size="small" color="primary" variant="outlined" label={`${queueStats.positive} helpful`} sx={{ height: 24, fontSize: "0.75rem" }} />
-          </Stack>
+            </span>
+          </Tooltip>
         </Stack>
-      </Paper>
+      </Stack>
 
-      {feedbackItems.length === 0 ? (
-        hasActiveFilters ? <FilteredEmptyInbox /> : <EmptyInbox />
+      {/* List */}
+      {visibleItems.length === 0 ? (
+        view === "needs" ? (
+          <EmptyState
+            title="Nothing needs your review"
+            body="You're all caught up. Switch to “All” or “Helpful” to see other feedback."
+          />
+        ) : feedbackItems.length === 0 ? (
+          <EmptyState title="No feedback yet" body="Feedback from chat users will show up here once they submit it." />
+        ) : (
+          <EmptyState title="No matches" body="Try a different search or filter." />
+        )
       ) : (
-        <Stack spacing={2} sx={{ maxWidth: 960 }} role="list" aria-label="Feedback items">
+        <Stack spacing={1.5} sx={{ maxWidth: 860 }} role="list" aria-label="Feedback">
           {pagedItems.map((item) => {
-            const positive = isPositive(item);
-            const isActive = selectedFeedback?.feedback?.FeedbackId === item.feedbackId;
-            const rootCauseKey = item.rootCause || (positive ? "positive_signal" : "needs_human_review");
-            const rootCauseChip = ROOT_CAUSE_CHIPS[rootCauseKey];
-            const reviewLabel = label(item.reviewStatus || "new");
-            const headline = positive ? "Good answer — save for regression tests?" : "Needs your review";
-            const subhead = positive
-              ? "Users marked this response as helpful."
-              : `Queue status: ${reviewLabel}`;
+            const positive = item.feedbackKind === "helpful";
+            const isActive = selected?.FeedbackId === item.feedbackId;
+            const status = feedbackStatusChip(item);
+            const issue = item.rootCause ? ISSUE_LABELS[item.rootCause] : undefined;
+            const question = plainPreview(item.userPromptPreview, "(no question captured)");
+            const preview = plainPreview(item.summary || item.answerPreview, "No preview available.");
 
             return (
               <Paper
@@ -641,332 +416,81 @@ export default function InboxView(props: InboxViewProps) {
                     handleOpenDetail(item.feedbackId);
                   }
                 }}
-                aria-selected={isActive}
                 aria-current={isActive ? "true" : undefined}
-                aria-label={`${headline}. ${subhead}. Submitted ${formatDate(item.createdAt)}.`}
+                aria-label={`${status.label}. ${question}`}
                 sx={{
                   cursor: "pointer",
                   borderRadius: 2,
-                  overflow: "hidden",
+                  p: 2,
                   borderLeftWidth: 4,
                   borderLeftStyle: "solid",
-                  borderLeftColor: positive ? "primary.main" : "warning.main",
-                  transition: "box-shadow 160ms ease, border-color 160ms ease",
-                  ...(isActive && {
-                    boxShadow: (t) => `0 0 0 2px ${alpha(t.palette.primary.main, 0.35)}`,
-                    bgcolor: "action.selected",
-                  }),
-                  "&:hover": {
-                    boxShadow: (t) => `0 8px 24px ${alpha(t.palette.common.black, 0.08)}`,
-                  },
+                  borderLeftColor: positive ? "success.main" : "warning.main",
+                  transition: "box-shadow 160ms ease",
+                  ...(isActive && { boxShadow: (t) => `0 0 0 2px ${alpha(t.palette.primary.main, 0.35)}` }),
+                  "&:hover": { boxShadow: (t) => `0 6px 20px ${alpha(t.palette.common.black, 0.08)}` },
+                  "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 },
                 }}
               >
-                {/* Status strip — what to do next, not raw enum labels */}
-                <Box
-                  sx={{
-                    px: 2,
-                    py: 1.25,
-                    display: "flex",
-                    alignItems: "flex-start",
-                    justifyContent: "space-between",
-                    gap: 1.5,
-                    flexWrap: "wrap",
-                    bgcolor: (t) =>
-                      positive ? alpha(t.palette.primary.main, 0.06) : alpha(t.palette.warning.main, 0.08),
-                    borderBottom: 1,
-                    borderColor: "divider",
-                  }}
-                >
-                  <Stack direction="row" alignItems="flex-start" gap={1.25} sx={{ minWidth: 0, flex: 1 }}>
-                    <Box
-                      sx={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 1,
-                        flexShrink: 0,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        bgcolor: (t) =>
-                          positive ? alpha(t.palette.primary.main, 0.12) : alpha(t.palette.warning.main, 0.15),
-                      }}
-                      aria-hidden
-                    >
-                      {positive ? (
-                        <ThumbUpOutlinedIcon sx={{ fontSize: 20, color: "primary.main" }} />
-                      ) : (
-                        <ThumbDownOutlinedIcon sx={{ fontSize: 20, color: "warning.dark" }} />
-                      )}
-                    </Box>
-                    <Stack spacing={0.25} sx={{ minWidth: 0 }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: "1rem", lineHeight: 1.3 }}>
-                        {headline}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.8125rem", lineHeight: 1.45 }}>
-                        {subhead}
-                      </Typography>
-                    </Stack>
-                  </Stack>
-                  <Tooltip title={`Submitted ${formatDate(item.createdAt)}`}>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ fontSize: "0.75rem", whiteSpace: "nowrap", flexShrink: 0, pt: 0.25 }}
-                    >
-                      {formatDate(item.createdAt)}
-                    </Typography>
-                  </Tooltip>
-                </Box>
-
-                {/* Conversation — primary scan target */}
-                <Stack sx={{ px: 2, pt: 2, pb: 1.5 }} spacing={2} role="group" aria-label="Question and answer preview">
-                  <Box>
-                    <Typography
-                      variant="overline"
-                      sx={{
-                        display: "block",
-                        fontSize: "0.65rem",
-                        fontWeight: 700,
-                        letterSpacing: "0.08em",
-                        color: "text.secondary",
-                        mb: 1,
-                      }}
-                    >
-                      User asked
-                    </Typography>
-                    <Box
-                      sx={{
-                        borderRadius: 1.5,
-                        px: 1.5,
-                        py: 1.25,
-                        bgcolor: (t) => alpha(t.palette.primary.main, 0.05),
-                        border: 1,
-                        borderColor: (t) => alpha(t.palette.primary.main, 0.12),
-                        minHeight: 48,
-                        maxHeight: 108,
-                        overflow: "hidden",
-                        position: "relative",
-                        "&::after":
-                          item.userPromptPreview && item.userPromptPreview.length > 120
-                            ? {
-                                content: '""',
-                                position: "absolute",
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                height: 28,
-                                background: (t) =>
-                                  `linear-gradient(transparent, ${alpha(t.palette.primary.main, 0.1)})`,
-                                pointerEvents: "none",
-                              }
-                            : undefined,
-                      }}
-                    >
-                      <AdminMarkdown
-                        content={item.userPromptPreview || "No question preview captured."}
-                        compact
-                        sx={{ fontWeight: 600, fontSize: "0.9375rem", lineHeight: 1.5 }}
+                <Stack spacing={1}>
+                  <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
+                    {positive ? (
+                      <ThumbUpOutlinedIcon sx={{ fontSize: 18, color: "success.main" }} aria-hidden />
+                    ) : (
+                      <ThumbDownOutlinedIcon sx={{ fontSize: 18, color: "warning.dark" }} aria-hidden />
+                    )}
+                    <Chip size="small" color={status.color} label={status.label} sx={{ height: 22, fontSize: "0.75rem" }} />
+                    {issue && (
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        color={issue.color}
+                        label={issue.label}
+                        sx={{ height: 22, fontSize: "0.75rem" }}
                       />
-                    </Box>
-                  </Box>
-                  <Box>
-                    <Typography
-                      variant="overline"
-                      sx={{
-                        display: "block",
-                        fontSize: "0.65rem",
-                        fontWeight: 700,
-                        letterSpacing: "0.08em",
-                        color: "text.secondary",
-                        mb: 1,
-                      }}
-                    >
-                      ABE answered
-                    </Typography>
-                    <Box
-                      sx={{
-                        borderRadius: 1.5,
-                        pl: 1.5,
-                        borderLeft: 3,
-                        borderColor: "divider",
-                        py: 0.25,
-                        minHeight: 40,
-                        maxHeight: 100,
-                        overflow: "hidden",
-                        position: "relative",
-                        "&::after":
-                          item.answerPreview && item.answerPreview.length > 140
-                            ? {
-                                content: '""',
-                                position: "absolute",
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                height: 24,
-                                background: (t) =>
-                                  `linear-gradient(transparent, ${alpha(t.palette.background.paper, 0.97)})`,
-                                pointerEvents: "none",
-                              }
-                            : undefined,
-                      }}
-                    >
-                      <AdminMarkdown
-                        content={item.answerPreview || "No answer preview captured."}
-                        compact
-                        sx={{ color: "text.secondary", fontSize: "0.875rem", lineHeight: 1.55 }}
-                      />
-                    </Box>
-                  </Box>
-                </Stack>
-
-                {/* Classification + AI note — why this row exists */}
-                <Box sx={{ px: 2, pb: 1.5 }}>
-                  <Stack
-                    direction="row"
-                    gap={0.75}
-                    flexWrap="wrap"
-                    alignItems="center"
-                    sx={{ mb: item.summary ? 1 : 0 }}
-                    aria-label="Classification"
-                  >
-                    <Chip
-                      size="small"
-                      label={rootCauseChip ? rootCauseChip.label : label(rootCauseKey)}
-                      color={rootCauseChip?.color || "default"}
-                      variant="outlined"
-                      sx={{ height: 26, fontSize: "0.75rem", fontWeight: 600 }}
-                    />
+                    )}
                     {item.recurrenceCount && item.recurrenceCount > 1 && (
                       <Chip
                         size="small"
                         variant="outlined"
-                        label={`Similar reports · ${item.recurrenceCount}×`}
-                        sx={{ height: 26, fontSize: "0.75rem" }}
+                        label={`Seen ${item.recurrenceCount}×`}
+                        sx={{ height: 22, fontSize: "0.75rem" }}
                       />
                     )}
-                    {!positive && item.disposition && item.disposition !== "pending" && (
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        color="secondary"
-                        label={`Next: ${label(item.disposition)}`}
-                        sx={{ height: 26, fontSize: "0.75rem" }}
-                      />
-                    )}
+                    <Box sx={{ flex: 1 }} />
+                    <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+                      {formatDate(item.createdAt)}
+                    </Typography>
                   </Stack>
-                  {item.summary && (
-                    <Paper
-                      variant="outlined"
-                      sx={{
-                        p: 1.25,
-                        borderRadius: 1,
-                        bgcolor: (t) => alpha(t.palette.text.primary, 0.02),
-                        borderColor: (t) => alpha(t.palette.divider, 0.9),
-                      }}
-                    >
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "0.65rem" }}
-                      >
-                        AI summary
-                      </Typography>
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        sx={{ fontSize: "0.8125rem", lineHeight: 1.5, mt: 0.5, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}
-                      >
-                        {item.summary}
-                      </Typography>
-                    </Paper>
-                  )}
-                </Box>
 
-                {/* Technical context + actions — separated from narrative */}
-                <Box
-                  sx={{
-                    px: 2,
-                    py: 1.5,
-                    bgcolor: (t) => alpha(t.palette.text.primary, 0.025),
-                    borderTop: 1,
-                    borderColor: "divider",
-                  }}
-                >
-                  <Stack
-                    direction={{ xs: "column", sm: "row" }}
-                    spacing={1.5}
-                    alignItems={{ xs: "stretch", sm: "center" }}
-                    justifyContent="space-between"
+                  <Typography
+                    sx={{
+                      fontWeight: 600,
+                      fontSize: "0.95rem",
+                      lineHeight: 1.4,
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                    }}
                   >
-                    <Stack spacing={0.5} sx={{ minWidth: 0, flex: 1 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem", lineHeight: 1.5 }}>
-                        <Box component="span" sx={{ fontWeight: 600, color: "text.primary" }}>
-                          Sources:{" "}
-                        </Box>
-                        {sourceLineForCard(item)}
-                      </Typography>
-                      {item.promptVersionId && (
-                        <Tooltip title={item.promptVersionId}>
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{ fontSize: "0.7rem", fontFamily: "ui-monospace, monospace", cursor: "help" }}
-                          >
-                            Prompt version · {promptVersionFootnote(item.promptVersionId)}
-                          </Typography>
-                        </Tooltip>
-                      )}
-                    </Stack>
-                    <Stack
-                      direction="row"
-                      gap={1}
-                      alignItems="center"
-                      justifyContent={{ xs: "flex-end", sm: "flex-end" }}
-                      flexShrink={0}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {positive ? (
-                        <Button
-                          size="medium"
-                          variant="contained"
-                          color="primary"
-                          onClick={(e) => openConfirmDialog(item, "test_library", e)}
-                          disabled={actionLoading}
-                          sx={{ textTransform: "none", fontWeight: 600, px: 2, minHeight: 40 }}
-                        >
-                          Add to tests
-                        </Button>
-                      ) : (
-                        <Button
-                          size="medium"
-                          variant="contained"
-                          color="warning"
-                          onClick={(e) => openConfirmDialog(item, "fix_prompt", e)}
-                          sx={{ textTransform: "none", fontWeight: 600, px: 2, minHeight: 40 }}
-                        >
-                          Open review
-                        </Button>
-                      )}
-                      <Tooltip title="Delete">
-                        <IconButton
-                          size="medium"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteDialog({
-                              open: true,
-                              feedbackId: item.feedbackId,
-                              question: item.userPromptPreview || "this item",
-                            });
-                          }}
-                          aria-label="Delete feedback"
-                          sx={{ color: "text.secondary", "&:hover": { color: "error.main" } }}
-                        >
-                          <DeleteOutlineIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Stack>
-                  </Stack>
-                </Box>
+                    {question}
+                  </Typography>
+
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{
+                      fontSize: "0.8125rem",
+                      lineHeight: 1.5,
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {preview}
+                  </Typography>
+                </Stack>
               </Paper>
             );
           })}
@@ -974,18 +498,13 @@ export default function InboxView(props: InboxViewProps) {
       )}
 
       {/* Pagination */}
-      {totalPages > 1 && feedbackItems.length > 0 && (
-        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ maxWidth: 960, pt: 0.5 }}>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
-            {feedbackItems.length} items &middot; Page {page + 1} of {totalPages}
+      {totalPages > 1 && (
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ maxWidth: 860, pt: 0.5 }}>
+          <Typography variant="caption" color="text.secondary">
+            Page {page + 1} of {totalPages}
           </Typography>
           <Stack direction="row" gap={0.5}>
-            <IconButton
-              size="small"
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
-              aria-label="Previous page"
-            >
+            <IconButton size="small" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} aria-label="Previous page">
               <NavigateBeforeIcon />
             </IconButton>
             <IconButton
@@ -1000,80 +519,21 @@ export default function InboxView(props: InboxViewProps) {
         </Stack>
       )}
 
-      {/* Confirm "Add to test library" dialog */}
-      <Dialog
-        open={confirmDialog.open && confirmDialog.action === "test_library"}
-        onClose={() => setConfirmDialog({ open: false, item: null, action: "test_library" })}
-        maxWidth="sm"
-        fullWidth
-        disableRestoreFocus={false}
-      >
-        <DialogTitle sx={{ fontSize: "1rem", fontWeight: 600 }}>
-          Add to test library?
-        </DialogTitle>
-        <DialogContent>
-          {confirmDialog.item && (
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <Box>
-                <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
-                  Question
-                </Typography>
-                <AdminMarkdown content={confirmDialog.item.userPromptPreview || "N/A"} sx={{ mt: 0.5 }} />
-              </Box>
-              <Box>
-                <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
-                  ABE's Answer
-                </Typography>
-                <AdminMarkdown content={confirmDialog.item.answerPreview || "N/A"} maxHeight={200} sx={{ mt: 0.5 }} />
-              </Box>
-              <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.8125rem" }}>
-                Inline source markers like [1] are removed from the answer before it is stored. The user's question is
-                queued for a light edit so it stands alone without changing meaning—staying as close as possible to what
-                they typed—then written to the evaluation test library (usually within a minute).
-              </Typography>
-            </Stack>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button
-            onClick={() => setConfirmDialog({ open: false, item: null, action: "test_library" })}
-            sx={{ textTransform: "none" }}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => confirmDialog.item && handleAddToTestLibrary(confirmDialog.item)}
-            disabled={actionLoading}
-            sx={{ textTransform: "none" }}
-          >
-            Confirm
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Detail slide-out drawer (negative feedback review) */}
-      {/* The global AppBar sits at `zIndex.drawer + 1`, so we lift the entire
-          drawer above the header (modal+2) — otherwise the Paper's own
-          header strip (with the Close icon) hides behind the navy bar and
-          users get stuck with no exit. */}
+      {/* Detail panel */}
       <Drawer
         anchor="right"
         open={detailOpen && selectedFeedback != null}
         onClose={handleCloseDetail}
         sx={{ zIndex: (t) => t.zIndex.modal + 2 }}
-        slotProps={{
-          backdrop: { "aria-hidden": true },
-        }}
+        slotProps={{ backdrop: { "aria-hidden": true } }}
         PaperProps={{
-          sx: { width: { xs: "100%", md: 520 }, p: 0 },
+          sx: { width: { xs: "100%", md: 540 }, p: 0 },
           role: "dialog",
           "aria-modal": true,
           "aria-label": "Feedback detail",
         }}
       >
-        {selectedFeedback && (
+        {selectedFeedback && selected && (
           <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
             {/* Header */}
             <Stack
@@ -1083,193 +543,158 @@ export default function InboxView(props: InboxViewProps) {
               sx={{ px: 2.5, py: 2, borderBottom: "1px solid", borderColor: "divider", flexShrink: 0 }}
             >
               <Stack direction="row" gap={1} alignItems="center">
-                {selectedFeedback.feedback?.FeedbackKind === "helpful" ? (
-                  <ThumbUpOutlinedIcon sx={{ fontSize: 20, color: "primary.main" }} aria-hidden="true" />
+                {isHelpful ? (
+                  <ThumbUpOutlinedIcon sx={{ fontSize: 20, color: "success.main" }} aria-hidden="true" />
                 ) : (
                   <ThumbDownOutlinedIcon sx={{ fontSize: 20, color: "warning.dark" }} aria-hidden="true" />
                 )}
                 <Typography variant="h6" sx={{ fontSize: "1rem", fontWeight: 600 }}>
-                  Feedback Detail
+                  {isHelpful ? "Helpful feedback" : "Feedback to review"}
                 </Typography>
               </Stack>
-              <IconButton size="small" onClick={handleCloseDetail} aria-label="Close detail panel">
+              <IconButton size="small" onClick={handleCloseDetail} aria-label="Close">
                 <CloseIcon fontSize="small" />
               </IconButton>
             </Stack>
 
-            {/* Scrollable content */}
-            <Box sx={{ flex: 1, overflow: "auto", px: 2.5, py: 2 }}>
+            {/* Conversation + review */}
+            <Box sx={{ flex: 1, overflow: "auto", px: 2.5, py: 2.5 }}>
               <Stack spacing={2.5}>
                 <Box>
                   <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.6875rem", letterSpacing: 1 }}>
-                    User Question
+                    What the user asked
                   </Typography>
                   <AdminMarkdown
-                    content={
-                      selectedFeedback.trace?.UserPrompt ||
-                      selectedFeedback.feedback?.UserPromptPreview ||
-                      "N/A"
-                    }
+                    content={selectedFeedback.trace?.UserPrompt || selected.UserPromptPreview || "N/A"}
                     sx={{ mt: 0.5 }}
                   />
                 </Box>
-
-                <Divider />
 
                 <Box>
                   <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.6875rem", letterSpacing: 1 }}>
-                    ABE's Answer
+                    How ABE answered
                   </Typography>
                   <AdminMarkdown
-                    content={
-                      selectedFeedback.trace?.FinalAnswer ||
-                      selectedFeedback.feedback?.AnswerPreview ||
-                      "N/A"
-                    }
-                    maxHeight={240}
+                    content={selectedFeedback.trace?.FinalAnswer || selected.AnswerPreview || "N/A"}
+                    maxHeight={260}
                     sx={{ mt: 0.5 }}
                   />
                 </Box>
 
-                {/* User's feedback details */}
-                {(selectedFeedback.feedback?.UserComment ||
-                  selectedFeedback.feedback?.WrongSnippet ||
-                  selectedFeedback.feedback?.ExpectedAnswer) && (
-                  <>
-                    <Divider />
-                    {selectedFeedback.feedback?.WrongSnippet && (
+                {/* What the user told us */}
+                {(selected.WrongSnippet || selected.ExpectedAnswer || selected.UserComment) && (
+                  <Stack spacing={1.5}>
+                    {selected.WrongSnippet && (
                       <Paper variant="outlined" sx={{ p: 1.5, bgcolor: "error.50", borderColor: "error.200" }}>
                         <Typography variant="overline" color="error.dark" sx={{ fontSize: "0.6875rem" }}>
                           What was wrong
                         </Typography>
-                        <AdminMarkdown content={selectedFeedback.feedback.WrongSnippet} compact sx={{ mt: 0.5 }} />
+                        <AdminMarkdown content={selected.WrongSnippet} compact sx={{ mt: 0.5 }} />
                       </Paper>
                     )}
-                    {selectedFeedback.feedback?.ExpectedAnswer && (
+                    {selected.ExpectedAnswer && (
                       <Paper variant="outlined" sx={{ p: 1.5, bgcolor: "success.50", borderColor: "success.200" }}>
                         <Typography variant="overline" color="success.dark" sx={{ fontSize: "0.6875rem" }}>
-                          What user expected
+                          What they expected instead
                         </Typography>
-                        <AdminMarkdown content={selectedFeedback.feedback.ExpectedAnswer} compact sx={{ mt: 0.5 }} />
+                        <AdminMarkdown content={selected.ExpectedAnswer} compact sx={{ mt: 0.5 }} />
                       </Paper>
                     )}
-                    {selectedFeedback.feedback?.UserComment && (
+                    {selected.UserComment && (
                       <Box>
                         <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
-                          User comment
+                          Their note
                         </Typography>
-                        <AdminMarkdown content={selectedFeedback.feedback.UserComment} compact sx={{ mt: 0.5 }} />
+                        <AdminMarkdown content={selected.UserComment} compact sx={{ mt: 0.5 }} />
                       </Box>
                     )}
-                  </>
+                  </Stack>
                 )}
 
-                {/* AI Analysis (only for negative) */}
-                {selectedFeedback.feedback?.FeedbackKind !== "helpful" && selectedFeedback.feedback?.Analysis?.summary && (
-                  <>
-                    <Divider />
-                    <Paper variant="outlined" sx={{ p: 2 }}>
-                      <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.6875rem", letterSpacing: 1 }}>
-                        AI Analysis
-                      </Typography>
-                      <AdminMarkdown content={selectedFeedback.feedback.Analysis.summary} compact sx={{ mt: 0.5, mb: 1.5 }} />
-                      <Stack direction="row" gap={0.75} flexWrap="wrap">
-                        {(() => {
-                          const rc = selectedFeedback.feedback?.Analysis?.likelyRootCause || "";
-                          const chipInfo = ROOT_CAUSE_CHIPS[rc];
-                          return chipInfo ? (
-                            <Chip size="small" label={chipInfo.label} color={chipInfo.color} sx={{ height: 24, fontSize: "0.75rem" }} />
-                          ) : rc ? (
-                            <Chip size="small" label={label(rc)} sx={{ height: 24, fontSize: "0.75rem" }} />
-                          ) : null;
-                        })()}
-                        {selectedFeedback.feedback?.Analysis?.confidence != null && (
+                {/* AI summary — only for negative feedback */}
+                {!isHelpful && (
+                  <Paper variant="outlined" sx={{ p: 1.75, bgcolor: (t) => alpha(t.palette.info.main, 0.05) }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
+                      <Stack direction="row" gap={0.75} alignItems="center">
+                        <AutoAwesomeOutlinedIcon sx={{ fontSize: 16, color: "info.main" }} aria-hidden />
+                        <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.6875rem", letterSpacing: 1 }}>
+                          AI summary
+                        </Typography>
+                      </Stack>
+                      <Button
+                        size="small"
+                        onClick={handleSummarize}
+                        disabled={actionLoading}
+                        sx={{ textTransform: "none", fontSize: "0.75rem", minWidth: "auto" }}
+                      >
+                        {aiSummary ? "Refresh" : "Generate"}
+                      </Button>
+                    </Stack>
+                    {aiSummary ? (
+                      <>
+                        <AdminMarkdown content={aiSummary} compact sx={{ mt: 0.5 }} />
+                        {aiIssue && (
                           <Chip
                             size="small"
-                            label={`${Math.round((selectedFeedback.feedback.Analysis.confidence ?? 0) * 100)}% confidence`}
-                            variant="outlined"
-                            sx={{ height: 24, fontSize: "0.75rem" }}
+                            color={aiIssue.color}
+                            label={aiIssue.label}
+                            sx={{ mt: 1, height: 24, fontSize: "0.75rem" }}
                           />
                         )}
-                      </Stack>
-                    </Paper>
-                  </>
+                      </>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontSize: "0.8125rem" }}>
+                        No AI summary yet. Click Generate to have AI explain what likely went wrong.
+                      </Typography>
+                    )}
+                  </Paper>
                 )}
 
                 <Divider />
 
-                {/* Admin review */}
-                <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.6875rem", letterSpacing: 1 }}>
-                  Your Review
-                </Typography>
-                <TextField
-                  select
-                  fullWidth
-                  size="small"
-                  label="Status"
-                  value={reviewStatus}
-                  onChange={(e) => setReviewStatus(e.target.value)}
-                  inputProps={{ "aria-label": "Review status" }}
-                >
-                  <MenuItem value="new">New</MenuItem>
-                  <MenuItem value="in_review">Reviewing</MenuItem>
-                  <MenuItem value="actioned">Resolved</MenuItem>
-                  <MenuItem value="dismissed">Dismissed</MenuItem>
-                </TextField>
-                {selectedFeedback.feedback?.FeedbackKind !== "helpful" && (
-                  <TextField
-                    select
+                {/* The review: just a status + an optional note */}
+                <Box>
+                  <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.6875rem", letterSpacing: 1 }}>
+                    Status
+                  </Typography>
+                  <ToggleButtonGroup
+                    value={reviewStatus}
+                    exclusive
                     fullWidth
                     size="small"
-                    label="Action needed"
-                    value={disposition}
-                    onChange={(e) => setDisposition(e.target.value)}
-                    inputProps={{ "aria-label": "Disposition" }}
+                    onChange={(_, value: string | null) => {
+                      if (value) setReviewStatus(value);
+                    }}
+                    aria-label="Status"
+                    sx={{ mt: 0.75, flexWrap: "wrap" }}
                   >
-                    {DISPOSITIONS.map((option) => (
-                      <MenuItem key={option} value={option}>
-                        {label(option)}
-                      </MenuItem>
+                    {REVIEW_STATUS_OPTIONS.map((option) => (
+                      <ToggleButton
+                        key={option.value}
+                        value={option.value}
+                        sx={{ textTransform: "none", fontSize: "0.8125rem", py: 0.75 }}
+                      >
+                        {option.label}
+                      </ToggleButton>
                     ))}
-                  </TextField>
-                )}
+                  </ToggleButtonGroup>
+                </Box>
+
                 <TextField
                   fullWidth
                   size="small"
-                  label="Owner"
-                  value={owner}
-                  onChange={(e) => setOwner(e.target.value)}
-                  inputProps={{ "aria-label": "Review owner" }}
-                  helperText="Who is handling this item"
-                  FormHelperTextProps={{ sx: { fontSize: "0.7rem", m: 0, mt: 0.5 } }}
-                />
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Resolution note"
+                  label="Notes (optional)"
                   multiline
                   minRows={2}
-                  value={resolutionNote}
-                  onChange={(e) => setResolutionNote(e.target.value)}
-                  inputProps={{ "aria-label": "Resolution note" }}
-                  helperText="Summary of what was done or decided"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  inputProps={{ "aria-label": "Notes" }}
+                  helperText="A quick note on what you found or decided"
                   FormHelperTextProps={{ sx: { fontSize: "0.7rem", m: 0, mt: 0.5 } }}
-                />
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Internal notes"
-                  multiline
-                  minRows={2}
-                  value={adminNotes}
-                  onChange={(e) => setAdminNotes(e.target.value)}
-                  inputProps={{ "aria-label": "Admin notes" }}
                 />
 
-                {/* Metadata */}
-                <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
-                  Submitted {formatDate(selectedFeedback.feedback?.CreatedAt)}
-                  {selectedFeedback.feedback?.PromptVersionId && ` · Prompt: ${selectedFeedback.feedback.PromptVersionId}`}
+                <Typography variant="caption" color="text.secondary">
+                  Submitted {formatDate(selected.CreatedAt)}
                 </Typography>
                 {selectedFeedback.trace?.SessionId && (
                   <Link
@@ -1278,41 +703,42 @@ export default function InboxView(props: InboxViewProps) {
                     variant="body2"
                     sx={{ fontSize: "0.8125rem" }}
                   >
-                    Open chat session in Playground
+                    View the full chat conversation
                   </Link>
                 )}
               </Stack>
             </Box>
 
-            {/* Action bar */}
+            {/* Actions */}
             <Stack
               direction="row"
               gap={1}
-              sx={{
-                px: 2.5,
-                py: 1.5,
-                borderTop: "1px solid",
-                borderColor: "divider",
-                bgcolor: "background.paper",
-                flexShrink: 0,
-              }}
+              alignItems="center"
+              sx={{ px: 2.5, py: 1.5, borderTop: "1px solid", borderColor: "divider", flexShrink: 0 }}
             >
-              {selectedFeedback.feedback?.FeedbackKind === "helpful" ? (
-                <Button
-                  variant="contained"
-                  size="small"
-                  color="primary"
-                  onClick={() => {
-                    const item = feedbackItems.find(
-                      (i) => i.feedbackId === selectedFeedback.feedback?.FeedbackId
-                    );
-                    if (item) setConfirmDialog({ open: true, item, action: "test_library" });
-                  }}
-                  disabled={actionLoading}
-                  sx={{ fontSize: "0.8125rem", textTransform: "none" }}
-                >
-                  Add to test library
-                </Button>
+              {isHelpful ? (
+                <>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={handleSaveReview}
+                    disabled={actionLoading}
+                    sx={{ textTransform: "none" }}
+                  >
+                    Save
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      const item = feedbackItems.find((i) => i.feedbackId === selected.FeedbackId);
+                      if (item) setExampleDialog(item);
+                    }}
+                    disabled={actionLoading}
+                    sx={{ textTransform: "none" }}
+                  >
+                    Save as good example
+                  </Button>
+                </>
               ) : (
                 <>
                   <Button
@@ -1321,88 +747,97 @@ export default function InboxView(props: InboxViewProps) {
                     onClick={handleSaveAndNext}
                     disabled={actionLoading}
                     endIcon={<SkipNextIcon />}
-                    sx={{ fontSize: "0.8125rem", textTransform: "none" }}
+                    sx={{ textTransform: "none" }}
                   >
-                    Save & next
+                    Save &amp; next
                   </Button>
-                  <Button
-                    size="small"
-                    onClick={handleSaveReview}
-                    disabled={actionLoading}
-                    sx={{ fontSize: "0.8125rem", textTransform: "none" }}
-                  >
+                  <Button size="small" onClick={handleSaveReview} disabled={actionLoading} sx={{ textTransform: "none" }}>
                     Save
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={handleReanalyze}
-                    disabled={actionLoading}
-                    sx={{ fontSize: "0.8125rem", textTransform: "none" }}
-                  >
-                    Re-analyze
                   </Button>
                 </>
               )}
               <Tooltip title="Delete this feedback">
-                <IconButton
-                  size="small"
-                  onClick={() => {
-                    if (selectedFeedback?.feedback?.FeedbackId) {
+                <span style={{ marginLeft: "auto" }}>
+                  <IconButton
+                    size="small"
+                    onClick={() =>
                       setDeleteDialog({
                         open: true,
-                        feedbackId: selectedFeedback.feedback.FeedbackId,
-                        question: selectedFeedback.feedback.UserPromptPreview || "this item",
-                      });
+                        feedbackId: selected.FeedbackId,
+                        question: selected.UserPromptPreview || "this item",
+                      })
                     }
-                  }}
-                  disabled={actionLoading}
-                  aria-label="Delete feedback"
-                  sx={{ ml: "auto", color: "text.secondary", "&:hover": { color: "error.main" } }}
-                >
-                  <DeleteOutlineIcon fontSize="small" />
-                </IconButton>
+                    disabled={actionLoading}
+                    aria-label="Delete feedback"
+                    sx={{ color: "text.secondary", "&:hover": { color: "error.main" } }}
+                  >
+                    <DeleteOutlineIcon fontSize="small" />
+                  </IconButton>
+                </span>
               </Tooltip>
             </Stack>
           </Box>
         )}
       </Drawer>
 
-      {/* Delete confirmation dialog */}
+      {/* Save as good example confirm */}
+      <Dialog open={exampleDialog != null} onClose={() => setExampleDialog(null)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontSize: "1rem", fontWeight: 600 }}>Save as a good example?</DialogTitle>
+        <DialogContent>
+          {exampleDialog && (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.875rem" }}>
+                This question and ABE's answer will be saved as a good example. We use these examples to automatically
+                check that ABE keeps giving high-quality answers over time.
+              </Typography>
+              <Box>
+                <Typography variant="overline" color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
+                  Question
+                </Typography>
+                <AdminMarkdown content={exampleDialog.userPromptPreview || "N/A"} sx={{ mt: 0.5 }} />
+              </Box>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setExampleDialog(null)} sx={{ textTransform: "none" }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => exampleDialog && handleSaveAsExample(exampleDialog)}
+            disabled={actionLoading}
+            sx={{ textTransform: "none" }}
+          >
+            Save example
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete confirm */}
       <Dialog
         open={deleteDialog.open}
         onClose={() => setDeleteDialog({ open: false, feedbackId: "", question: "" })}
         maxWidth="xs"
         fullWidth
-        disableRestoreFocus={false}
       >
-        <DialogTitle sx={{ fontSize: "1rem", fontWeight: 600 }}>
-          Delete feedback?
-        </DialogTitle>
+        <DialogTitle sx={{ fontSize: "1rem", fontWeight: 600 }}>Delete this feedback?</DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ fontSize: "0.875rem" }}>
-            This will permanently remove the feedback for:
+            This permanently removes the feedback for:
           </Typography>
           <Typography variant="body2" sx={{ fontWeight: 600, mt: 1, fontSize: "0.875rem" }}>
             "{deleteDialog.question}"
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5, fontSize: "0.8125rem" }}>
-            This action cannot be undone.
+            This can't be undone.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button
-            onClick={() => setDeleteDialog({ open: false, feedbackId: "", question: "" })}
-            sx={{ textTransform: "none" }}
-          >
+          <Button onClick={() => setDeleteDialog({ open: false, feedbackId: "", question: "" })} sx={{ textTransform: "none" }}>
             Cancel
           </Button>
-          <Button
-            variant="contained"
-            color="error"
-            onClick={handleDeleteFeedback}
-            disabled={actionLoading}
-            sx={{ textTransform: "none" }}
-          >
+          <Button variant="contained" color="error" onClick={handleDeleteFeedback} disabled={actionLoading} sx={{ textTransform: "none" }}>
             Delete
           </Button>
         </DialogActions>

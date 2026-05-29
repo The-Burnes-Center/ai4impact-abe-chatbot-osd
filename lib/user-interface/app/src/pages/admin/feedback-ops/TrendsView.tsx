@@ -12,7 +12,6 @@ import {
   TableCell,
   TableHead,
   TableRow,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
@@ -30,14 +29,6 @@ interface TrendsViewProps {
   loadingMeta: boolean;
   onCreateDraftFromCluster?: (cluster: ClusterSummary) => void;
 }
-
-const DISPOSITION_COLORS: Record<string, string> = {
-  pending: "grey.500",
-  "prompt update": "primary.main",
-  "KB/source fix": "warning.main",
-  "retrieval/config issue": "secondary.main",
-  "product/UX bug": "error.main",
-};
 
 const ROOT_CAUSE_COLORS: Record<string, string> = {
   retrieval_gap: "warning.main",
@@ -185,7 +176,7 @@ export default function TrendsView({ monitoring, loadingMeta, onCreateDraftFromC
           <Stack direction="row" gap={1} alignItems="center" sx={{ mb: 1.5 }}>
             <BubbleChartOutlinedIcon sx={{ fontSize: 20, color: "text.secondary" }} />
             <Typography variant="h6" sx={{ fontSize: "1rem", fontWeight: 600 }}>
-              Issue Patterns
+              Common problems
             </Typography>
             <Chip size="small" label={clusters.length} variant="outlined" sx={{ height: 22, fontSize: "0.75rem" }} />
           </Stack>
@@ -248,36 +239,19 @@ export default function TrendsView({ monitoring, loadingMeta, onCreateDraftFromC
                       <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
                         {formatDate(cluster.latestCreatedAt)}
                       </Typography>
-                      <Stack direction="row" gap={0.5}>
-                        {onCreateDraftFromCluster && cluster.recommendedAction === "prompt update" && (
-                          <Tooltip title="Opens Prompts and links this pattern’s sample feedback for AI Draft.">
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onCreateDraftFromCluster(cluster);
-                              }}
-                              sx={{ fontSize: "0.75rem", textTransform: "none" }}
-                            >
-                              Fix prompt
-                            </Button>
-                          </Tooltip>
-                        )}
-                        <Button
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (cluster.sampleFeedbackId) {
-                              navigate(`/admin/user-feedback/${cluster.sampleFeedbackId}`);
-                            }
-                          }}
-                          disabled={!cluster.sampleFeedbackId}
-                          sx={{ fontSize: "0.75rem", textTransform: "none" }}
-                        >
-                          View example
-                        </Button>
-                      </Stack>
+                      <Button
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (cluster.sampleFeedbackId) {
+                            navigate(`/admin/user-feedback/${cluster.sampleFeedbackId}`);
+                          }
+                        }}
+                        disabled={!cluster.sampleFeedbackId}
+                        sx={{ fontSize: "0.75rem", textTransform: "none" }}
+                      >
+                        View example
+                      </Button>
                     </Stack>
                   </Stack>
                 </Paper>
@@ -288,59 +262,14 @@ export default function TrendsView({ monitoring, loadingMeta, onCreateDraftFromC
         </Box>
       )}
 
-      {/* Breakdowns side by side */}
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={6}>
-          <BreakdownTable
-            title="Actions Summary"
-            data={overview.dispositionCounts}
-            colorMap={DISPOSITION_COLORS}
-          />
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <BreakdownTable
-            title="Issue Breakdown"
-            data={Object.fromEntries(
-              Object.entries(overview.rootCauseCounts).filter(([k]) => k !== "positive_signal")
-            )}
-            colorMap={ROOT_CAUSE_COLORS}
-          />
-        </Grid>
-      </Grid>
-
-      {/* Prompt activity */}
-      {(monitoring.promptActivity || []).length > 0 && (
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1, fontSize: "0.9375rem" }}>
-            Prompt Activity
-          </Typography>
-          <Table size="small" aria-label="Feedback count per prompt version">
-            <TableHead>
-              <TableRow>
-                <TableCell scope="col" sx={{ fontWeight: 600, fontSize: "0.8125rem" }}>Prompt Version</TableCell>
-                <TableCell scope="col" align="right" sx={{ fontWeight: 600, fontSize: "0.8125rem" }}>Feedback Count</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {monitoring.promptActivity.map((row) => (
-                <TableRow key={row.promptVersionId}>
-                  <TableCell sx={{ fontSize: "0.8125rem" }}>
-                    <Stack direction="row" gap={1} alignItems="center">
-                      {row.promptVersionId}
-                      {row.promptVersionId === monitoring.health?.livePromptVersionId && (
-                        <Chip size="small" label="current" color="success" sx={{ height: 20, fontSize: "0.75rem" }} />
-                      )}
-                    </Stack>
-                  </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 600, fontSize: "0.8125rem" }}>
-                    {row.feedbackCount}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Paper>
-      )}
+      {/* What's going wrong */}
+      <BreakdownTable
+        title="What's going wrong"
+        data={Object.fromEntries(
+          Object.entries(overview.rootCauseCounts).filter(([k]) => k !== "positive_signal")
+        )}
+        colorMap={ROOT_CAUSE_COLORS}
+      />
 
       {/* Problem documents */}
       {sources.length > 0 && (
@@ -348,10 +277,10 @@ export default function TrendsView({ monitoring, loadingMeta, onCreateDraftFromC
           <Stack direction="row" gap={1} alignItems="center" sx={{ mb: 1.5 }}>
             <SourceOutlinedIcon sx={{ fontSize: 20, color: "text.secondary" }} />
             <Typography variant="h6" sx={{ fontSize: "1rem", fontWeight: 600 }}>
-              Problem Documents
+              Documents linked to problems
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
-              Documents most often cited in negative feedback
+              Documents most often involved when users report a problem
             </Typography>
           </Stack>
           <Paper variant="outlined" sx={{ overflow: "hidden" }}>
