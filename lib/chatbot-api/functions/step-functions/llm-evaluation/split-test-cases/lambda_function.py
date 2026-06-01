@@ -32,8 +32,13 @@ def lambda_handler(event, context):
     # Read test cases from S3 
     test_cases = read_test_cases_from_s3(s3_client, TEST_CASE_BUCKET, test_cases_key)
     
-    # Split into chunks
-    chunk_size = 15  # Adjust based on testing
+    # One test case per chunk => one Lambda invocation per question.
+    # RAGAS already evaluates a single question at a time, so batching buys no
+    # efficiency -- it only couples several slow questions to one 15-minute Lambda
+    # timeout (each question runs a full chatbot answer + 6 RAGAS metrics, ~60-90s).
+    # Size-1 chunks keep every invocation bounded and let the Step Functions Map
+    # distribute questions evenly across its parallel workers.
+    chunk_size = 1
     chunks = [test_cases[i:i + chunk_size] for i in range(0, len(test_cases), chunk_size)]
     chunk_infos = save_chunks_to_s3(s3_client, eval_id, chunks)
      

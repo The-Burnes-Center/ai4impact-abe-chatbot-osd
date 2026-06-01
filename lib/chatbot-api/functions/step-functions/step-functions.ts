@@ -281,9 +281,15 @@ export class StepFunctionsStack extends Construct {
         });
 
 
+        // Each item is now a single question (chunk_size=1 in split-test-cases), so the
+        // Map is the parallel "queue": it fans questions out to this many concurrent
+        // eval Lambdas and fans the partial results back in. Concurrency is kept modest
+        // because every question fires ~10-20 Bedrock (Opus) calls and shares the
+        // account's model quota with the live chatbot -- raising it speeds evals up but
+        // increases throttling risk for both the eval and production chat.
         const processTestCasesMap = new stepfunctions.Map(this, 'Process Test Cases', {
             itemsPath: '$.chunk_keys',
-            maxConcurrency: 2,
+            maxConcurrency: 3,
             resultPath: '$.partial_result_keys',
             itemSelector: {
                 'chunk_key.$': '$$.Map.Item.Value.chunk_key',
@@ -307,14 +313,41 @@ export class StepFunctionsStack extends Construct {
             retryOnServiceExceptions: true,
         });
       
-        // Create error catching
+        // Create error catching.
+        // Each `addCatch` below uses resultPath '$.error', so Step Functions writes the
+        // failure object to `$.error` and the details live at `$.error.Error` /
+        // `$.error.Cause`. (The previous code read `$$.Execution.Error/Cause`, which are
+        // NOT valid context-object paths -- this state itself then failed with
+        // States.Runtime, masking the real error and leaving the eval stuck at RUNNING.)
         const catchAndPassEvaluationId = new stepfunctions.Pass(this, 'Pass Evaluation ID on Error', {
             parameters: {
                 'evaluation_id.$': '$.evaluation_id',
-                'error.$': '$$.Execution.Error',
-                'cause.$': '$$.Execution.Cause'
+                'evaluation_name.$': '$.evaluation_name',
+                'error_message.$': '$.error.Cause',
             },
         });
+
+        // Record the failure so a broken run stops appearing to hang at RUNNING in the
+        // admin UI: flip the evaluation's summary row to status=FAILED with the reason.
+        const markEvalFailedTask = new tasks.LambdaInvoke(this, 'Mark Evaluation Failed', {
+            lambdaFunction: this.llmEvalResultsHandlerFunction,
+            payload: stepfunctions.TaskInput.fromObject({
+                'evaluation_id.$': '$.evaluation_id',
+                'evaluation_name.$': '$.evaluation_name',
+                'mark_failed': true,
+                'error_message.$': '$.error_message',
+            }),
+            outputPath: '$.Payload',
+        });
+
+        // End the execution in a FAILED state so the Step Functions status matches the
+        // summary row (the live status poll reads the execution status directly).
+        const evaluationFailedState = new stepfunctions.Fail(this, 'Evaluation Failed', {
+            error: 'EvaluationFailed',
+            cause: 'A step in the evaluation pipeline failed; see the evaluation summary row for the recorded error.',
+        });
+
+        catchAndPassEvaluationId.next(markEvalFailedTask).next(evaluationFailedState);
       
         const saveResultsTask = new tasks.LambdaInvoke(this, 'Save Evaluation Results', {
             lambdaFunction: this.llmEvalResultsHandlerFunction,

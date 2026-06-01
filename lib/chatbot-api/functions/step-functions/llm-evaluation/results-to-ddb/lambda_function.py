@@ -51,6 +51,61 @@ def _find_existing_placeholder(evaluation_id):
         logger.warning(f"Could not find placeholder for {evaluation_id}: {e}")
         return None
 
+def mark_evaluation_failed(evaluation_id, evaluation_name, error_message, headers=None):
+    """Flip an evaluation's summary row to FAILED.
+
+    Invoked by the Step Functions error-handling branch when any step fails, so the
+    run stops showing as RUNNING (with a perpetual progress bar) in the admin UI.
+    """
+    if headers is None:
+        headers = {}
+    # Keep the stored reason readable and comfortably under the DynamoDB item limit.
+    error_message = (error_message or "Evaluation failed")
+    if len(error_message) > 2000:
+        error_message = error_message[:2000] + "...(truncated)"
+    try:
+        existing = _find_existing_placeholder(evaluation_id)
+        if existing:
+            update_expr_parts = ["#st = :failed", "error_message = :em"]
+            expr_values = {":failed": "FAILED", ":em": error_message}
+            expr_names = {"#st": "status"}
+            if evaluation_name and evaluation_name.strip():
+                update_expr_parts.append("evaluation_name = :en")
+                expr_values[":en"] = evaluation_name.strip()
+            summaries_table.update_item(
+                Key={"PartitionKey": existing["PartitionKey"], "Timestamp": existing["Timestamp"]},
+                UpdateExpression="SET " + ", ".join(update_expr_parts),
+                ExpressionAttributeValues=expr_values,
+                ExpressionAttributeNames=expr_names,
+            )
+            logger.info(f"Marked evaluation {evaluation_id} as FAILED")
+        else:
+            # No placeholder found (e.g. split failed very early) -- create a minimal row.
+            summaries_table.put_item(Item={
+                "PartitionKey": "Evaluation",
+                "Timestamp": str(datetime.now()),
+                "EvaluationId": evaluation_id,
+                "evaluation_name": (evaluation_name or "").strip() or "Unnamed",
+                "status": "FAILED",
+                "error_message": error_message,
+            })
+            logger.info(f"Created FAILED summary row for {evaluation_id}")
+        return {
+            "statusCode": 200,
+            "headers": headers,
+            "body": json.dumps({"message": "Evaluation marked as failed", "evaluation_id": evaluation_id}),
+            "evaluation_id": evaluation_id,
+        }
+    except Exception as e:
+        logger.error(f"Error marking evaluation {evaluation_id} as failed: {str(e)}")
+        return {
+            "statusCode": 500,
+            "headers": headers,
+            "body": json.dumps({"message": "Failed to mark evaluation as failed", "error": str(e)}),
+            "evaluation_id": evaluation_id,
+        }
+
+
 def add_evaluation(evaluation_id, evaluation_name, average_similarity,
                    average_relevance, average_correctness, total_questions, 
                    detailed_results, test_cases_key, 
@@ -241,7 +296,18 @@ def lambda_handler(event, context):
                 'body': json.dumps({'message': 'Missing evaluation_id'}),
                 'evaluation_id': None  # Add this to ensure the Step Function can continue
             }
-            
+
+        # Error-handling branch: the Step Functions failure path invokes this Lambda with
+        # mark_failed=True to record the failure (status=FAILED) so the run does not keep
+        # showing as RUNNING in the admin UI.
+        if data.get('mark_failed'):
+            return mark_evaluation_failed(
+                evaluation_id,
+                data.get('evaluation_name'),
+                data.get('error_message'),
+                headers,
+            )
+
         # Check if we received an error status from previous step
         if data.get('statusCode') == 500:
             logger.error(f"Error received from previous step: {data.get('error', 'Unknown error')}")

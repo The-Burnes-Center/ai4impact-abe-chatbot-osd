@@ -20,6 +20,7 @@ import {
   Button,
   Typography,
   Chip,
+  Tooltip,
   CircularProgress,
   IconButton,
   LinearProgress,
@@ -307,17 +308,33 @@ export default function PastEvalsTab() {
             <TableBody>
               {sortedItems.map((item: any, index: number) => {
                 const hasScores = item.average_correctness > 0 || item.average_similarity > 0;
-                const isRunning = !hasScores && (item.status === "RUNNING" || (item.executionArn && item.status !== "COMPLETED"));
+                const isFailed = ["FAILED", "TIMED_OUT", "ABORTED"].includes(item.status);
+                // A run is only "still running" if it hasn't reached a terminal state.
+                // Failed/timed-out/aborted runs are terminal, so they must NOT render as
+                // running (otherwise a failed eval shows progress bars forever).
+                const isRunning =
+                  !hasScores &&
+                  !isFailed &&
+                  (item.status === "RUNNING" || (item.executionArn && item.status !== "COMPLETED"));
+                const isDataCol = (col_id: string) =>
+                  col_id !== "evaluationName" &&
+                  col_id !== "timestamp" &&
+                  col_id !== "viewDetails" &&
+                  col_id !== "deleteEval";
                 return (
-                  <TableRow key={item.EvaluationId || index} hover sx={isRunning ? { opacity: 0.7 } : {}}>
+                  <TableRow key={item.EvaluationId || index} hover sx={isRunning || isFailed ? { opacity: 0.7 } : {}}>
                     {columnDefinitions.map((col) => (
                       <TableCell key={col.id}>
-                        {isRunning &&
-                        col.id !== "evaluationName" &&
-                        col.id !== "timestamp" &&
-                        col.id !== "viewDetails" &&
-                        col.id !== "deleteEval" ? (
+                        {isRunning && isDataCol(col.id) ? (
                           <LinearProgress sx={{ width: 60 }} />
+                        ) : isFailed && isDataCol(col.id) ? (
+                          col.id === "answerQuality" ? (
+                            <Tooltip title="This run didn't finish. Delete it and try running it again." arrow>
+                              <Chip label="Failed" color="error" size="small" variant="outlined" sx={{ cursor: "help" }} />
+                            </Tooltip>
+                          ) : (
+                            "—"
+                          )
                         ) : (
                           col.cell(item)
                         )}
