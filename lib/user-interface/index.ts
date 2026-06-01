@@ -20,6 +20,10 @@ export interface UserInterfaceProps {
   readonly userPoolClientId: string;
   readonly api: ChatBotApi;
   readonly cognitoDomain : string;
+  // Optional custom domain + ACM cert ARN (us-east-1). When both are set, the app is
+  // served from the custom domain and Cognito sign-in/out redirects point at it.
+  readonly customDomain?: string;
+  readonly certificateArn?: string;
 }
 
 export class UserInterface extends Construct {
@@ -53,7 +57,12 @@ export class UserInterface extends Construct {
     const publicWebsite = new Website(this, "Website", { ...props, websiteBucket: websiteBucket });
     this.distribution = publicWebsite.distribution
 
-
+    // Sign-in/out redirects must point at the domain users actually load the app from.
+    // Use the custom domain only when it's bound (both hostname + cert configured);
+    // otherwise fall back to the default CloudFront domain.
+    const siteUrl = props.customDomain && props.certificateArn
+      ? `https://${props.customDomain}`
+      : `https://${this.distribution.distributionDomainName}`;
 
     const exportsAsset = s3deploy.Source.jsonData("aws-exports.json", {
       Auth: {
@@ -63,8 +72,8 @@ export class UserInterface extends Construct {
         oauth: {
           domain: props.cognitoDomain.concat(`.auth.${cdk.Aws.REGION}.amazoncognito.com`),
           scope: ["aws.cognito.signin.user.admin","email", "openid", "profile"],
-          redirectSignIn: "https://" + this.distribution.distributionDomainName,
-          redirectSignOut: "https://" + this.distribution.distributionDomainName,
+          redirectSignIn: siteUrl,
+          redirectSignOut: siteUrl,
           responseType: "code"
         }
       },

@@ -3,16 +3,21 @@ import * as cf from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as wafv2 from "aws-cdk-lib/aws-wafv2";
+import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import { Construct } from "constructs";
 import { ChatBotApi } from "../chatbot-api";
 import { NagSuppressions } from "cdk-nag";
 
 
-export interface WebsiteProps {  
+export interface WebsiteProps {
   readonly userPoolId: string;
   readonly userPoolClientId: string;
   readonly api: ChatBotApi;
   readonly websiteBucket: s3.Bucket;
+  // Optional custom domain (CloudFront alternate domain name) + its ACM cert ARN
+  // (us-east-1). Both must be set for the domain to be bound to the distribution.
+  readonly customDomain?: string;
+  readonly certificateArn?: string;
 }
 
 export class Website extends Construct {
@@ -119,10 +124,20 @@ export class Website extends Construct {
 
     const s3Origin = new origins.S3Origin(props.websiteBucket);
 
+    // Bind a custom domain + ACM certificate only when both are configured.
+    // CloudFront requires the certificate to be in ACM us-east-1.
+    const useCustomDomain = !!(props.customDomain && props.certificateArn);
+    const certificate = useCustomDomain
+      ? acm.Certificate.fromCertificateArn(this, "SiteCertificate", props.certificateArn!)
+      : undefined;
+
     const distribution = new cf.Distribution(
       this,
       "Dist",
       {
+        ...(useCustomDomain
+          ? { domainNames: [props.customDomain!], certificate }
+          : {}),
         defaultBehavior: {
           origin: s3Origin,
           viewerProtocolPolicy: cf.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,

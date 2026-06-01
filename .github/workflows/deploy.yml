@@ -86,7 +86,15 @@ jobs:
         if [ -n "${{ secrets.ALARM_EMAIL }}" ]; then
           ALARM_FLAG="-c alarmEmail=${{ secrets.ALARM_EMAIL }}"
         fi
-        npx cdk deploy ABEStackNonProd $ALARM_FLAG --require-approval never
+        # Custom domain + ACM cert ARN come from GitHub Actions config (Variable + Secret),
+        # never hardcoded. Both must be set to bind the domain; otherwise no flags are passed
+        # and the app stays on the default CloudFront domain. Scope these per environment
+        # (GitHub Environments) so other branches/stacks don't inherit this stack's values.
+        DOMAIN_FLAG=""
+        if [ -n "${{ vars.CUSTOM_DOMAIN }}" ] && [ -n "${{ secrets.CERTIFICATE_ARN }}" ]; then
+          DOMAIN_FLAG="-c customDomain=${{ vars.CUSTOM_DOMAIN }} -c certificateArn=${{ secrets.CERTIFICATE_ARN }}"
+        fi
+        npx cdk deploy ABEStackNonProd $ALARM_FLAG $DOMAIN_FLAG --require-approval never
     - name: Fetch CloudFormation Outputs
       run: |
         aws cloudformation describe-stacks --stack-name ABEStackNonProd --query "Stacks[0].Outputs" > stack-outputs.json

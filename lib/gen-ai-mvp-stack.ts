@@ -6,12 +6,26 @@ import { cognitoDomainName } from "./constants";
 import { AuthorizationStack } from "./authorization";
 import { UserInterface } from "./user-interface";
 
+export interface GenAiMvpStackProps extends cdk.StackProps {
+  // Custom domain (CloudFront alternate domain name) + its ACM certificate ARN (us-east-1).
+  // Supplied per-deployment via CDK context / env vars (never hardcoded), so each branch and
+  // account that deploys this code provides its own values — or none, in which case the app
+  // stays on the default CloudFront domain.
+  readonly customDomain?: string;
+  readonly certificateArn?: string;
+}
+
 export class GenAiMvpStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props?: GenAiMvpStackProps) {
     super(scope, id, props);
 
     const authentication = new AuthorizationStack(this, "Authorization");
     const alarmEmail = this.node.tryGetContext('alarmEmail') as string | undefined;
+
+    // Bind the custom domain only when BOTH the hostname and its cert ARN were provided for
+    // this deployment; otherwise everything below falls back to the CloudFront domain.
+    const customDomain = props?.customDomain && props?.certificateArn ? props.customDomain : undefined;
+    const certificateArn = props?.certificateArn || undefined;
 
     // CloudFront is created inside UserInterface (after ChatBotApi), so we use a Lazy token
     // to defer CORS origin resolution until CDK synth — by then the distribution domain is set.
@@ -24,9 +38,15 @@ export class GenAiMvpStack extends cdk.Stack {
       userPoolClientId: authentication.userPoolClient.userPoolClientId,
       cognitoDomain: cognitoDomainName,
       api: chatbotAPI,
+      customDomain,
+      certificateArn,
     });
-    // Populate after construction — the Lazy producer reads this during app.synth()
-    cfOriginRef.value = `https://${userInterface.distribution.distributionDomainName}`;
+    // Populate after construction — the Lazy producer reads this during app.synth().
+    // When a custom domain is bound, the browser's Origin is that domain, so CORS
+    // (HTTP API + S3) must allow it instead of the CloudFront domain.
+    cfOriginRef.value = customDomain
+      ? `https://${customDomain}`
+      : `https://${userInterface.distribution.distributionDomainName}`;
 
     // Resource tags applied to every taggable resource in the stack.
     // AOSS resources are excluded: the deployed collection was created with a legacy name
