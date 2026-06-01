@@ -26,7 +26,6 @@
  *     - UploadS3TestCasesFilesHandlerFunction — Uploads test case files
  *     - EvalResultsHandlerFunction      — Reads/manages evaluation results + can stop runs
  *     - TestLibraryHandlerFunction      — CRUD for reusable test cases
- *     - FeedbackToTestLibraryEnqueue    — Enqueues positive feedback for test case generation
  *     - FeedbackToTestLibraryProcess    — SQS consumer: LLM-rewrites feedback into test cases
  *     - StepFunctionsStack              — Orchestrates batch RAGAS evaluation
  *
@@ -118,7 +117,6 @@ export class LambdaFunctionStack extends Construct {
   public readonly excelIndexQueryFunction: lambda.Function;
   public readonly excelIndexApiFunction: lambda.Function;
   public readonly testLibraryFunction: lambda.Function;
-  public readonly feedbackToTestLibraryEnqueueFunction: lambda.Function;
   public readonly feedbackToTestLibraryProcessFunction: lambda.Function;
   public readonly sourcePresignFunction: lambda.Function;
   public readonly syncOrchestratorFunction: lambda.Function;
@@ -898,29 +896,11 @@ testLibraryFunction.addToRolePolicy(new iam.PolicyStatement({
 }));
 this.testLibraryFunction = testLibraryFunction;
 
-// Feedback-to-test-library pipeline: two Lambdas connected by SQS.
-// Enqueue: sends positive feedback messages to the SQS queue.
-const feedbackToTestLibraryEnqueueFunction = new lambda.Function(scope, 'FeedbackToTestLibraryEnqueueFunction', {
-  ...LAMBDA_DEFAULTS,
-  runtime: lambda.Runtime.PYTHON_3_12,
-  code: lambda.Code.fromAsset(path.join(__dirname, 'llm-eval/feedback-to-test-library')),
-  handler: 'enqueue.lambda_handler',
-  layers: [pythonCommonLayer],
-  environment: {
-    "QUEUE_URL": props.feedbackToTestLibraryQueue.queueUrl,
-  },
-  timeout: cdk.Duration.seconds(15),
-});
-feedbackToTestLibraryEnqueueFunction.addToRolePolicy(new iam.PolicyStatement({
-  effect: iam.Effect.ALLOW,
-  actions: ['sqs:SendMessage'],
-  resources: [props.feedbackToTestLibraryQueue.queueArn],
-}));
-this.feedbackToTestLibraryEnqueueFunction = feedbackToTestLibraryEnqueueFunction;
-
-// Process: SQS consumer that rewrites the Q&A pair via LLM and inserts
-// into TestLibraryTable. 90s timeout for LLM calls; 256 MB for payloads.
-// Batch size 1 ensures each feedback item gets individual LLM attention.
+// Feedback-to-test-library pipeline: the feedback handler enqueues admin-
+// promoted positive feedback to the SQS queue (see promote_to_candidate); this
+// consumer rewrites the Q&A pair via LLM and inserts into TestLibraryTable. 90s
+// timeout for LLM calls; 256 MB for payloads. Batch size 1 ensures each
+// feedback item gets individual LLM attention.
 const feedbackToTestLibraryProcessFunction = new lambda.Function(scope, 'FeedbackToTestLibraryProcessFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.PYTHON_3_12,

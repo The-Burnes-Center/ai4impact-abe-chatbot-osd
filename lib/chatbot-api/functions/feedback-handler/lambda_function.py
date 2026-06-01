@@ -522,9 +522,11 @@ def create_feedback(event: dict[str, Any]):
         return json_response(404, {"error": "not_found", "message": "Response trace not found"})
 
     # Ownership check: only the user who originally received this response may
-    # submit feedback against it. Without this, any authenticated user with a
-    # leaked messageId can read back the question + answer via the returned
-    # candidateMonitoringCase fields. Admin role bypasses for triage/testing.
+    # submit feedback against it. This stops a user with a leaked messageId from
+    # attaching feedback to (or probing the existence of) someone else's
+    # response. Admin role bypasses for triage/testing. Defense in depth: the
+    # create response no longer echoes any trace content (see below), so even a
+    # trace that slips past this check cannot leak the question/answer.
     trace_owner = str(trace.get("UserId") or "").strip()
     if trace_owner:
         if trace_owner != caller_id and not is_admin_request(event):
@@ -534,8 +536,10 @@ def create_feedback(event: dict[str, Any]):
             )
             return json_response(404, {"error": "not_found", "message": "Response trace not found"})
     else:
-        # Legacy trace written before UserId was added. Allow but log so we
-        # can monitor exposure during the migration window.
+        # Legacy trace written before UserId was added: ownership is unknowable,
+        # so allow the write (don't drop legitimate feedback on old messages)
+        # but log it. The response withholds the trace Q&A, so this can't
+        # disclose another user's data.
         logger.info("Legacy trace without UserId: message_id=%s caller=%s", message_id, caller_id)
 
     feedback_kind = str(payload.get("feedbackKind", "not_helpful")).strip() or "not_helpful"
@@ -593,11 +597,16 @@ def create_feedback(event: dict[str, Any]):
         logger.exception("Failed to write feedback record %s: %s", feedback_id, e)
         return json_response(502, {"error": "upstream_error", "message": "Your feedback could not be saved right now. Please try again in a moment."})
 
+    # Deliberately do NOT echo the analysis back to the submitter: it embeds the
+    # trace's original question and answer (analysis.candidateMonitoringCase),
+    # which for a legacy trace lacking a UserId (ownership check skipped above)
+    # would disclose another user's Q&A to anyone who supplies its messageId.
+    # The analysis is still persisted on the record for admins, who read it via
+    # the admin-gated feedback endpoints. The chat UI ignores this field.
     return json_response(
         201,
         {
             "feedbackId": feedback_id,
-            "analysis": record.get("Analysis"),
             "followUpQuestions": build_follow_up_questions(issue_tags) if feedback_kind != "helpful" else [],
         },
     )

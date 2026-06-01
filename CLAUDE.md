@@ -8,7 +8,7 @@ AI-powered procurement chatbot for Massachusetts OSD. Combines Bedrock Knowledge
 |-------|------|
 | IaC | AWS CDK v2 (TypeScript) |
 | Chat Lambda | Node.js 20 ESM + Bedrock streaming |
-| Other Lambdas | Python 3.12 (30 total) |
+| Other Lambdas | Python 3.12 (29 total) |
 | LLM | Claude Opus 4.6 (primary), Claude Sonnet 4.6 (fast) |
 | Vector DB | OpenSearch Serverless (Titan Embed v2, 1024-dim) |
 | Data | DynamoDB (13 tables), S3 (8 buckets), SQS (1 queue + DLQ) |
@@ -76,7 +76,7 @@ npx cdk deploy ABEStackNonProd -c alarmEmail=you@example.com  # With alerts
 | [lib/constants.ts](lib/constants.ts) | Stack name, Cognito domain, OIDC name |
 | [lib/gen-ai-mvp-stack.ts](lib/gen-ai-mvp-stack.ts) | Root stack — orchestrates all constructs, applies tags, CDK nag suppressions |
 | [lib/chatbot-api/index.ts](lib/chatbot-api/index.ts) | ChatBotApi construct — wires tables, buckets, OpenSearch, KB, APIs, Lambdas, routes, monitoring |
-| [lib/chatbot-api/functions/functions.ts](lib/chatbot-api/functions/functions.ts) | All 24 Lambda definitions with `LAMBDA_DEFAULTS` (ARM64, X-Ray, 1-month logs) |
+| [lib/chatbot-api/functions/functions.ts](lib/chatbot-api/functions/functions.ts) | All 23 Lambda definitions with `LAMBDA_DEFAULTS` (ARM64, X-Ray, 1-month logs) |
 | [lib/chatbot-api/functions/websocket-chat/index.mjs](lib/chatbot-api/functions/websocket-chat/index.mjs) | Chat handler + agentic tool-use loop (max 20 rounds, streaming, context compression) |
 | [lib/chatbot-api/functions/websocket-chat/prompt.mjs](lib/chatbot-api/functions/websocket-chat/prompt.mjs) | System prompt (cached at Bedrock ~4K tokens) |
 | [lib/chatbot-api/functions/websocket-chat/tools.mjs](lib/chatbot-api/functions/websocket-chat/tools.mjs) | Tool definitions (static + dynamic Excel tool from registry), token estimation, result capping |
@@ -212,7 +212,6 @@ npx cdk deploy ABEStackNonProd -c alarmEmail=you@example.com  # With alerts
 | Function | Memory | Timeout | Purpose |
 |----------|--------|---------|---------|
 | TestLibraryHandlerFunction | default | 30s | Test library CRUD with versioning |
-| FeedbackToTestLibraryEnqueueFunction | default | 15s | Queue positive feedback for rewriting |
 | FeedbackToTestLibraryProcessFunction | 256 MB | 90s | LLM-rewrite questions → test library (SQS-triggered) |
 | EvalResultsHandlerFunction | default | 60s | Read eval summaries/results for admin dashboard |
 | MetricsHandlerFunction (Python) | default | 30s | Analytics: sessions, agencies, FAQ breakdown |
@@ -301,7 +300,7 @@ Split Test Cases → [Map: parallel eval, max 2 concurrent] → Aggregate Result
 7. Cleanup: delete chunks/, partial_results/, aggregated_results/ from S3
 
 ### Feedback-to-Test-Library Pipeline
-Positive user feedback (thumbs-up) → SQS queue → LLM rewrites question to be standalone → upsert to `TestLibraryTable` with normalized question deduplication and version history.
+An admin promotes a piece of positive (thumbs-up) feedback from the Feedback Manager (`POST /admin/feedback/{id}/promote-to-candidate`, admin-gated) → the feedback handler enqueues it to the SQS queue → consumer LLM-rewrites the question to be standalone → upsert to `TestLibraryTable` with normalized question deduplication and version history. The question/answer are read server-side from the stored response trace, not supplied by the client.
 
 ## CI/CD
 
