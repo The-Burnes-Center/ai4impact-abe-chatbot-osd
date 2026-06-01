@@ -121,6 +121,7 @@ cd lib/user-interface/app && npm install && cd ../../..
    - `PRIMARY_MODEL_ID` — main chat + eval (default: `us.anthropic.claude-opus-4-6-v1`)
    - `FAST_MODEL_ID` — metadata, FAQ classification, feedback analysis (default: `us.anthropic.claude-sonnet-4-6`)
 3. Guardrail ID is set via `GUARDRAIL_ID` environment variable
+4. _(Optional)_ Custom domain & HTTPS — serve the app from your own hostname with an ACM certificate: see [docs/custom-domain.md](docs/custom-domain.md)
 
 ### Deployment
 
