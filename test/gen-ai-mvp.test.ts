@@ -164,11 +164,11 @@ describe('Lambda functions', () => {
     });
   });
 
-  test('chat handler has 300-second timeout', () => {
-    // websocketAPIFunction is given a 300 s timeout
+  test('chat handler has 15-minute timeout', () => {
+    // websocketAPIFunction is given the AWS Lambda max 15 min (900 s) timeout
     template.hasResourceProperties('AWS::Lambda::Function', {
       Runtime: 'nodejs20.x',
-      Timeout: 300,
+      Timeout: 900,
     });
   });
 
