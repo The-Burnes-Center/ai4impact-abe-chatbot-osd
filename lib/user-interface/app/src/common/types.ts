@@ -1,5 +1,3 @@
-import { CognitoHostedUIIdentityProvider } from "@aws-amplify/auth";
-
 export interface AppConfig {
   Auth: {
         region: string,
@@ -9,6 +7,7 @@ export interface AppConfig {
           domain: string,
           scope: string[],
           redirectSignIn: string,
+          redirectSignOut: string,
           responseType: string,
         }
       },

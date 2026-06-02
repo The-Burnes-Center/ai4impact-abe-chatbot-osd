@@ -20,7 +20,7 @@ import {
 import SpeechRecognition, {
   useSpeechRecognition,
 } from "react-speech-recognition";
-import { Auth } from "aws-amplify";
+import { getCurrentUser, fetchAuthSession } from "aws-amplify/auth";
 import TextareaAutosize from "react-textarea-autosize";
 import styles from "../../styles/chat.module.scss";
 
@@ -78,9 +78,10 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
     let displayName = "";
     let agency = "";
     try {
-      const user = await Auth.currentAuthenticatedUser();
+      const user = await getCurrentUser();
       username = user.username;
-      const rawName = user?.signInUserSession?.idToken?.payload?.name ?? "";
+      const session = await fetchAuthSession();
+      const rawName = (session.tokens?.idToken?.payload?.name as string) ?? "";
       const identity = Utils.parseUserIdentity(rawName);
       displayName = identity.displayName;
       agency = identity.agency;

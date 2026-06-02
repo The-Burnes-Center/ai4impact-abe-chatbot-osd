@@ -1,4 +1,4 @@
-import {Auth} from 'aws-amplify'
+import { fetchAuthSession, signInWithRedirect } from "aws-amplify/auth";
 export class Utils {
   // static isDevelopment() {
   //   return import.meta.env.MODE === "development";
@@ -171,8 +171,8 @@ export class Utils {
 
   static async authenticate(): Promise<string> {
     try {
-      const session = await Auth.currentSession();
-      const token = session.getIdToken().getJwtToken();
+      const session = await fetchAuthSession();
+      const token = session.tokens?.idToken?.toString();
       if (!token) {
         throw new Error('No ID token in session');
       }
@@ -182,7 +182,7 @@ export class Utils {
         console.error("Error getting current user session:", error);
       }
       try {
-        Auth.federatedSignIn();
+        signInWithRedirect();
       } catch (_) {
         // ignore redirect errors
       }

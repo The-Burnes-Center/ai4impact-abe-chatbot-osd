@@ -4,7 +4,7 @@ import {
   ChatBotMessageType,
   FeedbackSubmission,
 } from "./types";
-import { Auth } from "aws-amplify";
+import { getCurrentUser } from "aws-amplify/auth";
 import Stack from "@mui/material/Stack";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
@@ -67,7 +67,7 @@ export default function Chat(props: { sessionId?: string }) {
       const apiClient = new ApiClient(appContext);
       try {
         let username: string | undefined;
-        await Auth.currentAuthenticatedUser().then(
+        await getCurrentUser().then(
           (value) => (username = value.username)
         );
         if (!username) return;

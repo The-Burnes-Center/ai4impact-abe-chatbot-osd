@@ -24,7 +24,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import { useState, useEffect, useContext, useCallback, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import { v4 as uuidv4 } from "uuid";
-import { Auth } from 'aws-amplify';
+import { getCurrentUser } from "aws-amplify/auth";
 import { ApiClient } from "../../common/api-client/api-client";
 import { AppContext } from "../../common/app-context";
 import RouterButton from "../wrappers/router-button";
@@ -53,7 +53,7 @@ export default function Sessions(props: SessionsProps) {
     let username;
     const apiClient = new ApiClient(appContext);
     try {
-      await Auth.currentAuthenticatedUser().then((value) => username = value.username);
+      await getCurrentUser().then((value) => username = value.username);
       if (username) {
         const result = await apiClient.sessions.getSessions(username,true);
         setSessions(result);
@@ -76,7 +76,7 @@ export default function Sessions(props: SessionsProps) {
   const deleteSelectedSessions = async () => {
     if (!appContext) return;
     let username;
-    await Auth.currentAuthenticatedUser().then((value) => username = value.username);
+    await getCurrentUser().then((value) => username = value.username);
     setIsLoading(true);
     const apiClient = new ApiClient(appContext);
     const itemsToDelete = sessions.filter((s) => selectedItems.has(s.session_id));

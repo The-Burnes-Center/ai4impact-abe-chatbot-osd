@@ -22,15 +22,11 @@ vi.mock("../../hooks/useWebSocketChat", () => ({
   useWebSocketChat: () => ({ send: vi.fn(), abort: vi.fn() }),
 }));
 
-vi.mock("aws-amplify", () => ({
-  Auth: {
-    currentAuthenticatedUser: vi.fn().mockResolvedValue({
-      username: "test-user",
-      signInUserSession: {
-        idToken: { payload: { name: "Smith, Jane (OSD)" } },
-      },
-    }),
-  },
+vi.mock("aws-amplify/auth", () => ({
+  getCurrentUser: vi.fn().mockResolvedValue({ username: "test-user" }),
+  fetchAuthSession: vi.fn().mockResolvedValue({
+    tokens: { idToken: { payload: { name: "Smith, Jane (OSD)" } } },
+  }),
 }));
 
 vi.mock("../../common/utils", () => ({

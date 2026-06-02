@@ -13,7 +13,7 @@ import { useNavigate } from "react-router-dom";
 import DocumentsTab from "./documents-tab";
 import { CHATBOT_NAME } from "../../common/constants";
 import { useState, useEffect, useContext } from "react";
-import { Auth } from "aws-amplify";
+import { fetchAuthSession, signOut } from "aws-amplify/auth";
 import DataFileUpload from "./file-upload-tab.tsx";
 import { ApiClient } from "../../common/api-client/api-client";
 import { AppContext } from "../../common/app-context";
@@ -56,13 +56,14 @@ export default function DataPage() {
   useEffect(() => {
     (async () => {
       try {
-        const result = await Auth.currentAuthenticatedUser();
-        if (!result || Object.keys(result).length === 0) {
-          Auth.signOut();
+        const session = await fetchAuthSession();
+        const payload = session.tokens?.idToken?.payload;
+        if (!payload) {
+          signOut();
           return;
         }
         const admin =
-          result?.signInUserSession?.idToken?.payload["custom:role"];
+          payload?.["custom:role"] as string | undefined;
         if (admin) {
           const data = JSON.parse(admin);
           if (data.includes("Admin") || data.includes("MasterAdmin")) {

@@ -7,7 +7,7 @@ import Breadcrumbs from "@mui/material/Breadcrumbs";
 import Link from "@mui/material/Link";
 import Alert from "@mui/material/Alert";
 import Skeleton from "@mui/material/Skeleton";
-import { Auth } from "aws-amplify";
+import { fetchAuthSession, signOut } from "aws-amplify/auth";
 import { CHATBOT_NAME } from "../common/constants";
 
 interface AdminPageLayoutProps {
@@ -31,13 +31,14 @@ export default function AdminPageLayout({
   useEffect(() => {
     (async () => {
       try {
-        const result = await Auth.currentAuthenticatedUser();
-        if (!result || Object.keys(result).length === 0) {
-          Auth.signOut();
+        const session = await fetchAuthSession();
+        const payload = session.tokens?.idToken?.payload;
+        if (!payload) {
+          signOut();
           return;
         }
         const adminRole =
-          result?.signInUserSession?.idToken?.payload["custom:role"];
+          payload?.["custom:role"] as string | undefined;
         if (adminRole) {
           const data = JSON.parse(adminRole);
           if (data.some((role: string) => role.includes("Admin"))) {

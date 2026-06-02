@@ -16,7 +16,7 @@ import MenuIcon from "@mui/icons-material/Menu";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import LogoutIcon from "@mui/icons-material/Logout";
 import { StorageHelper, ThemeMode } from "../common/helpers/storage-helper";
-import { Auth } from "aws-amplify";
+import { fetchAuthSession, signOut } from "aws-amplify/auth";
 import { CHATBOT_NAME } from "../common/constants";
 import { tokens } from "../common/theme";
 import { v4 as uuidv4 } from "uuid";
@@ -35,16 +35,17 @@ export default function GlobalHeader({ onMenuClick, menuExpanded }: GlobalHeader
   useEffect(() => {
     (async () => {
       try {
-        const result = await Auth.currentAuthenticatedUser();
-        if (!result || Object.keys(result).length === 0) {
-          Auth.signOut();
+        const session = await fetchAuthSession();
+        const payload = session.tokens?.idToken?.payload;
+        if (!payload) {
+          signOut();
           return;
         }
-        const name = result?.signInUserSession?.idToken?.payload?.name;
-        const email = result?.signInUserSession?.idToken?.payload?.email;
+        const name = payload?.name as string | undefined;
+        const email = payload?.email as string | undefined;
         setUserName(name || email || null);
       } catch {
-        try { Auth.signOut(); } catch { /* ignore */ }
+        try { signOut(); } catch { /* ignore */ }
       }
     })();
   }, []);
@@ -59,7 +60,7 @@ export default function GlobalHeader({ onMenuClick, menuExpanded }: GlobalHeader
 
   const handleSignOut = () => {
     setAnchorEl(null);
-    Auth.signOut();
+    signOut();
   };
 
   const c = tokens.colors[theme];

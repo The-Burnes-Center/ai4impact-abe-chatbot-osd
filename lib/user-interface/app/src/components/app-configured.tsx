@@ -29,7 +29,8 @@ import {
   defaultDarkModeOverride,
 } from "@aws-amplify/ui-react";
 import App from "../app";
-import { Amplify, Auth } from "aws-amplify";
+import { Amplify, type ResourcesConfig } from "aws-amplify";
+import { getCurrentUser, signInWithRedirect } from "aws-amplify/auth";
 import { AppConfig } from "../common/types";
 import { AppContext } from "../common/app-context";
 import { StorageHelper, ThemeMode } from "../common/helpers/storage-helper";
@@ -40,6 +41,31 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import { buildTheme } from "../common/theme";
 import "@aws-amplify/ui-react/styles.css";
+
+/**
+ * Map the v5-shaped `aws-exports.json` (still emitted by the CDK at deploy
+ * time) onto the v6 `ResourcesConfig` that `Amplify.configure()` expects.
+ * Keeping the on-disk contract stable means the backend/CDK is untouched.
+ */
+function toResourcesConfig(c: AppConfig): ResourcesConfig {
+  return {
+    Auth: {
+      Cognito: {
+        userPoolId: c.Auth.userPoolId,
+        userPoolClientId: c.Auth.userPoolWebClientId,
+        loginWith: {
+          oauth: {
+            domain: c.Auth.oauth.domain,
+            scopes: c.Auth.oauth.scope,
+            redirectSignIn: [c.Auth.oauth.redirectSignIn],
+            redirectSignOut: [c.Auth.oauth.redirectSignOut],
+            responseType: c.Auth.oauth.responseType === "token" ? "token" : "code",
+          },
+        },
+      },
+    },
+  };
+}
 
 export default function AppConfigured() {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -66,25 +92,31 @@ export default function AppConfigured() {
    */
   useEffect(() => {
     (async () => {
-      let currentConfig: AppConfig;
+      let currentConfig: AppConfig | undefined;
       try {
         const result = await fetch("/aws-exports.json");
-        const awsExports = await result.json();
-        currentConfig = Amplify.configure(awsExports) as AppConfig;
-        const user = await Auth.currentAuthenticatedUser();
+        const awsExports = (await result.json()) as AppConfig;
+        currentConfig = awsExports;
+        Amplify.configure(toResourcesConfig(awsExports));
+        const user = await getCurrentUser();
         if (user) {
           setAuthenticated(true);
         }
         setConfig(awsExports);
         setConfigured(true);
       } catch {
+        // Config fetch/parse failed — we can't even redirect; show the error.
+        if (!currentConfig) {
+          setError(true);
+          return;
+        }
         try {
-          if (currentConfig!.federatedSignInProvider != "") {
-            Auth.federatedSignIn({ customProvider: currentConfig!.federatedSignInProvider });
+          if (currentConfig.federatedSignInProvider) {
+            signInWithRedirect({ provider: { custom: currentConfig.federatedSignInProvider } });
           } else {
-            Auth.federatedSignIn();
+            signInWithRedirect();
           }
-        } catch (error) {
+        } catch {
           setError(true);
         }
       }
@@ -98,10 +130,10 @@ export default function AppConfigured() {
    */
   useEffect(() => {
     if (!authenticated && configured) {
-      if (config!.federatedSignInProvider != "") {
-        Auth.federatedSignIn({ customProvider: config!.federatedSignInProvider });
+      if (config?.federatedSignInProvider) {
+        signInWithRedirect({ provider: { custom: config.federatedSignInProvider } });
       } else {
-        Auth.federatedSignIn();
+        signInWithRedirect();
       }
     }
   }, [authenticated, configured]);

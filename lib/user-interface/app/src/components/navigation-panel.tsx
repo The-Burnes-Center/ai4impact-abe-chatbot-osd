@@ -25,7 +25,7 @@ import ScienceOutlinedIcon from "@mui/icons-material/ScienceOutlined";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import { AppContext } from "../common/app-context";
 import { ApiClient } from "../common/api-client/api-client";
-import { Auth } from "aws-amplify";
+import { getCurrentUser, fetchAuthSession } from "aws-amplify/auth";
 import { v4 as uuidv4 } from "uuid";
 import { SessionRefreshContext } from "../common/session-refresh-context";
 import { useNotifications } from "./notif-manager";
@@ -73,7 +73,7 @@ export default function NavigationPanel() {
     if (loadingSessions) return;
     setLoadingSessions(true);
     try {
-      const user = await Auth.currentAuthenticatedUser();
+      const user = await getCurrentUser();
       const username = user?.username;
       if (username && needsRefresh) {
         const fetchedSessions = await apiClient.sessions.getSessions(username);
@@ -93,8 +93,8 @@ export default function NavigationPanel() {
 
   const loadAdminLinks = async () => {
     try {
-      const result = await Auth.currentAuthenticatedUser();
-      const admin = result?.signInUserSession?.idToken?.payload["custom:role"];
+      const session = await fetchAuthSession();
+      const admin = session.tokens?.idToken?.payload?.["custom:role"] as string | undefined;
       if (admin) {
         const data = JSON.parse(admin);
         if (data.includes("Admin") || data.includes("Master Admin")) {
