@@ -13,14 +13,15 @@ const PageContainer = styled.main`
   position: relative;
   background: linear-gradient(135deg, #0a2b48 0%, #14558f 100%);
   width: 100%;
-  min-height: 100vh;
+  flex: 1 1 auto;
+  min-height: 0;
   box-sizing: border-box;
   padding: 24px clamp(20px, 5vw, 60px);
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  overflow-x: hidden;
+  overflow: hidden;
 `;
 
 const Circle = styled.div`

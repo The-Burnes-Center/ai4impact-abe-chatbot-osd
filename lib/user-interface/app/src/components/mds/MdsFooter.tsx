@@ -55,7 +55,7 @@ export default function MdsFooter() {
             },
             {
               href: "https://www.mass.gov/info-details/commonwealth-of-massachusetts-executive-department-digital-accessibility-statement",
-              text: "Accessibility Statement",
+              text: "Digital Accessibility Statement",
             },
           ],
         }}
