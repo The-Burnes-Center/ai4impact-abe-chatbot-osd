@@ -11,8 +11,9 @@
  *     which wires up Auth, API, and Storage clients globally.
  *  3. **Check authentication** -- calls `Auth.currentAuthenticatedUser()`.
  *     If the user has a valid session the app renders immediately;
- *     otherwise a federated sign-in redirect is triggered (either to a
- *     custom OIDC provider or the default Cognito Hosted UI).
+ *     otherwise the user is redirected to the Cognito Managed Login
+ *     page, which offers both username/password (native Cognito users)
+ *     and the federated "Sign in with Mass SSO" button.
  *  4. **Theme detection** -- a `MutationObserver` watches for changes to
  *     the `--app-color-scheme` CSS variable on `<html>`. When it flips
  *     between `"dark"` and `"light"` (e.g. via OS preference or user
@@ -84,9 +85,9 @@ export default function AppConfigured() {
    *  2. Call `Amplify.configure()` so Auth/API clients are ready.
    *  3. Attempt `Auth.currentAuthenticatedUser()`.
    *     - Success: mark authenticated, store config, render the app.
-   *     - Failure (no session): redirect to federated sign-in.
-   *       Uses a custom OIDC provider when `federatedSignInProvider` is
-   *       set; otherwise falls back to the default Cognito Hosted UI.
+   *     - Failure (no session): redirect to the Cognito Managed Login
+   *       page, which presents both the username/password form and the
+   *       federated Mass SSO button (no provider is forced).
    *  4. If both the auth check and the redirect fail (e.g. network
    *     error), display the error state.
    */
@@ -111,11 +112,12 @@ export default function AppConfigured() {
           return;
         }
         try {
-          if (currentConfig.federatedSignInProvider) {
-            signInWithRedirect({ provider: { custom: currentConfig.federatedSignInProvider } });
-          } else {
-            signInWithRedirect();
-          }
+          // Land on the Cognito Managed Login page, which presents BOTH the
+          // username/password form (native Cognito users) and the federated
+          // "Sign in with Mass SSO" button. Passing a specific provider here
+          // would skip the page and bounce straight to SSO — exactly what
+          // locked native Cognito users out before.
+          signInWithRedirect();
         } catch {
           setError(true);
         }
@@ -125,16 +127,14 @@ export default function AppConfigured() {
 
   /**
    * Re-authentication guard -- if the config has loaded but the user is
-   * not authenticated (e.g. token expired between effects), trigger the
-   * federated sign-in redirect again.
+   * not authenticated (e.g. token expired between effects), send the user
+   * to the Managed Login page again.
    */
   useEffect(() => {
     if (!authenticated && configured) {
-      if (config?.federatedSignInProvider) {
-        signInWithRedirect({ provider: { custom: config.federatedSignInProvider } });
-      } else {
-        signInWithRedirect();
-      }
+      // Same as above: send the user to the Managed Login page so both
+      // native Cognito and federated Mass SSO sign-in remain available.
+      signInWithRedirect();
     }
   }, [authenticated, configured]);
 
