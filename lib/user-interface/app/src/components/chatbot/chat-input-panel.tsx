@@ -66,6 +66,9 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
   // Text already in the box when dictation started, so live speech is appended
   // to it rather than overwriting it.
   const dictationBaseRef = useRef("");
+  // Guards against spamming the same dictation error while continuous mode
+  // retries; reset each time the user starts a new dictation.
+  const dictationErrorRef = useRef(false);
   const { send } = useWebSocketChat();
 
   useEffect(() => {
@@ -93,6 +96,11 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
     const handleError = (event: Event) => {
       const code = (event as unknown as { error?: string }).error;
       if (!code || code === "no-speech" || code === "aborted") return;
+      // Fatal error. Stop the recognizer so continuous mode doesn't restart
+      // straight back into the same failure, and notify at most once per attempt.
+      SpeechRecognition.abortListening();
+      if (dictationErrorRef.current) return;
+      dictationErrorRef.current = true;
       const messages: Record<string, string> = {
         network:
           "Dictation can't reach the speech service — this network may be blocking it.",
@@ -116,6 +124,7 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
       return;
     }
     dictationBaseRef.current = state.value.trim();
+    dictationErrorRef.current = false;
     resetTranscript();
     Promise.resolve(
       SpeechRecognition.startListening({ continuous: true, language: "en-US" })
