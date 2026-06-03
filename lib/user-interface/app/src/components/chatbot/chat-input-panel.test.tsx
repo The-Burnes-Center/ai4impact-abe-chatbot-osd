@@ -10,10 +10,15 @@ import { ChatBotMessageType } from "./types";
 // ---------------------------------------------------------------------------
 
 vi.mock("react-speech-recognition", () => ({
-  default: { startListening: vi.fn(), stopListening: vi.fn() },
+  default: {
+    startListening: vi.fn(() => Promise.resolve()),
+    stopListening: vi.fn(),
+    getRecognition: vi.fn(() => null),
+  },
   useSpeechRecognition: () => ({
     transcript: "",
     listening: false,
+    resetTranscript: vi.fn(),
     browserSupportsSpeechRecognition: false,
   }),
 }));

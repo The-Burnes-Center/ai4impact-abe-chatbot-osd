@@ -51,25 +51,76 @@ export interface ChatInputPanelProps {
 const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
   function ChatInputPanel(props, ref) {
   const { setNeedsRefresh } = useContext(SessionRefreshContext);
-  const { transcript, listening, browserSupportsSpeechRecognition } =
-    useSpeechRecognition();
+  const {
+    transcript,
+    listening,
+    resetTranscript,
+    browserSupportsSpeechRecognition,
+  } = useSpeechRecognition();
   const [state, setState] = useState<ChatInputState>({
     value: "",
   });
   const { addNotification } = useNotifications();
   const messageHistoryRef = useRef<ChatBotHistoryItem[]>([]);
   const handleSendRef = useRef<(msg?: string) => Promise<void>>();
+  // Text already in the box when dictation started, so live speech is appended
+  // to it rather than overwriting it.
+  const dictationBaseRef = useRef("");
   const { send } = useWebSocketChat();
 
   useEffect(() => {
     messageHistoryRef.current = props.messageHistory;
   }, [props.messageHistory]);
 
+  // Mirror live speech into the textarea while dictating, appended to whatever
+  // the user had already typed before they pressed the mic.
   useEffect(() => {
-    if (transcript) {
-      setState((s) => ({ ...s, value: transcript }));
+    if (!listening) return;
+    const base = dictationBaseRef.current;
+    setState((s) => ({
+      ...s,
+      value: base ? `${base} ${transcript}` : transcript,
+    }));
+  }, [transcript, listening]);
+
+  // Surface Web Speech API errors. Without this the mic just flips off
+  // silently — e.g. on restricted networks Chrome can't reach Google's speech
+  // service and fails instantly with "network".
+  useEffect(() => {
+    const recognition = SpeechRecognition.getRecognition?.();
+    if (!recognition) return;
+    const target = recognition as unknown as EventTarget;
+    const handleError = (event: Event) => {
+      const code = (event as unknown as { error?: string }).error;
+      if (!code || code === "no-speech" || code === "aborted") return;
+      const messages: Record<string, string> = {
+        network:
+          "Dictation can't reach the speech service — this network may be blocking it.",
+        "not-allowed":
+          "Microphone access is blocked. Enable it for this site in your browser settings.",
+        "service-not-allowed":
+          "Microphone access is blocked. Enable it for this site in your browser settings.",
+        "audio-capture": "No microphone was found.",
+      };
+      addNotification("error", messages[code] ?? `Dictation error: ${code}`);
+    };
+    target.addEventListener("error", handleError);
+    return () => target.removeEventListener("error", handleError);
+  }, [addNotification]);
+
+  // Toggle dictation. Continuous mode keeps the recognizer listening across
+  // natural pauses instead of stopping after the first phrase.
+  const handleToggleDictation = () => {
+    if (listening) {
+      SpeechRecognition.stopListening();
+      return;
     }
-  }, [transcript]);
+    dictationBaseRef.current = state.value.trim();
+    resetTranscript();
+    Promise.resolve(
+      SpeechRecognition.startListening({ continuous: true, language: "en-US" })
+    ).catch(() => addNotification("error", "Could not start dictation."));
+  };
 
   const handleSendMessage = async (overrideMessage?: string) => {
     if (props.running) return;
@@ -99,6 +150,10 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
     if (!overrideMessage) {
       setState({ value: "" });
     }
+    // Stop/clear any in-progress dictation so it doesn't bleed into the next message.
+    if (listening) SpeechRecognition.stopListening();
+    resetTranscript();
+    dictationBaseRef.current = "";
 
     props.setRunning(true);
     props.setStreamingStatus({ text: "", active: false });
@@ -243,11 +298,7 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
                   size="small"
                   aria-label={listening ? "Stop dictation" : "Start dictation"}
                   aria-pressed={listening}
-                  onClick={() =>
-                    listening
-                      ? SpeechRecognition.stopListening()
-                      : SpeechRecognition.startListening()
-                  }
+                  onClick={handleToggleDictation}
                   color={listening ? "primary" : "default"}
                 >
                   {listening ? (
