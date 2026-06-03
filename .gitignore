@@ -15,3 +15,8 @@ cdk.out
 
 # Claude Code local files
 .claude/
+
+# Demo animation recordings — raw captures (MP4/WebM/scratch GIFs) are bulky and
+# regenerable; the final GIFs the README embeds live in docs/demos/ (tracked).
+demo-recordings/
+_preview*.png

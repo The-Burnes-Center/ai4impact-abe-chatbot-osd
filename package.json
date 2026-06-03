@@ -9,13 +9,15 @@
     "watch": "tsc -w",
     "test": "jest",
     "test:lambda": "vitest run lib/chatbot-api/functions/websocket-chat",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "record-demo": "node scripts/record-demo.mjs"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",
     "@types/node": "20.12.7",
     "aws-cdk": "^2.1125.0",
     "jest": "^29.7.0",
+    "playwright": "^1.60.0",
     "ts-jest": "^29.1.2",
     "ts-node": "^10.9.2",
     "typescript": "~5.4.5",

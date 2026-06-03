@@ -16,6 +16,53 @@ ABE is a serverless AI chatbot that helps users navigate procurement processes. 
 - **Admin Panel** — Document management, knowledge base sync, Excel index upload, sync automation, evaluation runs, feedback review, and test library CRUD
 - **Operational Monitoring** — CloudWatch dashboard, 43 alarms, SNS email alerts
 
+## Demos
+
+Short animated walkthroughs of ABE's main flows — faithful UI mockups recorded straight from the React frontend (see [Regenerating the demos](#regenerating-the-demos)).
+
+### 💬 Chat — semantic RAG with citations
+
+A procurement question kicks off the agentic tool-use loop: ABE searches the Bedrock Knowledge Base (`query_db`), streams the answer, and grounds it with inline `[N]` citations plus an expandable **Sources** panel.
+
+<img src="docs/demos/abe-chat.gif" width="820" alt="ABE answering a Statewide Contract question — streamed response with [N] citations and an expandable Sources panel" />
+
+### 📊 Structured contract lookup — Excel index
+
+Vendor and contract questions route to the `query_excel_index` tool, which answers from the DynamoDB-backed Excel index as a clean table — distinct from semantic search over documents.
+
+<img src="docs/demos/abe-excel.gif" width="820" alt="ABE answering a contract question with a structured table from the Excel index" />
+
+### 🗂️ Knowledge Base — documents & sync
+
+Admins upload documents, trigger **Sync data now**, and watch Bedrock Knowledge Base ingestion progress until everything reads "Synced".
+
+<img src="docs/demos/abe-data.gif" width="820" alt="ABE admin Data Dashboard — uploading a document and syncing the knowledge base" />
+
+### 📈 Analytics dashboard
+
+Usage, traffic, and FAQ-category insights — KPI cards and `@mui/x-charts` visualizations on the admin Analytics page.
+
+<img src="docs/demos/abe-metrics.gif" width="820" alt="ABE analytics dashboard with KPI cards, a traffic line chart, and a FAQ-category bar chart" />
+
+### ✅ Quality monitoring — RAGAS evaluation
+
+Run an evaluation and review the roll-up scores (Answer / Retrieval / Response quality) plus the per-question RAGAS metrics table.
+
+<img src="docs/demos/abe-eval.gif" width="820" alt="ABE Quality Monitoring — a RAGAS evaluation scorecard with roll-up scores and per-question metrics" />
+
+### Regenerating the demos
+
+The demos are self-contained React mockups (no backend, no auth) under [`lib/user-interface/app/src/demos/`](lib/user-interface/app/src/demos/), served at `/demo-animation/<id>` **in local dev only** (the route is gated behind `import.meta.env.DEV`, so it's tree-shaken out of production builds). Each demo is a single `useSteps()` timeline with an editable `TIMINGS` array. To re-record (needs `ffmpeg` + Playwright Chromium):
+
+```bash
+# one-time: npx playwright install chromium  &&  brew install ffmpeg
+cd lib/user-interface/app && npm run dev      # 1. start the dev server (port 3000)
+npm run record-demo                           # 2. from the repo root — records all demos
+npm run record-demo -- chat excel             #    …or only specific ids
+```
+
+Raw captures (MP4 + GIF + WebM) land in `demo-recordings/` (git-ignored); copy the chosen GIFs into `docs/demos/`. MP4s for each flow also live in [`docs/demos/`](docs/demos/).
+
 ## Architecture
 
 ![Architecture Flow](docs/architecture.png)
