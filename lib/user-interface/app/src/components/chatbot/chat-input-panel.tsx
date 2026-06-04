@@ -299,6 +299,14 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
                     props.onStop?.();
                     props.setRunning(false);
                     props.setStreamingStatus({ text: "", active: false });
+                    // The answer arrives in one frame at the end, so on stop the
+                    // assistant bubble is still empty — drop it instead of leaving
+                    // a blank response on screen.
+                    const hist = props.messageHistory;
+                    const last = hist[hist.length - 1];
+                    if (last && last.type === ChatBotMessageType.AI && !last.content?.trim()) {
+                      props.setMessageHistory(hist.slice(0, -1));
+                    }
                   }}
                   aria-label="Stop response"
                   color="error"
