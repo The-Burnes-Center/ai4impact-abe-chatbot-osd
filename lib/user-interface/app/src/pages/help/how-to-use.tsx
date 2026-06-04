@@ -20,7 +20,7 @@ import { useDocumentTitle } from "../../common/hooks/use-document-title";
 import DemoVideo from "../../components/onboarding/demo-video";
 
 const prompts = [
-  { title: "Spell out acronyms", details: "Avoid using abbreviations. For example, instead of 'RFP,' use 'Request for Proposal'." },
+  { title: "Spell out acronyms", details: "Avoid using abbreviations. For example, instead of 'RFR,' use 'Request for Response'." },
   { title: "Be specific and concise", details: "Provide clear and precise questions to help ABE give accurate responses." },
   { title: "Use keywords", details: "Include important terms in your query, such as 'vendor' or 'contract'." },
   { title: "Ask one question at a time", details: "Breaking down complex questions ensures better answers." },
@@ -34,7 +34,7 @@ const sampleQuestions = [
     items: [
       "How do I get started with the procurement process?",
       "What is considered a large procurement, and what rules apply?",
-      "What is the difference between a Request for Proposal (RFP) and a Request for Quote (RFQ)?",
+      "What is the difference between a Request for Response (RFR) and a Request for Quote (RFQ)?",
       "What are Statewide Contracts, and how do they work?",
     ],
   },
