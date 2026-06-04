@@ -14,6 +14,11 @@
  *    status string (e.g. "Searching knowledge base..."). The UI shows
  *    this as a progress indicator while the agentic loop is running.
  *
+ *  - `REPLACE_PREFIX` (`!<|REPLACE|>!`) -- the text after it replaces the
+ *    accumulated answer wholesale: the citation-finalized version at end of
+ *    stream, or an empty payload to clear intermediate tool-round text. Plain
+ *    (non-sentinel) frames before it stream in as deltas and are appended.
+ *
  *  - `EOF_MARKER` (`!<|EOF_STREAM|>!`) -- signals the end of the
  *    assistant's text. Everything received *after* this marker is
  *    treated as JSON metadata (sources / citations).
@@ -68,6 +73,9 @@ import { assembleHistory } from "../components/chatbot/utils";
 const STATUS_PREFIX = "!<|STATUS|>!";
 /** Marks the end of the assistant's streamed text; metadata follows. */
 const EOF_MARKER = "!<|EOF_STREAM|>!";
+/** Replaces the accumulated answer text wholesale (citation-finalized flush at
+ *  end of stream, or empty payload to clear intermediate tool-round text). */
+const REPLACE_PREFIX = "!<|REPLACE|>!";
 /** Prefix for error frames; the socket is closed immediately after. */
 const ERROR_PREFIX = "<!ERROR!>:";
 /** Inactivity timeout (ms) before the request is considered stalled. */
@@ -267,6 +275,17 @@ export function useWebSocketChat() {
             lastActivity = Date.now();
             const statusText = raw.slice(STATUS_PREFIX.length);
             opts.onStatusChange({ text: statusText, active: true });
+            return;
+          }
+
+          if (raw.startsWith(REPLACE_PREFIX)) {
+            // Server replaces the streamed text wholesale — swapping the raw
+            // answer for the citation-finalized version at end of stream, or
+            // clearing intermediate tool-round text (empty payload).
+            lastActivity = Date.now();
+            receivedData = raw.slice(REPLACE_PREFIX.length);
+            opts.onStatusChange({ text: "", active: false });
+            opts.onStreamChunk(receivedData);
             return;
           }
 

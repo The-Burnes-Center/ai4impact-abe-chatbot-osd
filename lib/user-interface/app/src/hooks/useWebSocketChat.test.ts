@@ -213,6 +213,48 @@ describe("useWebSocketChat", () => {
     expect(onStreamChunk).toHaveBeenLastCalledWith("Hello world");
   });
 
+  it("streams text deltas, then replaces them with the citation-finalized text", async () => {
+    const onStreamChunk = vi.fn();
+    const { result } = renderHook(() => useWebSocketChat(), { wrapper });
+
+    await act(async () => {
+      await result.current.send(makeOpts({ onStreamChunk }));
+    });
+
+    const ws = MockWebSocket.lastInstance!;
+    act(() => {
+      ws.simulateOpen();
+      ws.simulateMessage("Hello ");
+      ws.simulateMessage("world");
+      // End-of-turn flush: raw text replaced by the citation-finalized version.
+      ws.simulateMessage("!<|REPLACE|>!Hello world [1]");
+    });
+
+    expect(onStreamChunk).toHaveBeenNthCalledWith(1, "Hello ");
+    expect(onStreamChunk).toHaveBeenNthCalledWith(2, "Hello world");
+    expect(onStreamChunk).toHaveBeenLastCalledWith("Hello world [1]");
+  });
+
+  it("clears streamed text on an empty REPLACE frame (intermediate tool-round text)", async () => {
+    const onStreamChunk = vi.fn();
+    const { result } = renderHook(() => useWebSocketChat(), { wrapper });
+
+    await act(async () => {
+      await result.current.send(makeOpts({ onStreamChunk }));
+    });
+
+    const ws = MockWebSocket.lastInstance!;
+    act(() => {
+      ws.simulateOpen();
+      ws.simulateMessage("let me check that");   // intermediate pre-tool text
+      ws.simulateMessage("!<|REPLACE|>!");         // cleared on tool transition
+      ws.simulateMessage("The answer is 42.");     // final answer streams fresh
+    });
+
+    expect(onStreamChunk).toHaveBeenCalledWith("");
+    expect(onStreamChunk).toHaveBeenLastCalledWith("The answer is 42.");
+  });
+
   it("calls onComplete after streamed text plus the EOF marker followed by a clean close", async () => {
     const onComplete = vi.fn();
     const { result } = renderHook(() => useWebSocketChat(), { wrapper });
