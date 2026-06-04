@@ -118,10 +118,15 @@ interface SendOptions {
 export function useWebSocketChat() {
   const appContext = useContext(AppContext);
   const wsRef = useRef<WebSocket | null>(null);
+  // Set when the user presses stop, so the per-request close handler can tell a
+  // deliberate cancel apart from an unexpected disconnect (which would otherwise
+  // reconnect and resend the same message).
+  const userAbortedRef = useRef(false);
 
   const abort = useCallback(() => {
+    userAbortedRef.current = true;
     if (wsRef.current) {
-      wsRef.current.close();
+      wsRef.current.close(1000);
       wsRef.current = null;
     }
   }, []);
@@ -143,6 +148,9 @@ export function useWebSocketChat() {
         opts.onError("App not configured. Please refresh the page.");
         return;
       }
+
+      // New user-initiated request — clear any prior stop/abort latch.
+      userAbortedRef.current = false;
 
       const wsUrl = appContext.wsEndpoint + "/";
       const firstMessage = opts.messageHistory.length < 3;
@@ -333,7 +341,14 @@ export function useWebSocketChat() {
 
         ws.addEventListener("close", (event) => {
           clearInterval(timeoutId);
+          if (finalizeTimer) clearTimeout(finalizeTimer);
           wsRef.current = null;
+
+          // User pressed stop: the input has already been reset by the stop
+          // button, so don't reconnect, resend, complete, or surface an error.
+          if (userAbortedRef.current) {
+            return;
+          }
 
           if (eofReceived) {
             // Normal completion (idempotent — the EOF grace timer may have

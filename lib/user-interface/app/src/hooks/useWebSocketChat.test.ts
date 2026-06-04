@@ -386,4 +386,34 @@ describe("useWebSocketChat", () => {
 
     expect(ws.readyState).toBe(3);
   });
+
+  it("does not reconnect or resend the message after the user aborts", async () => {
+    // Regression: pressing stop closes the socket; the close handler must treat
+    // that as a deliberate cancel, not an unexpected disconnect — otherwise it
+    // reconnects and resends the same message a second later.
+    const onError = vi.fn();
+    const { result } = renderHook(() => useWebSocketChat(), { wrapper });
+
+    vi.useFakeTimers();
+    await act(async () => {
+      await result.current.send(makeOpts({ onError }));
+    });
+
+    const ws = MockWebSocket.lastInstance!;
+    act(() => {
+      ws.simulateOpen();
+      ws.simulateMessage("partial answer"); // mid-stream, before any EOF
+    });
+
+    act(() => result.current.abort());
+
+    // Past the reconnect back-off window: no retry socket, no error surfaced.
+    await act(async () => {
+      vi.advanceTimersByTime(5_000);
+    });
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(MockWebSocket.lastInstance).toBe(ws); // no new socket = no reconnect/resend
+    vi.useRealTimers();
+  });
 });
