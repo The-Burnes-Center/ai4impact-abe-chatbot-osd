@@ -17,6 +17,7 @@ import ExpandLess from "@mui/icons-material/ExpandLess";
 import { Link as RouterLink } from "react-router-dom";
 import { CHATBOT_NAME } from "../../common/constants";
 import { useDocumentTitle } from "../../common/hooks/use-document-title";
+import DemoVideo from "../../components/onboarding/demo-video";
 
 const prompts = [
   { title: "Spell out acronyms", details: "Avoid using abbreviations. For example, instead of 'RFP,' use 'Request for Proposal'." },
@@ -70,6 +71,16 @@ function TipsTab() {
           Learn how to phrase your questions effectively and explore examples to guide
           your interactions for quick and accurate procurement assistance.
         </Typography>
+      </Paper>
+
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h4" component="h2" sx={{ mb: 1 }}>
+          See ABE in action
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          A quick walkthrough of asking a question and getting an answer with sources.
+        </Typography>
+        <DemoVideo />
       </Paper>
 
       <Paper sx={{ p: 3 }}>

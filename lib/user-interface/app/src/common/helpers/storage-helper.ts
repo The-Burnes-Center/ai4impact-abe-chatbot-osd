@@ -5,6 +5,9 @@ const THEME_STORAGE_NAME = `${PREFIX}-theme`;
 const SELECTED_MODEL_STORAGE_NAME = `${PREFIX}-selected-model`;
 const SELECTED_WORKSPACE_STORAGE_NAME = `${PREFIX}-selected-workspace`;
 const NAVIGATION_PANEL_STATE_STORAGE_NAME = `${PREFIX}-navigation-panel-state`;
+const ONBOARDING_SEEN_STORAGE_NAME = `${PREFIX}-onboarding-seen`;
+// Bump when onboarding changes enough that returning users should see it again.
+const ONBOARDING_VERSION = "1";
 
 export type ThemeMode = "light" | "dark";
 
@@ -63,5 +66,13 @@ export abstract class StorageHelper {
 
   static setSelectedWorkspaceId(workspaceId: string) {
     localStorage.setItem(SELECTED_WORKSPACE_STORAGE_NAME, workspaceId);
+  }
+
+  static getOnboardingSeen(): boolean {
+    return localStorage.getItem(ONBOARDING_SEEN_STORAGE_NAME) === ONBOARDING_VERSION;
+  }
+
+  static setOnboardingSeen(): void {
+    localStorage.setItem(ONBOARDING_SEEN_STORAGE_NAME, ONBOARDING_VERSION);
   }
 }
