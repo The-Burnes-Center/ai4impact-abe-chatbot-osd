@@ -39,11 +39,20 @@
  * Each retry re-authenticates (fetches a fresh Cognito token) before
  * opening the new socket.
  *
+ * ## Completion
+ *
+ * The response is considered complete as soon as the `EOF_MARKER` and the
+ * trailing metadata frame have arrived — we then report completion and close
+ * the socket ourselves (see `finalize`). We do NOT wait for the server to
+ * close the connection, because the backend holds the socket open while it
+ * does post-response work (title generation, session save); a slow or failed
+ * step there must never leave the UI stuck mid-stream.
+ *
  * ## Timeout
  *
- * A 90-second inactivity timer (`TIMEOUT_MS`) runs while no response
- * text has been received. If no data arrives within that window the
- * socket is closed and the user sees a timeout error. The timer is
+ * A 120-second inactivity timer (`TIMEOUT_MS`) runs until the response
+ * completes (EOF received). If no frame — status or text — arrives within that
+ * window the socket is closed and the user sees a timeout error. The timer is
  * polled every 5 seconds via `setInterval`.
  */
 import { useRef, useCallback, useContext } from "react";
@@ -63,6 +72,8 @@ const EOF_MARKER = "!<|EOF_STREAM|>!";
 const ERROR_PREFIX = "<!ERROR!>:";
 /** Inactivity timeout (ms) before the request is considered stalled. */
 const TIMEOUT_MS = 120_000;
+/** Grace window (ms) after EOF to collect trailing metadata before completing. */
+const FINALIZE_GRACE_MS = 1_000;
 /** Maximum number of automatic reconnection attempts on unexpected close. */
 const MAX_RECONNECT_ATTEMPTS = 3;
 /** Base delay (ms) for exponential back-off between reconnection attempts. */
@@ -173,14 +184,52 @@ export function useWebSocketChat() {
         // Latched once a terminal callback (error/session-full) has fired so the
         // subsequent close event does not re-fire onError as "connection lost".
         let terminalHandled = false;
+        // Latched once the request has been completed exactly once (see finalize).
+        let finalized = false;
+        let finalizeTimer: ReturnType<typeof setTimeout> | null = null;
 
+        // Time out only while the response is still pending (no EOF yet). This
+        // catches both a request that never starts AND a stream that stalls
+        // partway; once EOF arrives, completion is driven by finalize() instead.
         const timeoutId = setInterval(() => {
-          if (receivedData === "" && Date.now() - lastActivity > TIMEOUT_MS) {
+          if (!finalized && !eofReceived && Date.now() - lastActivity > TIMEOUT_MS) {
             clearInterval(timeoutId);
+            terminalHandled = true;
             ws.close();
             opts.onError("The request timed out. Please try again.");
           }
         }, 5_000);
+
+        // Completes the request exactly once: stops timers, reports completion,
+        // and closes the socket ourselves. Completion is driven by the protocol's
+        // EOF + metadata frames rather than the transport `close` event, because
+        // the backend keeps the socket open while it does post-response work
+        // (title generation, session save) — a slow or failed step there must
+        // never leave the UI stuck mid-stream.
+        const finalize = () => {
+          if (finalized) return;
+          finalized = true;
+          clearInterval(timeoutId);
+          if (finalizeTimer) clearTimeout(finalizeTimer);
+          wsRef.current = null;
+          opts.onComplete(firstMessage);
+          try {
+            if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+              ws.close(1000);
+            }
+          } catch {
+            // socket already closing/closed
+          }
+        };
+
+        // After EOF the only remaining frame is the metadata burst; give it a
+        // brief window to arrive, then complete without waiting for the server
+        // to close the socket.
+        const scheduleFinalize = () => {
+          if (finalized) return;
+          if (finalizeTimer) clearTimeout(finalizeTimer);
+          finalizeTimer = setTimeout(finalize, FINALIZE_GRACE_MS);
+        };
 
         ws.addEventListener("open", () => {
           ws.send(outboundFrame);
@@ -228,6 +277,7 @@ export function useWebSocketChat() {
             eofReceived = true;
             incomingMetadata = true;
             opts.onStatusChange({ text: "", active: false });
+            scheduleFinalize();
             return;
           }
 
@@ -270,6 +320,7 @@ export function useWebSocketChat() {
               }
 
               opts.onSources(responseMetadata);
+              scheduleFinalize();
             } catch {
               // ignore malformed metadata JSON
             }
@@ -285,15 +336,16 @@ export function useWebSocketChat() {
           wsRef.current = null;
 
           if (eofReceived) {
-            // Normal completion
-            opts.onComplete(firstMessage);
+            // Normal completion (idempotent — the EOF grace timer may have
+            // already finalized if the server was slow to close the socket).
+            finalize();
             return;
           }
 
-          // A terminal callback (error frame) already fired; the close that
-          // follows our explicit ws.close() is expected and must not
-          // double-fire onError as "connection lost".
-          if (terminalHandled) {
+          // A terminal callback (error frame / timeout) already fired, or we
+          // already finalized; the close that follows our own ws.close() is
+          // expected and must not re-fire onError as "connection lost".
+          if (terminalHandled || finalized) {
             return;
           }
 
