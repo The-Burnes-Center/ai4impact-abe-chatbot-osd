@@ -29,30 +29,31 @@ const prompts = [
 
 const sampleQuestions = [
   {
-    topic: "General Procurement Questions",
+    topic: "Procurement Basics",
     items: [
-      "How can I get started with the procurement process?",
-      "What is large procurement?",
-      "What is the difference between an RFP and an RFQ?",
-      "What are statewide contracts, and how do they work?",
+      "How do I get started with the procurement process?",
+      "What is considered a large procurement, and what rules apply?",
+      "What is the difference between a Request for Proposal (RFP) and a Request for Quote (RFQ)?",
+      "What are Statewide Contracts, and how do they work?",
     ],
   },
   {
     topic: "Contracts and Vendors",
     items: [
-      "What contracts are available for [some product or service]?",
-      "Where can I find a list of all vendors on this contract?",
-      "Where is the price list for a certain contract?",
-      "Can my agency use this contract?",
-      "How can I check if this company is a small business?",
+      "Is the good or service I need available on a Statewide Contract?",
+      "What Statewide Contracts are available for [product or service]?",
+      "Which vendors are on the [contract name] contract?",
+      "Where can I find the price list for the [contract name] contract?",
+      "Can my agency buy from the [contract name] contract?",
+      "Is [company name] a certified small business?",
     ],
   },
   {
     topic: "Training and Resources",
     items: [
-      "Where can I download the best value procurement handbook?",
-      "Where can I locate job aids for executive agency buyers?",
-      "What training or resources are available for new buyers?",
+      "Where can I download the Best Value Procurement Handbook?",
+      "Where can I find job aids for executive agency buyers?",
+      "What training and resources are available for new buyers?",
     ],
   },
 ];
@@ -115,8 +116,13 @@ function TipsTab() {
       </Paper>
 
       <Paper sx={{ p: 3 }}>
-        <Typography variant="h4" component="h2" sx={{ mb: 2 }}>
+        <Typography variant="h4" component="h2" sx={{ mb: 1 }}>
           Sample Questions
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          These are examples to get you started. Replace anything in [brackets] with
+          your own details &mdash; like the product, contract, or company you&apos;re
+          asking about.
         </Typography>
         <Divider />
         <List disablePadding>

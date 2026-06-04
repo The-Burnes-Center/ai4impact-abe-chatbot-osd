@@ -45,7 +45,6 @@ export const CHATBOT_NAME = "ABE - Assistive Buyer Engine";
 export const WELCOME_PAGE = "What can I help you with?";
 
 export const SUGGESTED_PROMPTS = [
-  "Is this good or service available on a Statewide Contract?",
   "Where do I find a list of Statewide Contracts?",
   "How do I know if my procurement need is within the scope of a Statewide Contract?",
   "How do I know if my procurement qualifies for an exception?",
