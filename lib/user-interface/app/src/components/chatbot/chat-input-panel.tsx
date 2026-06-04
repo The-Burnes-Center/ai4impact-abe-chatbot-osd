@@ -12,14 +12,17 @@ import {
   Dispatch,
   SetStateAction,
   forwardRef,
+  useCallback,
   useContext,
   useEffect,
   useRef,
   useState,
 } from "react";
-import SpeechRecognition, {
-  useSpeechRecognition,
-} from "react-speech-recognition";
+import {
+  useTranscribeDictation,
+  transcribeDictationSupported,
+} from "../../hooks/useTranscribeDictation";
+import { AppContext } from "../../common/app-context";
 import { getCurrentUser, fetchAuthSession } from "aws-amplify/auth";
 import TextareaAutosize from "react-textarea-autosize";
 import styles from "../../styles/chat.module.scss";
@@ -51,12 +54,7 @@ export interface ChatInputPanelProps {
 const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
   function ChatInputPanel(props, ref) {
   const { setNeedsRefresh } = useContext(SessionRefreshContext);
-  const {
-    transcript,
-    listening,
-    resetTranscript,
-    browserSupportsSpeechRecognition,
-  } = useSpeechRecognition();
+  const appConfig = useContext(AppContext);
   const [state, setState] = useState<ChatInputState>({
     value: "",
   });
@@ -66,69 +64,46 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
   // Text already in the box when dictation started, so live speech is appended
   // to it rather than overwriting it.
   const dictationBaseRef = useRef("");
-  // Guards against spamming the same dictation error while continuous mode
-  // retries; reset each time the user starts a new dictation.
-  const dictationErrorRef = useRef(false);
   const { send } = useWebSocketChat();
+
+  // Live dictation via Amazon Transcribe streaming. The backend mints a
+  // short-lived presigned WebSocket URL (no AWS creds in the browser); audio
+  // streams browser→Transcribe directly. Works on the OSD network, unlike the
+  // old browser Web Speech API which routed audio through Google.
+  const dictationSupported = transcribeDictationSupported();
+  const getPresignedUrl = useCallback(async () => {
+    const auth = await Utils.authenticate();
+    const base = (appConfig?.httpEndpoint ?? "").replace(/\/$/, "");
+    const res = await fetch(`${base}/transcribe-stream-url`, {
+      headers: { Authorization: auth },
+    });
+    if (!res.ok) throw new Error("Failed to get dictation URL");
+    return res.json();
+  }, [appConfig]);
+  const {
+    listening,
+    toggle: toggleDictation,
+    stop: stopDictation,
+  } = useTranscribeDictation({
+    getPresignedUrl,
+    onTranscript: (text) => {
+      const base = dictationBaseRef.current;
+      setState((s) => ({ ...s, value: base ? `${base} ${text}` : text }));
+    },
+    onError: (message) => addNotification("error", message),
+  });
 
   useEffect(() => {
     messageHistoryRef.current = props.messageHistory;
   }, [props.messageHistory]);
 
-  // Mirror live speech into the textarea while dictating, appended to whatever
-  // the user had already typed before they pressed the mic.
-  useEffect(() => {
-    if (!listening) return;
-    const base = dictationBaseRef.current;
-    setState((s) => ({
-      ...s,
-      value: base ? `${base} ${transcript}` : transcript,
-    }));
-  }, [transcript, listening]);
-
-  // Surface Web Speech API errors. Without this the mic just flips off
-  // silently — e.g. on restricted networks Chrome can't reach Google's speech
-  // service and fails instantly with "network".
-  useEffect(() => {
-    const recognition = SpeechRecognition.getRecognition?.();
-    if (!recognition) return;
-    const target = recognition as unknown as EventTarget;
-    const handleError = (event: Event) => {
-      const code = (event as unknown as { error?: string }).error;
-      if (!code || code === "no-speech" || code === "aborted") return;
-      // Fatal error. Stop the recognizer so continuous mode doesn't restart
-      // straight back into the same failure, and notify at most once per attempt.
-      SpeechRecognition.abortListening();
-      if (dictationErrorRef.current) return;
-      dictationErrorRef.current = true;
-      const messages: Record<string, string> = {
-        network:
-          "Dictation can't reach the speech service — this network may be blocking it.",
-        "not-allowed":
-          "Microphone access is blocked. Enable it for this site in your browser settings.",
-        "service-not-allowed":
-          "Microphone access is blocked. Enable it for this site in your browser settings.",
-        "audio-capture": "No microphone was found.",
-      };
-      addNotification("error", messages[code] ?? `Dictation error: ${code}`);
-    };
-    target.addEventListener("error", handleError);
-    return () => target.removeEventListener("error", handleError);
-  }, [addNotification]);
-
-  // Toggle dictation. Continuous mode keeps the recognizer listening across
-  // natural pauses instead of stopping after the first phrase.
+  // Capture whatever's already typed before starting so dictation appends to
+  // it rather than replacing it; toggling again stops the stream.
   const handleToggleDictation = () => {
-    if (listening) {
-      SpeechRecognition.stopListening();
-      return;
+    if (!listening) {
+      dictationBaseRef.current = state.value.trim();
     }
-    dictationBaseRef.current = state.value.trim();
-    dictationErrorRef.current = false;
-    resetTranscript();
-    Promise.resolve(
-      SpeechRecognition.startListening({ continuous: true, language: "en-US" })
-    ).catch(() => addNotification("error", "Could not start dictation."));
+    toggleDictation();
   };
 
   const handleSendMessage = async (overrideMessage?: string) => {
@@ -159,9 +134,8 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
     if (!overrideMessage) {
       setState({ value: "" });
     }
-    // Stop/clear any in-progress dictation so it doesn't bleed into the next message.
-    if (listening) SpeechRecognition.stopListening();
-    resetTranscript();
+    // Stop any in-progress dictation so it doesn't bleed into the next message.
+    if (listening) stopDictation();
     dictationBaseRef.current = "";
 
     props.setRunning(true);
@@ -301,7 +275,7 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
             aria-multiline="true"
           />
           <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 1 }}>
-            {browserSupportsSpeechRecognition && (
+            {dictationSupported && (
               <Tooltip title={listening ? "Stop dictation" : "Start dictation"}>
                 <IconButton
                   size="small"

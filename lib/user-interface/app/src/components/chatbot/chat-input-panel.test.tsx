@@ -9,18 +9,14 @@ import { ChatBotMessageType } from "./types";
 // Mocks
 // ---------------------------------------------------------------------------
 
-vi.mock("react-speech-recognition", () => ({
-  default: {
-    startListening: vi.fn(() => Promise.resolve()),
-    stopListening: vi.fn(),
-    getRecognition: vi.fn(() => null),
-  },
-  useSpeechRecognition: () => ({
-    transcript: "",
+vi.mock("../../hooks/useTranscribeDictation", () => ({
+  useTranscribeDictation: () => ({
     listening: false,
-    resetTranscript: vi.fn(),
-    browserSupportsSpeechRecognition: false,
+    start: vi.fn(),
+    stop: vi.fn(),
+    toggle: vi.fn(),
   }),
+  transcribeDictationSupported: () => false,
 }));
 
 vi.mock("../../hooks/useWebSocketChat", () => ({

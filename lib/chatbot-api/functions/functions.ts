@@ -119,6 +119,7 @@ export class LambdaFunctionStack extends Construct {
   public readonly testLibraryFunction: lambda.Function;
   public readonly feedbackToTestLibraryProcessFunction: lambda.Function;
   public readonly sourcePresignFunction: lambda.Function;
+  public readonly transcribePresignFunction: lambda.Function;
   public readonly syncOrchestratorFunction: lambda.Function;
   public readonly syncScheduleFunction: lambda.Function;
 
@@ -955,6 +956,29 @@ sourcePresignFunction.addToRolePolicy(new iam.PolicyStatement({
   resources: [props.knowledgeBucket.bucketArn + '/*'],
 }));
 this.sourcePresignFunction = sourcePresignFunction;
+
+// Mints short-lived presigned Amazon Transcribe streaming WebSocket URLs for
+// the chat input's dictation mic (the browser Web Speech API is blocked on the
+// OSD network, so audio streams to Transcribe instead). 10s timeout — it only
+// signs a URL. transcribe:StartStreamTranscription has no resource-level ARNs,
+// so the resource must be "*" (covered by the stack's Resource::* nag suppression).
+const transcribePresignFunction = new lambda.Function(scope, 'TranscribePresignFunction', {
+  ...LAMBDA_DEFAULTS,
+  runtime: lambda.Runtime.NODEJS_20_X,
+  code: lambda.Code.fromAsset(path.join(__dirname, 'transcribe-presign')),
+  handler: 'index.handler',
+  environment: {
+    "LANGUAGE_CODE": "en-US",
+    "SAMPLE_RATE": "16000",
+  },
+  timeout: cdk.Duration.seconds(10),
+});
+transcribePresignFunction.addToRolePolicy(new iam.PolicyStatement({
+  effect: iam.Effect.ALLOW,
+  actions: ['transcribe:StartStreamTranscription'],
+  resources: ['*'],
+}));
+this.transcribePresignFunction = transcribePresignFunction;
 
 this.stepFunctionsStack = new StepFunctionsStack(scope, 'StepFunctionsStack', {
   knowledgeBase: props.knowledgeBase,
