@@ -204,7 +204,11 @@ export function useTranscribeDictation({
         const messageType = wrapper.headers[":message-type"]?.value as string | undefined;
         const body = JSON.parse(toUtf8(wrapper.body as Uint8Array));
         if (messageType === "exception") {
-          onError?.(body?.Message || "Dictation service error.");
+          // Never surface the raw Transcribe exception text to users — it can
+          // contain role ARNs, the account ID and internal IAM action names.
+          // Log the detail for debugging; show a generic message.
+          console.error("Transcribe stream exception:", body?.Message || body);
+          onError?.("Dictation stopped unexpectedly. Please try again.");
           stop();
           return;
         }

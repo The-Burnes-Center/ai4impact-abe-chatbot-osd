@@ -960,8 +960,11 @@ this.sourcePresignFunction = sourcePresignFunction;
 // Mints short-lived presigned Amazon Transcribe streaming WebSocket URLs for
 // the chat input's dictation mic (the browser Web Speech API is blocked on the
 // OSD network, so audio streams to Transcribe instead). 10s timeout — it only
-// signs a URL. transcribe:StartStreamTranscription has no resource-level ARNs,
-// so the resource must be "*" (covered by the stack's Resource::* nag suppression).
+// signs a URL. The browser opens a *WebSocket* stream, so the role needs
+// transcribe:StartStreamTranscriptionWebSocket — the HTTP/2
+// StartStreamTranscription action does NOT authorize the WebSocket endpoint.
+// Neither action has resource-level ARNs, so the resource must be "*" (covered
+// by the stack's Resource::* nag suppression).
 const transcribePresignFunction = new lambda.Function(scope, 'TranscribePresignFunction', {
   ...LAMBDA_DEFAULTS,
   runtime: lambda.Runtime.NODEJS_20_X,
@@ -975,7 +978,10 @@ const transcribePresignFunction = new lambda.Function(scope, 'TranscribePresignF
 });
 transcribePresignFunction.addToRolePolicy(new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
-  actions: ['transcribe:StartStreamTranscription'],
+  actions: [
+    'transcribe:StartStreamTranscription',
+    'transcribe:StartStreamTranscriptionWebSocket',
+  ],
   resources: ['*'],
 }));
 this.transcribePresignFunction = transcribePresignFunction;
