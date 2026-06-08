@@ -17,12 +17,29 @@ const LOGIN_LOGO_PATH = path.join(
 );
 const LOGIN_LOGO_BASE64 = fs.readFileSync(LOGIN_LOGO_PATH).toString('base64');
 
+export interface AuthorizationStackProps {
+  /**
+   * Sign-in / sign-out callback URLs for the app client. Lazy-resolved at synth to
+   * the site URL (custom domain when bound, else the CloudFront domain) so they
+   * always match the redirect URLs the frontend writes into aws-exports.json.
+   */
+  readonly callbackUrls: string[];
+  /**
+   * Name of the (console-managed) OIDC identity provider to enable on the app
+   * client, e.g. "MassGov-Login". Supplied per-deployment via context/env — never
+   * hardcoded — so each environment enables its own SSO provider, or none (in which
+   * case only the built-in COGNITO provider is enabled). Must name a provider that
+   * already exists in the pool, or the deploy will fail.
+   */
+  readonly oidcProviderName?: string;
+}
+
 export class AuthorizationStack extends Construct {
   public readonly lambdaAuthorizer : lambda.Function;
   public readonly userPool : UserPool;
   public readonly userPoolClient : UserPoolClient;
 
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: AuthorizationStackProps) {
     super(scope, id);
 
     // Replace these values with your Azure client ID, client secret, and issuer URL
@@ -83,10 +100,55 @@ export class AuthorizationStack extends Construct {
     //   // ... other optional properties
     // });
 
+    // The app client's full OAuth/IdP configuration is declared here so it lives in
+    // source control and a deploy can no longer silently reset it (the L2 emits every
+    // field, so anything left unset reverts to a CDK/Cognito default on deploy).
+    //
+    // Security: the OAuth scopes intentionally EXCLUDE `aws.cognito.signin.user.admin`,
+    // and the auth flows exclude USER_PASSWORD / USER_SRP, so no token a user can obtain
+    // is able to call Cognito self-service APIs (UpdateUserAttributes) to self-assign
+    // `custom:role: ["Admin"]`. Admin roles come only from the SSO IdP mapping
+    // (roles -> custom:role). read/write attributes are deliberately left at the default
+    // (ALL) so that IdP mapping can still write `custom:role` at federated sign-in.
+    const supportedIdentityProviders = [UserPoolClientIdentityProvider.COGNITO];
+    if (props.oidcProviderName) {
+      supportedIdentityProviders.push(
+        UserPoolClientIdentityProvider.custom(props.oidcProviderName),
+      );
+    }
+
     const userPoolClient = new UserPoolClient(this, 'UserPoolClient', {
-      userPool,      
-      // supportedIdentityProviders: [UserPoolClientIdentityProvider.custom(azureProvider.providerName)],
+      userPool,
+      authFlows: { custom: true }, // -> ALLOW_CUSTOM_AUTH + ALLOW_REFRESH_TOKEN_AUTH (no password / SRP)
+      oAuth: {
+        flows: { authorizationCodeGrant: true },
+        scopes: [
+          cognito.OAuthScope.EMAIL,
+          cognito.OAuthScope.OPENID,
+          cognito.OAuthScope.PROFILE,
+          cognito.OAuthScope.PHONE,
+        ],
+        callbackUrls: props.callbackUrls,
+        logoutUrls: props.callbackUrls,
+      },
+      supportedIdentityProviders,
+      accessTokenValidity: cdk.Duration.minutes(60),
+      idTokenValidity: cdk.Duration.minutes(60),
+      refreshTokenValidity: cdk.Duration.days(30),
+      authSessionValidity: cdk.Duration.minutes(3),
+      enableTokenRevocation: true,
     });
+
+    // The L2 always serialises refresh-token validity in minutes (30 days -> 43200).
+    // Pin it back to days on the L1 child so the synthesized template matches the live
+    // client byte-for-byte and no needless diff is produced (43200 minutes == 30 days).
+    const cfnUserPoolClient = userPoolClient.node.defaultChild as cognito.CfnUserPoolClient;
+    cfnUserPoolClient.refreshTokenValidity = 30;
+    cfnUserPoolClient.tokenValidityUnits = {
+      accessToken: 'minutes',
+      idToken: 'minutes',
+      refreshToken: 'days',
+    };
 
     this.userPoolClient = userPoolClient;
 

@@ -19,7 +19,6 @@ export class GenAiMvpStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: GenAiMvpStackProps) {
     super(scope, id, props);
 
-    const authentication = new AuthorizationStack(this, "Authorization");
     const alarmEmail = this.node.tryGetContext('alarmEmail') as string | undefined;
 
     // Bind the custom domain only when BOTH the hostname and its cert ARN were provided for
@@ -27,10 +26,26 @@ export class GenAiMvpStack extends cdk.Stack {
     const customDomain = props?.customDomain && props?.certificateArn ? props.customDomain : undefined;
     const certificateArn = props?.certificateArn || undefined;
 
-    // CloudFront is created inside UserInterface (after ChatBotApi), so we use a Lazy token
-    // to defer CORS origin resolution until CDK synth — by then the distribution domain is set.
+    // OIDC SSO provider to enable on the Cognito app client. Supplied per-deployment via
+    // context/env (never hardcoded), so each environment enables its own console-managed
+    // provider — or none (COGNITO only), which is the safe default for fresh/branch stacks.
+    // For ABEStackNonProd this is "MassGov-Login", supplied by CI (vars.OIDC_PROVIDER_NAME).
+    const oidcProviderName =
+      (this.node.tryGetContext('oidcProviderName') as string | undefined) ?? process.env.OIDC_PROVIDER_NAME;
+
+    // CloudFront is created inside UserInterface (after ChatBotApi), so its domain isn't known
+    // when the auth client and ChatBotApi are built. Defer both the CORS origin and the app
+    // client's callback/logout URLs with Lazy tokens that resolve at synth, once the
+    // distribution exists. Both must equal the site URL the frontend uses for its redirects.
     const cfOriginRef = { value: '*' };
     const allowedOrigin = cdk.Lazy.string({ produce: () => cfOriginRef.value });
+    const callbackUrlsRef: { value: string[] } = { value: [] };
+    const callbackUrls = cdk.Lazy.list({ produce: () => callbackUrlsRef.value });
+
+    const authentication = new AuthorizationStack(this, "Authorization", {
+      callbackUrls,
+      oidcProviderName,
+    });
 
     const chatbotAPI = new ChatBotApi(this, "ChatbotAPI", { authentication, alarmEmail, allowedOrigin });
     const userInterface = new UserInterface(this, "UserInterface", {
@@ -41,12 +56,15 @@ export class GenAiMvpStack extends cdk.Stack {
       customDomain,
       certificateArn,
     });
-    // Populate after construction — the Lazy producer reads this during app.synth().
-    // When a custom domain is bound, the browser's Origin is that domain, so CORS
-    // (HTTP API + S3) must allow it instead of the CloudFront domain.
-    cfOriginRef.value = customDomain
+    // Populate after construction — the Lazy producers read these during app.synth().
+    // When a custom domain is bound, the browser's Origin (and the app's redirect URLs) are
+    // that domain; otherwise everything uses the CloudFront domain. The app client's callback
+    // URLs must match the frontend's redirect URLs, so both are derived from the same siteUrl.
+    const siteUrl = customDomain
       ? `https://${customDomain}`
       : `https://${userInterface.distribution.distributionDomainName}`;
+    cfOriginRef.value = siteUrl;        // CORS origin (HTTP API + S3)
+    callbackUrlsRef.value = [siteUrl];  // Cognito app client callback + logout URLs
 
     // Resource tags applied to every taggable resource in the stack.
     // AOSS resources are excluded: the deployed collection was created with a legacy name
