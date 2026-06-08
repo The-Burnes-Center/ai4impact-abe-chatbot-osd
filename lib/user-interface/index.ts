@@ -71,7 +71,11 @@ export class UserInterface extends Construct {
         userPoolWebClientId: props.userPoolClientId,
         oauth: {
           domain: props.cognitoDomain.concat(`.auth.${cdk.Aws.REGION}.amazoncognito.com`),
-          scope: ["aws.cognito.signin.user.admin","email", "openid", "profile"],
+          // Do NOT request `aws.cognito.signin.user.admin`. That scope lets a user's
+          // own token call Cognito self-service APIs (UpdateUserAttributes), which would
+          // allow self-assigning `custom:role: ["Admin"]`. Admin roles come only from the
+          // SSO IdP mapping (roles -> custom:role), so the app never needs self-service writes.
+          scope: ["email", "openid", "profile"],
           redirectSignIn: siteUrl,
           redirectSignOut: siteUrl,
           responseType: "code"
