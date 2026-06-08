@@ -32,7 +32,9 @@ import {
 import App from "../app";
 import { Amplify, type ResourcesConfig } from "aws-amplify";
 import { getCurrentUser, signInWithRedirect } from "aws-amplify/auth";
+import { Hub } from "aws-amplify/utils";
 import { AppConfig } from "../common/types";
+import { Utils } from "../common/utils";
 import { AppContext } from "../common/app-context";
 import { StorageHelper, ThemeMode } from "../common/helpers/storage-helper";
 import { ThemeProvider as MuiThemeProvider } from "@mui/material/styles";
@@ -134,9 +136,25 @@ export default function AppConfigured() {
     if (!authenticated && configured) {
       // Same as above: send the user to the Managed Login page so both
       // native Cognito and federated Mass SSO sign-in remain available.
-      signInWithRedirect();
+      Utils.redirectToLogin();
     }
   }, [authenticated, configured]);
+
+  /**
+   * Auto sign-out on session loss. When a token can no longer be refreshed
+   * (expired or revoked), Amplify emits `tokenRefresh_failure`. Rather than let
+   * the next API call fail with a cryptic "not authenticated" notification, send
+   * the user straight back to the managed login to re-authenticate.
+   */
+  useEffect(() => {
+    const stopListening = Hub.listen("auth", ({ payload }) => {
+      if (payload.event === "tokenRefresh_failure") {
+        setAuthenticated(false);
+        Utils.redirectToLogin();
+      }
+    });
+    return stopListening;
+  }, []);
 
   /**
    * Theme detection via MutationObserver.

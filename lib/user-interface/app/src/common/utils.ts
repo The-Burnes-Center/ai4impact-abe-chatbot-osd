@@ -1,4 +1,11 @@
 import { fetchAuthSession, signInWithRedirect } from "aws-amplify/auth";
+
+// A lost/expired session should send the user back to the managed login exactly
+// once per page load. Without this guard, a burst of failing calls (or the Hub
+// `tokenRefresh_failure` event firing alongside an in-flight request) would each
+// kick off their own redirect.
+let redirectingToLogin = false;
+
 export class Utils {
   // static isDevelopment() {
   //   return import.meta.env.MODE === "development";
@@ -169,6 +176,23 @@ export class Utils {
     return result !== null;
   }
 
+  /**
+   * Send the user to the Cognito managed login to (re-)authenticate. This is the
+   * single "the session is gone" exit for the whole app: an expired or revoked
+   * session quietly bounces to sign-in instead of stranding the user with a
+   * cryptic "not authenticated" notification they can't act on. Safe to call from
+   * anywhere — only the first call per page load actually redirects.
+   */
+  static redirectToLogin(): void {
+    if (redirectingToLogin) return;
+    redirectingToLogin = true;
+    try {
+      signInWithRedirect();
+    } catch {
+      // If the redirect itself fails there is nothing more we can do here.
+    }
+  }
+
   static async authenticate(): Promise<string> {
     try {
       const session = await fetchAuthSession();
@@ -181,11 +205,7 @@ export class Utils {
       if (import.meta.env.DEV) {
         console.error("Error getting current user session:", error);
       }
-      try {
-        signInWithRedirect();
-      } catch (_) {
-        // ignore redirect errors
-      }
+      Utils.redirectToLogin();
       throw new Error('Authentication failed');
     }
   }

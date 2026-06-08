@@ -121,7 +121,9 @@ const ChatInputPanel = forwardRef<HTMLTextAreaElement, ChatInputPanelProps>(
       displayName = identity.displayName;
       agency = identity.agency;
     } catch {
-      addNotification("error", "Please sign in to continue.");
+      // Session is gone/expired — bounce the user to re-authenticate rather than
+      // stranding them with a notification they can't act on.
+      Utils.redirectToLogin();
       return;
     }
     if (!username) return;
