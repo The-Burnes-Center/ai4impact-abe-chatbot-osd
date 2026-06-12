@@ -165,6 +165,11 @@ export class TableStack extends Construct {
       billingMode: BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
+      // Real trace rows never set expiresAt and are kept forever. Only the
+      // short-lived WSDISCONNECT# markers the chat handler writes on clean
+      // socket closes carry it, so TTL cleans up just those. (Markers also
+      // lack SessionId/CreatedAt, keeping them out of the GSI below.)
+      timeToLiveAttribute: 'expiresAt',
     });
 
     responseTraceTable.addGlobalSecondaryIndex({

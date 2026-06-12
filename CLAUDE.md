@@ -259,6 +259,7 @@ RAG_ENABLED=true
 - **Tool result size:** Capped at 60K chars via binary search truncation; rows removed with "results truncated" note.
 - **Excel query scans:** Full partition scan with in-code filtering — works for current data volumes but not indexed for scale.
 - **WebSocket timeout:** Client-side 90s timeout hardcoded in `useWebSocketChat` hook; no server-side configuration.
+- **Stop vs. network drop:** `$disconnect` writes a TTL'd `WSDISCONNECT#<connId>` marker to `ResponseTraceTable`. On a mid-stream `GoneException` the chat handler polls for it: marker found ⇒ deliberate stop (abort, discard, no save — a stopped answer must never reappear on reload); absent ⇒ silent network drop (finish generating with sends suppressed and save the exchange, so a reload shows the full answer).
 - **CORS origin:** Uses Lazy CDK token pattern — CloudFront domain resolved at synth time, not construct time.
 
 ## Monitoring
