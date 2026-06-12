@@ -42,6 +42,13 @@ KEY = f"indexes/{INDEX_ID}/latest.xlsx"
 _PARSER_DIR = os.path.dirname(__file__)
 _LF_PATH = os.path.join(_PARSER_DIR, "lambda_function.py")
 
+# models.py imports abe_utils (shared Lambda layer); add the layer to sys.path
+_LAYER_DIR = os.path.abspath(
+    os.path.join(_PARSER_DIR, "..", "..", "layers", "python-common", "python")
+)
+if _LAYER_DIR not in sys.path:
+    sys.path.insert(0, _LAYER_DIR)
+
 
 # ---------------------------------------------------------------------------
 # Helper: build an in-memory .xlsx as bytes
@@ -111,10 +118,29 @@ def _make_registry_table(dynamodb):
     )
 
 
+def _load_models():
+    """Load the parser's models.py under a unique module name (pure functions)."""
+    spec = importlib.util.spec_from_file_location(
+        "excel_parser_models", os.path.join(_PARSER_DIR, "models.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def _load_lf():
     """Load lambda_function.py by absolute path, ensuring local modules are importable."""
     if _PARSER_DIR not in sys.path:
         sys.path.insert(0, _PARSER_DIR)
+    # Force-load the sibling models.py: the query lambda has its own models
+    # module with the same name, and whichever test suite ran first would
+    # otherwise win the sys.modules["models"] slot.
+    spec_m = importlib.util.spec_from_file_location(
+        "models", os.path.join(_PARSER_DIR, "models.py")
+    )
+    models_mod = importlib.util.module_from_spec(spec_m)
+    sys.modules["models"] = models_mod
+    spec_m.loader.exec_module(models_mod)
     spec = importlib.util.spec_from_file_location("excel_parser_lf", _LF_PATH)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -252,6 +278,82 @@ class TestSerializeValue:
     def test_zero(self, lf):
         mod, *_ = lf
         assert mod._serialize_value(0) == "0"
+
+
+# ---------------------------------------------------------------------------
+# models._to_str — whitespace normalization
+# ---------------------------------------------------------------------------
+
+class TestToStr:
+    def test_collapses_internal_whitespace_runs(self):
+        models = _load_models()
+        assert models._to_str("A  B\n C") == "A B C"
+
+    def test_strips_leading_and_trailing_whitespace(self):
+        models = _load_models()
+        assert models._to_str("  hello  ") == "hello"
+
+    def test_none_becomes_empty_string(self):
+        models = _load_models()
+        assert models._to_str(None) == ""
+
+    def test_date_branch_unchanged(self):
+        models = _load_models()
+        assert models._to_str(date(2024, 6, 15)) == "2024-06-15"
+
+    def test_datetime_branch_unchanged(self):
+        models = _load_models()
+        assert models._to_str(datetime(2024, 6, 15, 12, 30)) == "2024-06-15T12:30:00"
+
+
+# ---------------------------------------------------------------------------
+# models.infer_date_columns
+# ---------------------------------------------------------------------------
+
+class TestInferDateColumns:
+    @staticmethod
+    def _rows(col: str, values: list[str]) -> list[dict]:
+        return [{col: v} for v in values]
+
+    def test_all_dates_column_qualifies(self):
+        models = _load_models()
+        rows = self._rows("End_Date", ["2024-01-01", "2024-02-01", "2024-03-01"])
+        assert models.infer_date_columns(["End_Date"], rows) == ["End_Date"]
+
+    def test_mixed_column_at_half_does_not_qualify(self):
+        """50% parseable is below the 80% threshold."""
+        models = _load_models()
+        rows = self._rows("Maybe", ["2024-01-01", "apple", "2024-02-01", "banana"])
+        assert models.infer_date_columns(["Maybe"], rows) == []
+
+    def test_numeric_column_does_not_qualify(self):
+        models = _load_models()
+        rows = self._rows("Amount", ["100", "250", "37.5", "9000"])
+        assert models.infer_date_columns(["Amount"], rows) == []
+
+    def test_fewer_than_three_non_empty_values_does_not_qualify(self):
+        models = _load_models()
+        rows = self._rows("Sparse", ["2024-01-01", "2024-02-01", "", ""])
+        assert models.infer_date_columns(["Sparse"], rows) == []
+
+    def test_empty_rows_returns_empty_list(self):
+        models = _load_models()
+        assert models.infer_date_columns(["A", "B"], []) == []
+
+    def test_result_preserves_col_names_order(self):
+        models = _load_models()
+        rows = [
+            {"B_Date": "2024-01-01", "Vendor": "Acme", "A_Date": "2023-01-01"},
+            {"B_Date": "2024-02-01", "Vendor": "Beta", "A_Date": "2023-02-01"},
+            {"B_Date": "2024-03-01", "Vendor": "Gamma", "A_Date": "2023-03-01"},
+        ]
+        result = models.infer_date_columns(["A_Date", "Vendor", "B_Date"], rows)
+        assert result == ["A_Date", "B_Date"]
+
+    def test_sample_limit_caps_scanning(self):
+        models = _load_models()
+        rows = self._rows("D", ["2024-01-01"] * 5 + ["junk"] * 50)
+        assert models.infer_date_columns(["D"], rows, sample_limit=5) == ["D"]
 
 
 # ---------------------------------------------------------------------------
@@ -740,6 +842,19 @@ class TestValueSerialisation:
         data_rows = [item for item in resp["Items"] if item["sk"] != "META"]
         assert data_rows[0]["Rate"] == "3.14"
 
+    def test_internal_whitespace_collapsed_in_stored_cells(self, lf):
+        """Stray newlines/double spaces in source cells are normalized at parse time."""
+        mod, dynamodb, s3, *_ = lf
+        xlsx = _make_xlsx(["Vendor", "Amount"], [["Acme  Corp\n LLC", "100"]])
+        _upload(s3, xlsx)
+        mod.lambda_handler(_make_s3_event(), {})
+        table = dynamodb.Table(TABLE)
+        resp = table.query(
+            KeyConditionExpression=boto3.dynamodb.conditions.Key("pk").eq(INDEX_ID)
+        )
+        data_rows = [item for item in resp["Items"] if item["sk"] != "META"]
+        assert data_rows[0]["Vendor"] == "Acme Corp LLC"
+
 
 # ---------------------------------------------------------------------------
 # Sample rows passed to write_to_registry
@@ -762,3 +877,68 @@ class TestSampleRows:
         mod.lambda_handler(_make_s3_event(), {})
         sample = mock_write_reg.call_args.kwargs["sample_rows"]
         assert len(sample) == 2
+
+
+# ---------------------------------------------------------------------------
+# date_columns — inference wired through META item and tool registry
+# ---------------------------------------------------------------------------
+
+class TestDateColumnsEndToEnd:
+    @staticmethod
+    def _dated_xlsx() -> bytes:
+        """Three rows with a clean date column — enough to satisfy inference."""
+        return _make_xlsx(
+            ["Vendor", "End Date"],
+            [["Acme", "2024-01-31"], ["Beta", "2024-06-30"], ["Gamma", "2025-12-31"]],
+        )
+
+    def test_meta_item_carries_date_columns(self, lf):
+        mod, dynamodb, s3, *_ = lf
+        _upload(s3, self._dated_xlsx())
+        mod.lambda_handler(_make_s3_event(), {})
+        table = dynamodb.Table(TABLE)
+        meta = table.get_item(Key={"pk": INDEX_ID, "sk": "META"})["Item"]
+        assert meta["date_columns"] == ["End_Date"]
+
+    def test_meta_date_columns_empty_when_index_has_no_dates(self, lf):
+        mod, dynamodb, s3, *_ = lf
+        _upload(s3, _simple_xlsx(3))
+        mod.lambda_handler(_make_s3_event(), {})
+        table = dynamodb.Table(TABLE)
+        meta = table.get_item(Key={"pk": INDEX_ID, "sk": "META"})["Item"]
+        assert meta["date_columns"] == []
+
+    def test_write_to_registry_receives_date_columns(self, lf):
+        mod, _, s3, mock_write_reg, _ = lf
+        _upload(s3, self._dated_xlsx())
+        mod.lambda_handler(_make_s3_event(), {})
+        assert mock_write_reg.call_args.kwargs["date_columns"] == ["End_Date"]
+
+    def test_registry_item_carries_date_columns(self, lf):
+        """Run the real write_to_registry against the moto registry table."""
+        mod, dynamodb, s3, *_ = lf
+        import tool_registry
+        # Rebind lazily-cached clients inside the current moto context
+        tool_registry._ddb = None
+        tool_registry._bedrock = None
+        _upload(s3, self._dated_xlsx())
+        with patch.object(mod, "write_to_registry", tool_registry.write_to_registry):
+            mod.lambda_handler(_make_s3_event(), {})
+        reg = dynamodb.Table(REGISTRY_TABLE)
+        item = reg.get_item(Key={"pk": "TOOLS", "sk": INDEX_ID})["Item"]
+        assert item["date_columns"] == ["End_Date"]
+        assert item["columns"] == ["Vendor", "End_Date"]
+
+    def test_registry_item_carries_empty_date_columns(self, lf):
+        """An index with no date columns stores an explicit empty list (not absent)."""
+        mod, dynamodb, s3, *_ = lf
+        import tool_registry
+        tool_registry._ddb = None
+        tool_registry._bedrock = None
+        _upload(s3, _simple_xlsx(3))
+        with patch.object(mod, "write_to_registry", tool_registry.write_to_registry):
+            mod.lambda_handler(_make_s3_event(), {})
+        reg = dynamodb.Table(REGISTRY_TABLE)
+        item = reg.get_item(Key={"pk": "TOOLS", "sk": INDEX_ID})["Item"]
+        assert "date_columns" in item
+        assert item["date_columns"] == []

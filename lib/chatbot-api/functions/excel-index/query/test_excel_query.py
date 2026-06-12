@@ -2,6 +2,7 @@
 Unit tests for the Excel Index Query Lambda (_do_query, _row_matches, _norm, etc.).
 Uses moto to mock DynamoDB — no real AWS calls made.
 """
+import datetime
 import importlib.util
 import json
 import os
@@ -11,6 +12,17 @@ from unittest.mock import patch
 import boto3
 import pytest
 from moto import mock_aws
+
+# ---------------------------------------------------------------------------
+# Path setup — add the Python layer (abe_utils) to sys.path
+# ---------------------------------------------------------------------------
+
+_QUERY_DIR = os.path.dirname(__file__)
+_LAYER_DIR = os.path.abspath(
+    os.path.join(_QUERY_DIR, "..", "..", "layers", "python-common", "python")
+)
+if _LAYER_DIR not in sys.path:
+    sys.path.insert(0, _LAYER_DIR)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -50,7 +62,6 @@ def _seed(table, rows: list[dict]):
         table.put_item(Item={"pk": INDEX, "sk": f"ROW#{i:04d}", **row})
 
 
-_QUERY_DIR = os.path.dirname(__file__)
 _LF_PATH = os.path.join(_QUERY_DIR, "lambda_function.py")
 
 
@@ -59,6 +70,15 @@ def _load_lf():
     # models.py lives in the same dir; ensure it's importable
     if _QUERY_DIR not in sys.path:
         sys.path.insert(0, _QUERY_DIR)
+    # Force-load the sibling models.py: the parser lambda has its own models
+    # module with the same name, and whichever test suite ran first would
+    # otherwise win the sys.modules["models"] slot.
+    spec_m = importlib.util.spec_from_file_location(
+        "models", os.path.join(_QUERY_DIR, "models.py")
+    )
+    models_mod = importlib.util.module_from_spec(spec_m)
+    sys.modules["models"] = models_mod
+    spec_m.loader.exec_module(models_mod)
     spec = importlib.util.spec_from_file_location("excel_query_lf", _LF_PATH)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -188,6 +208,17 @@ class TestFilters:
         _seed(table, [{"Vendor": "Acme"}])
         result = mod._do_query(pk=INDEX, filters={"NonExistentCol": "value"})
         assert result["total_matches"] == 0
+
+
+# ---------------------------------------------------------------------------
+# _parse_date (now a thin alias for abe_utils.dates.parse_date_like)
+# ---------------------------------------------------------------------------
+
+class TestParseDate:
+    def test_parses_us_slash_format(self, lf):
+        """Sanity check that the layer-backed alias still parses %m/%d/%Y."""
+        mod, _ = lf
+        assert mod._parse_date("06/15/2024") == datetime.date(2024, 6, 15)
 
 
 # ---------------------------------------------------------------------------

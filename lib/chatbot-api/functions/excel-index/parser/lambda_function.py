@@ -36,7 +36,7 @@ from datetime import datetime, timezone
 import boto3
 from openpyxl import load_workbook
 
-from models import excel_column_to_field, row_dict_from_excel_row
+from models import excel_column_to_field, infer_date_columns, row_dict_from_excel_row
 from tool_registry import write_to_registry, delete_from_registry
 
 S3 = boto3.client("s3")
@@ -165,14 +165,16 @@ def lambda_handler(event, context):
             wb.close()
             _clear_index(table, index_id)
 
+            date_cols = infer_date_columns(col_names, rows_out)
+
             now = datetime.now(timezone.utc).isoformat()
             _put_meta(table, index_id, len(rows_out), now, error=None, status="COMPLETE")
 
             table.update_item(
                 Key={"pk": index_id, "sk": SK_META},
-                UpdateExpression="SET #col = :c",
-                ExpressionAttributeNames={"#col": "columns"},
-                ExpressionAttributeValues={":c": col_names},
+                UpdateExpression="SET #col = :c, #dc = :d",
+                ExpressionAttributeNames={"#col": "columns", "#dc": "date_columns"},
+                ExpressionAttributeValues={":c": col_names, ":d": date_cols},
             )
 
             for offset in range(0, len(rows_out), BATCH_SIZE):
@@ -184,7 +186,7 @@ def lambda_handler(event, context):
                             item[k] = _serialize_value(v)
                         writer.put_item(Item=item)
 
-            write_to_registry(index_id, display_name, col_names, len(rows_out), sample_rows=rows_out[:5])
+            write_to_registry(index_id, display_name, col_names, len(rows_out), sample_rows=rows_out[:5], date_columns=date_cols)
             print(f"Parsed index '{index_id}': {len(rows_out)} rows, {len(col_names)} columns.")
             return {"statusCode": 200, "body": json.dumps({"status": "ok", "index_id": index_id, "row_count": len(rows_out)})}
 

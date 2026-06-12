@@ -36,6 +36,7 @@ import boto3
 from boto3.dynamodb.conditions import Attr, Key
 from pydantic import ValidationError
 
+from abe_utils.dates import parse_date_like
 from models import QueryIndexRequest, StatusResponse, PreviewResponse
 
 DDB = boto3.resource("dynamodb")
@@ -181,23 +182,9 @@ def _contains(haystack: str, needle: str) -> bool:
     return _norm(needle) in _norm(haystack)
 
 
-_DATE_FORMATS = [
-    "%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y", "%B %d, %Y", "%b %d, %Y",
-    "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ",
-]
-
-def _parse_date(val: str) -> "datetime.date | None":
-    """Try common date formats; return date or None."""
-    import datetime
-    s = str(val).strip()
-    if not s:
-        return None
-    for fmt in _DATE_FORMATS:
-        try:
-            return datetime.datetime.strptime(s, fmt).date()
-        except ValueError:
-            continue
-    return None
+# Date parsing lives in the shared layer (abe_utils.dates) so the parser's
+# date-column inference and this engine's filtering use the same formats.
+_parse_date = parse_date_like
 
 
 def _row_matches(

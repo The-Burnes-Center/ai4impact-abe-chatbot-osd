@@ -69,6 +69,7 @@ def write_to_registry(
     columns: list[str],
     row_count: int,
     sample_rows: list[dict] | None = None,
+    date_columns: list[str] | None = None,
 ) -> None:
     """Persist index metadata to the registry table. Preserves existing description or generates one."""
     if not REGISTRY_TABLE:
@@ -100,6 +101,10 @@ def write_to_registry(
     }
     if description:
         item["description"] = description
+    if isinstance(date_columns, list):
+        # May legitimately be empty — an empty list tells the chat Lambda the
+        # index has no date columns (vs. absent = legacy item, unknown).
+        item["date_columns"] = date_columns
 
     table.put_item(Item=item)
     print(f"Wrote index metadata for '{index_name}' to registry ({len(columns)} columns, {row_count} rows).")
