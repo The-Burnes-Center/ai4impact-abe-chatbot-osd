@@ -131,15 +131,15 @@ class TestSummarizeAndCategorize:
         resp = _bedrock_response(
             summary="Some doc.",
             tags={"category": "memos", "complexity": "low",
-                  "author": "OSD", "creation_date": "not-a-date"},
+                  "author": "OSD", "creation_date": "June 2023"},
         )
         with patch.object(lf, "bedrock_invoke") as mock_bedrock:
             mock_bedrock.invoke_model.return_value = resp
             result = lf.summarize_and_categorize("doc.pdf", {"content": ["text"]})
-        # Invalid date → reset to blank string; then falls through to today's date fill-in
-        assert result["tags"]["creation_date"] != "not-a-date"
+        # A date that isn't YYYY-MM-DD is reset to blank, never today's date
+        assert result["tags"]["creation_date"] == ""
 
-    def test_missing_creation_date_filled_with_today(self):
+    def test_missing_creation_date_stays_blank(self):
         lf = _fresh_module()
         resp = _bedrock_response(
             summary="Some doc.",
@@ -149,9 +149,25 @@ class TestSummarizeAndCategorize:
         with patch.object(lf, "bedrock_invoke") as mock_bedrock:
             mock_bedrock.invoke_model.return_value = resp
             result = lf.summarize_and_categorize("doc.pdf", {"content": ["text"]})
-        # Should be filled with today's date in YYYY-MM-DD format
-        import re
-        assert re.match(r"\d{4}-\d{2}-\d{2}", result["tags"]["creation_date"])
+        # An unverifiable date stays blank -- it must never be filled with
+        # today's date, which made the metadata-generation date look like
+        # the document's age.
+        assert result["tags"]["creation_date"] == ""
+
+    def test_unknown_creation_date_normalized_to_blank(self):
+        """The prompt tells the model to answer "unknown" when no date can be
+        verified; that sentinel is normalized to blank (case-insensitively),
+        not replaced with today's date."""
+        lf = _fresh_module()
+        resp = _bedrock_response(
+            summary="Some doc.",
+            tags={"category": "memos", "complexity": "low",
+                  "author": "OSD", "creation_date": "Unknown"},
+        )
+        with patch.object(lf, "bedrock_invoke") as mock_bedrock:
+            mock_bedrock.invoke_model.return_value = resp
+            result = lf.summarize_and_categorize("doc.pdf", {"content": ["text"]})
+        assert result["tags"]["creation_date"] == ""
 
     def test_invalid_json_response_returns_error_dict(self):
         lf = _fresh_module()
@@ -288,3 +304,58 @@ class TestLambdaHandlerNoChunks:
         assert response["statusCode"] == 404
         mock_invoke.invoke_model.assert_not_called()
         mock_s3.copy_object.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# lambda_handler — generation date is recorded separately from creation date
+# ---------------------------------------------------------------------------
+
+class TestLambdaHandlerMetadataGeneratedAt:
+    def test_copy_object_metadata_records_generation_date(self):
+        """The written head metadata carries tag_metadata_generated_at (today,
+        YYYY-MM-DD) while an unverifiable tag_creation_date stays blank."""
+        lf = _fresh_module()
+        event = {
+            "Records": [
+                {
+                    "eventName": "ObjectCreated:Put",
+                    "s3": {
+                        "bucket": {"name": "test-bucket"},
+                        "object": {"key": "FAC115.pdf"},
+                    },
+                }
+            ]
+        }
+        resp = _bedrock_response(
+            summary="A user guide for contract FAC115.",
+            tags={"category": "user guide", "complexity": "low",
+                  "author": "OSD", "creation_date": "unknown"},
+        )
+        with patch.object(lf, "bedrock") as mock_bedrock, \
+             patch.object(lf, "bedrock_invoke") as mock_invoke, \
+             patch.object(lf, "s3") as mock_s3:
+            mock_bedrock.retrieve.return_value = {
+                "retrievalResults": [
+                    {
+                        "location": {"s3Location": {"uri": "s3://test-bucket/FAC115.pdf"}},
+                        "content": {"text": "document text"},
+                    }
+                ]
+            }
+            mock_invoke.invoke_model.return_value = resp
+            mock_s3.head_object.return_value = {"Metadata": {}}
+            paginator = MagicMock()
+            paginator.paginate.return_value = [
+                {"Contents": [{"Key": "FAC115.pdf"}]}
+            ]
+            mock_s3.get_paginator.return_value = paginator
+            response = lf.lambda_handler(event, None)
+
+        assert response["statusCode"] == 200
+        written = mock_s3.copy_object.call_args.kwargs["Metadata"]
+        import re
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", written["tag_metadata_generated_at"])
+        from datetime import datetime
+        datetime.strptime(written["tag_metadata_generated_at"], "%Y-%m-%d")
+        # The unverifiable creation date is blank, not today's date
+        assert written["tag_creation_date"] == ""

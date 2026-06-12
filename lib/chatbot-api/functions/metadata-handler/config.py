@@ -21,7 +21,7 @@ TAG_DESCRIPTIONS = {
     'category': 'The type of document. Avoid adding inferred text like "(inferred from content)".',
     'complexity': 'Indicates how complex the document is to understand for a new buyer.',
     'author': 'The name of the person or organization who wrote or published the document. Use "unknown" if the information cannot be verified with high confidence. Avoid adding inferred text like "(inferred from content)".',
-    'creation_date': 'The exact date the document was created, formatted as "YYYY-MM-DD". Use "" if the date cannot be verified with high confidence. Avoid mentioning it is an inferred detail.',
+    'creation_date': 'The document\'s own date -- the publication, release, or amendment date stated in the document content, formatted as "YYYY-MM-DD". This is NOT today\'s date and NOT the date of this analysis. Use "unknown" if the document does not state a date that can be verified with high confidence. Avoid mentioning it is an inferred detail.',
 }
 
 # Function to compile all tags (predefined and custom) into a dictionary for easy access.
@@ -45,7 +45,7 @@ def get_full_prompt(key,content):
 
     prompt += f"""
 Guidelines for tags:
-- For 'creation_date', use the exact format 'YYYY-MM-DD'. If the date is missing or cannot be verified with high confidence, set it to "unknown".
+- For 'creation_date', use the document's own publication, release, or amendment date in the exact format 'YYYY-MM-DD'. Never use today's date or the date you are performing this analysis. If the document does not state a date, or it cannot be verified with high confidence, set it to "unknown".
 - For 'author', provide the exact name of the author or organization. If uncertain, set it to "unknown".
 - Do not add inferred text like "(inferred from content)".
 Ensure that your response is in JSON format with keys 'summary' and 'tags', where 'tags' is an object containing the selected tags.

@@ -200,13 +200,20 @@ def summarize_and_categorize(key,content):
                 "summary": "Error parsing nested JSON in 'text'",
                 "tags": {"category": "unknown"}
             }
-        creation_date = datetime.utcnow().strftime('%Y-%m-%d')
-
         # Validate the tags
         all_tags = get_all_tags()
         for tag, value in summary_and_tags['tags'].items():
 
             if tag == "creation_date":
+                # The prompt tells the model to answer "unknown" when the
+                # document doesn't state a verifiable date, so that sentinel
+                # (and a blank value) is an expected outcome, not an anomaly
+                # worth a warning. Normalize to blank. Never substitute
+                # today's date -- that made the metadata-generation date
+                # masquerade as the document's age.
+                if not value or not value.strip() or value.strip().lower() == "unknown":
+                    summary_and_tags['tags'][tag] = ""
+                    continue
                 try:
                     datetime.strptime(value, "%Y-%m-%d")
                 except ValueError:
@@ -223,9 +230,6 @@ def summarize_and_categorize(key,content):
                     summary_and_tags['tags'][tag] = 'unknown'
             else:
                 summary_and_tags['tags'][tag] = 'unknown'
-
-        if not summary_and_tags['tags'].get('creation_date') or not summary_and_tags['tags']['creation_date'].strip():
-            summary_and_tags['tags']['creation_date'] = creation_date
 
         return summary_and_tags
     except Exception as e:
@@ -387,7 +391,11 @@ def lambda_handler(event, context):
             # leave the file with empty metadata.
             new_metadata = {
                 'summary': to_ascii(summary_and_tags['summary']),
-                **{f"tag_{k}": to_ascii(v) for k, v in summary_and_tags['tags'].items()}
+                **{f"tag_{k}": to_ascii(v) for k, v in summary_and_tags['tags'].items()},
+                # When this summary was generated -- deliberately separate
+                # from tag_creation_date, which is the document's own date
+                # (blank when unverifiable, never filled with today's date).
+                'tag_metadata_generated_at': datetime.utcnow().strftime('%Y-%m-%d'),
             }
 
             # Merge new metadata with any existing metadata
