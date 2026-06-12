@@ -192,3 +192,64 @@ class TestSummarizeAndCategorize:
             mock_bedrock.invoke_model.return_value = resp
             result = lf.summarize_and_categorize("doc.pdf", {"content": ["text"]})
         assert result["tags"]["invented_tag"] == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# retrieve_kb_docs — no-chunks behavior
+# ---------------------------------------------------------------------------
+
+class TestRetrieveKbDocs:
+    def test_no_chunks_returns_falsy_content(self):
+        """No KB chunks (document not yet ingested) must yield falsy content,
+        not a sentinel string the model could be asked to summarize."""
+        lf = _fresh_module()
+        with patch.object(lf, "bedrock") as mock_bedrock:
+            mock_bedrock.retrieve.return_value = {"retrievalResults": []}
+            result = lf.retrieve_kb_docs("bucket", "ENE53.pdf", "kb-id")
+        assert result["content"] == []
+        assert not result["content"]
+        assert result["uri"] is None
+
+    def test_chunks_for_other_files_are_filtered_out(self):
+        """stringContains is a substring match; a URI for FAC1141.pdf must not
+        satisfy a lookup for FAC114.pdf."""
+        lf = _fresh_module()
+        with patch.object(lf, "bedrock") as mock_bedrock:
+            mock_bedrock.retrieve.return_value = {
+                "retrievalResults": [
+                    {
+                        "location": {"s3Location": {"uri": "s3://b/FAC1141.pdf"}},
+                        "content": {"text": "wrong file"},
+                    }
+                ]
+            }
+            result = lf.retrieve_kb_docs("bucket", "FAC114.pdf", "kb-id")
+        assert result["content"] == []
+
+
+# ---------------------------------------------------------------------------
+# lambda_handler — uningested document must not be summarized
+# ---------------------------------------------------------------------------
+
+class TestLambdaHandlerNoChunks:
+    def test_uningested_document_returns_404_without_model_call(self):
+        lf = _fresh_module()
+        event = {
+            "Records": [
+                {
+                    "eventName": "ObjectCreated:Put",
+                    "s3": {
+                        "bucket": {"name": "test-bucket"},
+                        "object": {"key": "ENE53.pdf"},
+                    },
+                }
+            ]
+        }
+        with patch.object(lf, "bedrock") as mock_bedrock, \
+             patch.object(lf, "bedrock_invoke") as mock_invoke, \
+             patch.object(lf, "s3") as mock_s3:
+            mock_bedrock.retrieve.return_value = {"retrievalResults": []}
+            response = lf.lambda_handler(event, None)
+        assert response["statusCode"] == 404
+        mock_invoke.invoke_model.assert_not_called()
+        mock_s3.copy_object.assert_not_called()

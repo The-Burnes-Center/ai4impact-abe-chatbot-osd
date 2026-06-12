@@ -68,6 +68,7 @@ npx cdk deploy ABEStackNonProd -c alarmEmail=you@example.com  # With alerts
 3. Triggers Bedrock KB ingestion job
 4. Records history in `SyncHistoryTable` (TTL auto-cleanup via `expiresAt`)
 5. Scheduled via EventBridge Scheduler (default: Sunday 1 AM America/New_York); configurable from admin UI
+6. Hourly EventBridge schedule re-invokes the orchestrator in backfill-only mode (`{"backfillOnly": true}`): generates LLM summaries for documents whose KB chunks now exist. Summaries can't be created at upload time — ingestion completes minutes-to-hours after the S3 events fire — so this pass is what actually fills them in. No staging moves, no ingestion job, no history record.
 
 ### Key Files
 | File | Role |
@@ -245,6 +246,7 @@ RAG_ENABLED=true
 ## Constraints & Gotchas
 
 - **KB sync is manual:** No auto-sync when files are uploaded to the knowledge bucket. Admin must click "Sync data now" in the UI (or wait for Sunday 1 AM ET scheduled sync).
+- **Metadata summaries lag ingestion:** Document summaries (metadata.txt) require chunks in the KB, which only exist after ingestion completes. At upload time the metadata handler returns 404 without writing anything; the hourly backfill schedule fills the summary in afterward. Never summarize when retrieval returns no chunks — historically that produced "could not be retrieved" filler persisted as real summaries.
 - **Excel index path:** Must be exactly `indexes/{index_id}/latest.xlsx` — other S3 paths are ignored by the parser.
 - **DynamoDB schema changes:** Changing partition/sort keys requires table recreation. Use the `scope` pattern to avoid unintended logical ID changes.
 - **System prompt caching:** Prompt is ~4K tokens, cached at Bedrock (5-min TTL). Modifying [prompt.mjs](lib/chatbot-api/functions/websocket-chat/prompt.mjs) invalidates the cache temporarily.
@@ -330,7 +332,8 @@ An admin promotes a piece of positive (thumbs-up) feedback from the Feedback Man
 | websocket-api-authorizer | pytest (JWT validation) | Covered |
 | feedback-handler | — | Not tested |
 | evaluation pipeline (5 Lambdas) | — | Not tested |
-| sync orchestrator/schedule | — | Not tested |
+| sync-orchestrator | pytest (backfill + placeholder detection) | Covered |
+| sync-schedule | — | Not tested |
 | metrics-handler | — | Not tested |
 | context-summarizer | — | Not tested |
 

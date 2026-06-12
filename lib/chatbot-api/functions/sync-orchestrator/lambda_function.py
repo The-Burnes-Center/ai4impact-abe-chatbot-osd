@@ -16,6 +16,11 @@ Invoked by the admin UI "Sync data now" action. Performs three steps:
 
 A history record is written to DynamoDB on every run with status, file counts,
 duration, and a 90-day TTL for automatic cleanup.
+
+Also supports a **backfill-only mode** (``{"backfillOnly": true}``, fired by an
+hourly EventBridge schedule): runs just the metadata backfill so documents get
+their LLM summaries once KB ingestion has actually completed, without moving
+staged files, starting ingestion, or writing a history record.
 """
 import json
 import os
@@ -103,7 +108,74 @@ def _start_kb_ingestion():
     logger.info("KB ingestion started: %s", resp["ingestionJob"]["ingestionJobId"])
 
 
-def _backfill_missing_metadata(skip_keys: set[str] | None = None) -> int:
+def _is_placeholder_summary(summary: str) -> bool:
+    """True when a head-metadata ``summary`` is missing or is a failure artifact.
+
+    Two kinds of artifacts count as missing so the backfill regenerates them:
+
+    - Explicit error markers the metadata-handler used to persist, e.g.
+      "Error generating summary" / "Error parsing nested JSON in 'text'".
+    - LLM filler produced when summarization ran before KB ingestion: the
+      handler used to pass the literal string "No relevant document found in
+      the knowledge base." to the model as the document, and the model wrote a
+      fluent paragraph about the document being unretrievable. Those summaries
+      all reference the knowledge base plus a retrieval-failure phrase, which
+      real procurement-document summaries don't.
+    """
+    s = (summary or "").strip().lower()
+    if not s:
+        return True
+    if s.startswith("error "):
+        return True
+    if "knowledge base" in s and any(
+        marker in s
+        for marker in (
+            "no relevant",
+            "could not be retrieved",
+            "could not be analyzed",
+            "not found",
+            "no text",
+            "cannot be provided",
+        )
+    ):
+        return True
+    return False
+
+
+def _rebuild_metadata_file(head_metadata: dict[str, dict]) -> None:
+    """Rewrite ``metadata.txt`` if it no longer matches S3 head metadata.
+
+    Each metadata-handler invocation rewrites metadata.txt from a fresh scan,
+    but concurrent invocations race: the last writer's scan can predate
+    another writer's head-metadata update, leaving metadata.txt missing
+    summaries that exist in head metadata. The backfill loop already HEADs
+    every object, so reconciling here costs one GetObject and (rarely) one
+    PutObject. The metadata-handler ignores events for metadata.txt itself,
+    so this write does not recurse.
+    """
+    try:
+        try:
+            resp = s3.get_object(Bucket=KB_BUCKET, Key="metadata.txt")
+            current = json.loads(resp["Body"].read())
+        except Exception:
+            current = None
+        if current == head_metadata:
+            return
+        s3.put_object(
+            Bucket=KB_BUCKET,
+            Key="metadata.txt",
+            Body=json.dumps(head_metadata, indent=4),
+            ContentType="text/plain",
+        )
+        logger.info("Rebuilt stale metadata.txt (%d entries)", len(head_metadata))
+    except Exception as e:
+        logger.warning("Failed to rebuild metadata.txt: %s", e)
+
+
+def _backfill_missing_metadata(
+    skip_keys: set[str] | None = None,
+    reconcile_metadata_file: bool = False,
+) -> int:
     """Invoke the metadata-handler for any KB-bucket object lacking a ``summary``.
 
     The metadata-handler used to skip every ``ObjectCreated:Copy`` event to
@@ -125,29 +197,32 @@ def _backfill_missing_metadata(skip_keys: set[str] | None = None) -> int:
         return 0
 
     fired = 0
+    head_metadata: dict[str, dict] = {}
     paginator = s3.get_paginator("list_objects_v2")
     try:
         for page in paginator.paginate(Bucket=KB_BUCKET):
             for obj in page.get("Contents", []):
                 key = obj.get("Key")
-                if not key or key == "metadata.txt" or key.endswith("/"):
+                if not key or key.endswith("/"):
+                    continue
+                try:
+                    head = s3.head_object(Bucket=KB_BUCKET, Key=key)
+                except Exception as e:
+                    logger.warning("head_object failed for %s, skipping: %s", key, e)
+                    continue
+                meta = head.get("Metadata") or {}
+                head_metadata[key] = meta
+                if key == "metadata.txt":
                     continue
                 # Freshly-moved files in this run already have an in-flight
                 # ObjectCreated:Copy event; skip them so we don't fire a
                 # duplicate Bedrock summarization on the same file.
                 if skip_keys and key in skip_keys:
                     continue
-                try:
-                    head = s3.head_object(Bucket=KB_BUCKET, Key=key)
-                    summary = ((head.get("Metadata") or {}).get("summary") or "").strip()
-                    # Skip only when there's a real summary. Empty strings and
-                    # past error markers (e.g. "Error parsing nested JSON in
-                    # 'text'", "Error generating summary") count as missing
-                    # so transient failures get retried on the next sync.
-                    if summary and not summary.lower().startswith("error "):
-                        continue
-                except Exception as e:
-                    logger.warning("head_object failed for %s, skipping: %s", key, e)
+                # Skip only when there's a real summary; empty values, error
+                # markers, and pre-ingestion LLM filler all count as missing
+                # so they get regenerated on the next pass.
+                if not _is_placeholder_summary(meta.get("summary") or ""):
                     continue
                 payload = {
                     "Records": [
@@ -177,6 +252,10 @@ def _backfill_missing_metadata(skip_keys: set[str] | None = None) -> int:
         logger.info("Metadata backfill: fired %d invocation(s)", fired)
     else:
         logger.info("Metadata backfill: nothing to do")
+        # Only reconcile when nothing was fired: in-flight handler
+        # invocations rewrite metadata.txt themselves when they finish.
+        if reconcile_metadata_file and head_metadata:
+            _rebuild_metadata_file(head_metadata)
     return fired
 
 
@@ -205,6 +284,20 @@ def lambda_handler(event, context):
     or a 500 with the error message if any step fails. A history record is
     written regardless of outcome.
     """
+    # Backfill-only mode (hourly EventBridge schedule): regenerate summaries
+    # for documents whose KB chunks now exist. Summaries can't be generated at
+    # upload time -- ingestion runs minutes-to-hours after the S3 events fire
+    # -- so this pass is what actually fills them in. It must not move staged
+    # files (sync stays an explicit admin action), start ingestion, or write a
+    # sync-history record that would clutter the admin UI.
+    if isinstance(event, dict) and event.get("backfillOnly"):
+        logger.info("Metadata backfill-only run")
+        fired = _backfill_missing_metadata(reconcile_metadata_file=True)
+        return {
+            "statusCode": 200,
+            "body": json.dumps({"status": "SUCCESS", "backfillInvocations": fired}),
+        }
+
     logger.info("Sync orchestrator invoked")
     start = time.time()
     kb_docs_moved = 0

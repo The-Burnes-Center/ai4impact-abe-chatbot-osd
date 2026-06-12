@@ -63,6 +63,10 @@ bedrock_invoke =boto3.client('bedrock-runtime', region_name = 'us-east-1') #For 
 kb_id = os.environ['KB_ID']
 logger = get_logger(__name__)
 
+# Upper bound on document text sent to the summarization model (~40K tokens),
+# leaving ample headroom in the context window for the prompt scaffolding.
+MAX_SUMMARIZATION_CHARS = 150_000
+
 
 # Using Knowledge Base to fetch document contents
 def retrieve_kb_docs(bucket, file_name, knowledge_base_id):
@@ -121,11 +125,14 @@ def retrieve_kb_docs(bucket, file_name, knowledge_base_id):
         if all_chunks:
             return {'content': all_chunks, 'uri': file_uri}
 
+        # Empty list, not a sentinel string: a truthy "no relevant document
+        # found" message here used to flow into the summarization prompt as if
+        # it were the document text, and the model produced fluent filler
+        # ("The document could not be retrieved or analyzed...") that got
+        # persisted as the real summary. The caller checks truthiness of
+        # 'content' to decide whether to summarize at all.
         print(f"No KB chunks found for {file_name}; document may not yet be ingested")
-        return {
-            'content': "No relevant document found in the knowledge base.",
-            'uri': None,
-        }
+        return {'content': [], 'uri': None}
     except ClientError as e:
         print(f"Error fetching knowledge base docs: {e}")
         return {'content': [], 'uri': None}
@@ -327,14 +334,25 @@ def lambda_handler(event, context):
             print(f"file : {key}, kb_id : {kb_id}")
             document_content = retrieve_kb_docs(bucket, key, kb_id)
             if not document_content['content']:
+                # No chunks in the KB, almost always because the ingestion job
+                # hasn't run since this file landed (S3 events fire at upload
+                # time; ingestion happens minutes-to-hours later). Don't ask
+                # the model to summarize nothing -- leave head metadata alone
+                # so the orchestrator's backfill retries once chunks exist.
                 return {
                     'statusCode': 404,
-                    'body': json.dumps("No relevant content found")
+                    'body': json.dumps(f"{key} has no chunks in the knowledge base yet; skipping summary until after ingestion")
                 }
-            else:
-                print(f"Content : {document_content}")
+            print(f"Retrieved {len(document_content['content'])} KB chunk(s) for {key}")
 
-            summary_and_tags = summarize_and_categorize(key,document_content)
+            # Join the chunks into one document body and cap its size so a very
+            # large document can't blow past the model context window.
+            document_text = "\n\n".join(document_content['content'])
+            if len(document_text) > MAX_SUMMARIZATION_CHARS:
+                print(f"Document text truncated from {len(document_text)} to {MAX_SUMMARIZATION_CHARS} chars for summarization")
+                document_text = document_text[:MAX_SUMMARIZATION_CHARS]
+
+            summary_and_tags = summarize_and_categorize(key, document_text)
             # Any of the sentinel error summaries returned by
             # summarize_and_categorize means we did NOT get a usable response
             # from the model. Don't persist the sentinel to S3 head metadata

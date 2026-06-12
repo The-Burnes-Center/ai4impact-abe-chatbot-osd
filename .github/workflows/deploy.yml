@@ -43,6 +43,7 @@ jobs:
           lib/chatbot-api/functions/metadata-retrieval/test_metadata_cache.py \
           lib/authorization/websocket-api-authorizer/test_jwt_authorizer.py \
           lib/chatbot-api/functions/metadata-handler/test_metadata_handler.py \
+          lib/chatbot-api/functions/sync-orchestrator/test_sync_orchestrator.py \
           -v
     - name: Run frontend tests
       run: |

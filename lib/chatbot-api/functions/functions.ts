@@ -469,6 +469,11 @@ export class LambdaFunctionStack extends Construct {
       handler: 'lambda_function.lambda_handler',
       layers: [pythonCommonLayer],
       timeout: cdk.Duration.seconds(30),
+      // A backfill sweep or bulk sync can fire one async invocation per
+      // document (200+ at once), each calling Bedrock. Cap concurrency so
+      // those sweeps drain gradually instead of tripping Bedrock throttles;
+      // the Lambda service automatically retries throttled async events.
+      reservedConcurrentExecutions: 5,
       environment: {
         "BUCKET": props.knowledgeBucket.bucketName,
         "KB_ID": props.knowledgeBase.attrKnowledgeBaseId,
@@ -1129,6 +1134,27 @@ const syncSchedule = new scheduler.CfnSchedule(scope, 'WeeklySyncSchedule', {
   },
 });
 syncSchedule.addDependency(scheduleGroup);
+
+// Hourly metadata backfill. KB ingestion completes minutes-to-hours after the
+// S3 upload events have already fired, so document summaries can't be
+// generated at upload time (no chunks exist in the KB yet). This schedule
+// re-invokes the orchestrator in backfill-only mode -- no staging moves, no
+// ingestion job, no sync-history record -- to summarize any document still
+// missing a real summary once its chunks have been ingested. A no-op when
+// every document already has one.
+const metadataBackfillSchedule = new scheduler.CfnSchedule(scope, 'MetadataBackfillSchedule', {
+  name: `${cdk.Stack.of(scope).stackName}-MetadataBackfillSchedule`,
+  groupName: scheduleGroup.name!,
+  scheduleExpression: 'rate(1 hour)',
+  state: 'ENABLED',
+  flexibleTimeWindow: { mode: 'OFF' },
+  target: {
+    arn: syncOrchestratorFunction.functionArn,
+    roleArn: schedulerRole.roleArn,
+    input: JSON.stringify({ backfillOnly: true }),
+  },
+});
+metadataBackfillSchedule.addDependency(scheduleGroup);
 
 // Admin API for viewing/updating the sync schedule (enable, disable,
 // change cron expression) and viewing sync history.
