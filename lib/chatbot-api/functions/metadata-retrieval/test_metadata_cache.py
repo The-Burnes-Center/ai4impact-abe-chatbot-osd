@@ -204,3 +204,58 @@ class TestMetadataSelfEntryExcluded:
         body = json.loads(resp["body"])
         assert "metadata.txt" not in body["metadata"]
         assert set(body["metadata"].keys()) == {"doc1.pdf", "doc2.pdf"}
+
+
+# ---------------------------------------------------------------------------
+# filename_contains filtering (contract-family lookup)
+# ---------------------------------------------------------------------------
+
+# A contract-family shaped inventory: two FAC115 documents plus an unrelated
+# one, with mixed-case filenames to exercise case-insensitive matching.
+FAMILY_METADATA_STR = json.dumps({
+    "FAC115 CUG.pdf": {"tag_category": "user guide", "summary": "guide for FAC115"},
+    "fac115 RFR.pdf": {"tag_category": "memos", "summary": "RFR for FAC115"},
+    "ITS88 CUG.pdf": {"tag_category": "user guide", "summary": "guide for ITS88"},
+    "metadata.txt": {},
+})
+
+
+class TestFilenameContains:
+    def _invoke(self, event, content=FAMILY_METADATA_STR):
+        lf = _fresh_module()
+        with patch.object(lf, "s3") as mock_s3:
+            mock_s3.get_object.return_value = _mock_s3_get(content)
+            resp = lf.lambda_handler(event, {})
+        assert resp["statusCode"] == 200
+        return json.loads(resp["body"])["metadata"]
+
+    def test_compact_filters_case_insensitively(self):
+        metadata = self._invoke({"filename_contains": "Fac115"})
+        assert metadata == {
+            "FAC115 CUG.pdf": "user guide",
+            "fac115 RFR.pdf": "memos",
+        }
+
+    def test_full_filters_case_insensitively(self):
+        metadata = self._invoke({"filename_contains": "FAC115", "full": True})
+        assert set(metadata.keys()) == {"FAC115 CUG.pdf", "fac115 RFR.pdf"}
+        assert metadata["FAC115 CUG.pdf"]["summary"] == "guide for FAC115"
+
+    def test_composes_with_category_filter(self):
+        metadata = self._invoke({"filename_contains": "fac115", "filter_key": "user guide", "full": True})
+        assert set(metadata.keys()) == {"FAC115 CUG.pdf"}
+
+    def test_no_match_returns_empty_dict(self):
+        metadata = self._invoke({"filename_contains": "ZZZ999"})
+        assert metadata == {}
+
+    def test_still_excludes_metadata_txt(self):
+        # "metadata" matches the self-entry's filename, but the pop runs first.
+        metadata = self._invoke({"filename_contains": "metadata"})
+        assert metadata == {}
+
+    def test_whitespace_stripped_and_empty_means_no_filter(self):
+        metadata = self._invoke({"filename_contains": "  its88  "})
+        assert metadata == {"ITS88 CUG.pdf": "user guide"}
+        unfiltered = self._invoke({"filename_contains": "   "})
+        assert set(unfiltered.keys()) == {"FAC115 CUG.pdf", "fac115 RFR.pdf", "ITS88 CUG.pdf"}

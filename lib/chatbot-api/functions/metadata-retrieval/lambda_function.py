@@ -54,6 +54,7 @@ def lambda_handler(event, context):
     global _metadata_cache, _metadata_cache_ts
     filter_key = event.get('filter_key', None)
     full = bool(event.get('full', False))
+    filename_contains = str(event.get('filename_contains') or '').strip().lower()
     try:
         now = time.time()
         if _metadata_cache is None or now - _metadata_cache_ts >= _METADATA_TTL:
@@ -61,6 +62,16 @@ def lambda_handler(event, context):
             _metadata_cache = response['Body'].read().decode('utf-8')
             _metadata_cache_ts = now
         filtered_metadata = filter_metadata(_metadata_cache, category=filter_key)
+        if filename_contains:
+            # Case-insensitive substring match on filenames (e.g. a contract
+            # identifier like "FAC115" selects that contract family). Applies
+            # to both the compact and full forms, composes with the category
+            # filter above, and runs after the metadata.txt self-entry pop.
+            # No match -> empty dict (a valid response the model interprets).
+            filtered_metadata = {
+                k: v for k, v in filtered_metadata.items()
+                if filename_contains in k.lower()
+            }
         payload = filtered_metadata if full else to_compact(filtered_metadata)
         return {
             'statusCode': 200,
