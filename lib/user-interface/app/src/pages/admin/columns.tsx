@@ -416,8 +416,8 @@ export function getColumnDefinition(
       id: "metadata",
       header: (
         <HeaderWithInfo
-          label="Metadata"
-          tooltip="Whether this file has an AI-generated summary in metadata.txt. The chatbot uses these summaries to know what each document covers. Missing-metadata files still work in search but won't be surfaced as cleanly. Run a sync to backfill missing summaries."
+          label="Summary"
+          tooltip="Whether this file has an AI-generated summary yet. The chatbot uses these summaries to know what each document covers. Files without one still work in search but won't be surfaced as cleanly. Summaries are created automatically within about an hour after a file is synced — 'Missing' that persists longer than that means generation failed and will be retried automatically."
         />
       ),
       cell: (item) =>
