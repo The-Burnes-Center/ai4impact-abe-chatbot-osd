@@ -205,6 +205,12 @@ def _backfill_missing_metadata(
                 key = obj.get("Key")
                 if not key or key.endswith("/"):
                     continue
+                # Skip the inventory file itself before doing any work: it
+                # must never appear as an entry in its own contents (the
+                # metadata-handler's writer excludes it too), and HEADing it
+                # would be a wasted call.
+                if key == "metadata.txt":
+                    continue
                 try:
                     head = s3.head_object(Bucket=KB_BUCKET, Key=key)
                 except Exception as e:
@@ -212,8 +218,6 @@ def _backfill_missing_metadata(
                     continue
                 meta = head.get("Metadata") or {}
                 head_metadata[key] = meta
-                if key == "metadata.txt":
-                    continue
                 # Freshly-moved files in this run already have an in-flight
                 # ObjectCreated:Copy event; skip them so we don't fire a
                 # duplicate Bedrock summarization on the same file.

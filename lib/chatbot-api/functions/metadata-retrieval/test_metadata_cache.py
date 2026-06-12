@@ -19,6 +19,9 @@ BUCKET = "test-knowledge-bucket"
 METADATA = {
     "doc1.pdf": {"tag_category": "memos", "summary": "memo about X"},
     "doc2.pdf": {"tag_category": "user guide", "summary": "guide for Y"},
+    # Legacy blobs written before the writers were fixed include a useless
+    # self-entry; the lambda must drop it from every response form.
+    "metadata.txt": {},
 }
 METADATA_STR = json.dumps(METADATA)
 
@@ -177,3 +180,27 @@ class TestTTLCache:
         body = json.loads(resp["body"])
         # Only memos category should be returned (full form preserves the dict)
         assert all(v.get("tag_category") == "memos" for v in body["metadata"].values())
+
+
+# ---------------------------------------------------------------------------
+# metadata.txt self-entry exclusion (legacy blobs)
+# ---------------------------------------------------------------------------
+
+class TestMetadataSelfEntryExcluded:
+    def test_compact_excludes_metadata_txt(self):
+        lf = _fresh_module()
+        with patch.object(lf, "s3") as mock_s3:
+            mock_s3.get_object.return_value = _mock_s3_get(METADATA_STR)
+            resp = lf.lambda_handler({}, {})
+        body = json.loads(resp["body"])
+        assert "metadata.txt" not in body["metadata"]
+        assert body["metadata"] == {"doc1.pdf": "memos", "doc2.pdf": "user guide"}
+
+    def test_full_excludes_metadata_txt(self):
+        lf = _fresh_module()
+        with patch.object(lf, "s3") as mock_s3:
+            mock_s3.get_object.return_value = _mock_s3_get(METADATA_STR)
+            resp = lf.lambda_handler({"full": True}, {})
+        body = json.loads(resp["body"])
+        assert "metadata.txt" not in body["metadata"]
+        assert set(body["metadata"].keys()) == {"doc1.pdf", "doc2.pdf"}

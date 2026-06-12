@@ -16,6 +16,10 @@ def filter_metadata(metadata_content, category="memos"):
     or, when category is provided, only entries whose tag_category matches."""
     try:
         metadata = json.loads(metadata_content)
+        # Defensive: metadata.txt blobs written before the writers were fixed
+        # carry a useless "metadata.txt": {} self-entry. Drop it so neither
+        # the compact nor the full form exposes it during the transition.
+        metadata.pop("metadata.txt", None)
         if category:
             return {
                 k: v for k, v in metadata.items()

@@ -241,6 +241,9 @@ def get_metadata(bucket,key):
 #Getting metadata information of all files in a single document
 def get_complete_metadata(bucket):
     all_metadata = {}
+    # The inventory file this function writes. It must never list itself: a
+    # "metadata.txt": {} self-entry is useless noise for the model.
+    metadata_file = "metadata.txt"
     try:
         paginator = s3.get_paginator('list_objects_v2')
         current_files = set()
@@ -248,14 +251,13 @@ def get_complete_metadata(bucket):
             if 'Contents' in page:
                 for obj in page['Contents']:
                     key = obj['Key']
+                    if key == metadata_file:
+                        continue
                     current_files.add(key)
                     try:
                         all_metadata[key] = get_metadata(bucket,key)
                     except Exception as e:
                         print(f"Error in fetching complete metadata for {key}: {e}")
-
-        # Upload to S3 with a specific key
-        metadata_file = r"metadata.txt"
 
         # Removing deleted files
         updated_metadata = {

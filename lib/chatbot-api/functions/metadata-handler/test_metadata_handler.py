@@ -228,6 +228,41 @@ class TestRetrieveKbDocs:
 
 
 # ---------------------------------------------------------------------------
+# get_complete_metadata — inventory must not list itself
+# ---------------------------------------------------------------------------
+
+class TestGetCompleteMetadata:
+    def test_metadata_file_excluded_from_inventory(self):
+        """A bucket listing that includes metadata.txt must produce an
+        inventory without the "metadata.txt": {} self-entry, and must not
+        HEAD the inventory file itself."""
+        lf = _fresh_module()
+        with patch.object(lf, "s3") as mock_s3:
+            paginator = MagicMock()
+            paginator.paginate.return_value = [
+                {"Contents": [
+                    {"Key": "doc1.pdf"},
+                    {"Key": "metadata.txt"},
+                    {"Key": "doc2.pdf"},
+                ]}
+            ]
+            mock_s3.get_paginator.return_value = paginator
+            mock_s3.head_object.side_effect = lambda Bucket, Key: {
+                "Metadata": {"summary": f"summary of {Key}"}
+            }
+            result = lf.get_complete_metadata("test-bucket")
+
+        assert set(result.keys()) == {"doc1.pdf", "doc2.pdf"}
+        # The serialized Body written back to S3 excludes the self-entry
+        written = json.loads(mock_s3.put_object.call_args.kwargs["Body"])
+        assert "metadata.txt" not in written
+        assert set(written.keys()) == {"doc1.pdf", "doc2.pdf"}
+        # No head-metadata fetch for the inventory file itself
+        headed = {call.kwargs["Key"] for call in mock_s3.head_object.call_args_list}
+        assert "metadata.txt" not in headed
+
+
+# ---------------------------------------------------------------------------
 # lambda_handler — uningested document must not be summarized
 # ---------------------------------------------------------------------------
 

@@ -102,11 +102,10 @@ class TestBackfill:
         lf.lambda_client.invoke.assert_not_called()
 
     def test_reconciles_stale_metadata_file_when_nothing_fired(self, lf):
-        heads = {
+        _mock_kb_listing(lf, {
             "good.pdf": {"summary": REAL_SUMMARY},
             "metadata.txt": {},
-        }
-        _mock_kb_listing(lf, heads)
+        })
         # metadata.txt on S3 is missing good.pdf's summary
         stale_body = MagicMock()
         stale_body.read.return_value = json.dumps({"good.pdf": {}}).encode()
@@ -116,18 +115,47 @@ class TestBackfill:
         assert fired == 0
         lf.s3.put_object.assert_called_once()
         written = json.loads(lf.s3.put_object.call_args.kwargs["Body"])
-        assert written == heads
+        # The rebuilt inventory never lists itself
+        assert written == {"good.pdf": {"summary": REAL_SUMMARY}}
 
     def test_no_rewrite_when_metadata_file_current(self, lf):
-        heads = {"good.pdf": {"summary": REAL_SUMMARY}, "metadata.txt": {}}
-        _mock_kb_listing(lf, heads)
+        _mock_kb_listing(lf, {
+            "good.pdf": {"summary": REAL_SUMMARY},
+            "metadata.txt": {},
+        })
         current_body = MagicMock()
-        current_body.read.return_value = json.dumps(heads).encode()
+        current_body.read.return_value = json.dumps(
+            {"good.pdf": {"summary": REAL_SUMMARY}}
+        ).encode()
         lf.s3.get_object.return_value = {"Body": current_body}
 
         fired = lf._backfill_missing_metadata(reconcile_metadata_file=True)
         assert fired == 0
         lf.s3.put_object.assert_not_called()
+
+    def test_metadata_file_skipped_entirely(self, lf):
+        """metadata.txt in the bucket listing: no backfill invocation fires
+        for it, head_object is never called for it, and the rebuild payload
+        excludes it."""
+        _mock_kb_listing(lf, {
+            "good.pdf": {"summary": REAL_SUMMARY},
+            "metadata.txt": {},
+        })
+        stale_body = MagicMock()
+        stale_body.read.return_value = json.dumps({}).encode()
+        lf.s3.get_object.return_value = {"Body": stale_body}
+
+        fired = lf._backfill_missing_metadata(reconcile_metadata_file=True)
+        assert fired == 0
+        # Inventory file has no summary, but must never trigger a backfill
+        lf.lambda_client.invoke.assert_not_called()
+        # ...and must never even be HEADed
+        headed = {call.kwargs["Key"] for call in lf.s3.head_object.call_args_list}
+        assert "metadata.txt" not in headed
+        # ...and the rebuilt payload excludes the self-entry
+        written = json.loads(lf.s3.put_object.call_args.kwargs["Body"])
+        assert "metadata.txt" not in written
+        assert written == {"good.pdf": {"summary": REAL_SUMMARY}}
 
 
 class TestBackfillOnlyMode:
