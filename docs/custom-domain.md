@@ -15,7 +15,9 @@ How to put the ABE web app behind a custom domain (e.g. `app.example.gov`) with 
 | ACM certificate | ACM console (us-east-1) | Manual / out-of-band (not CloudFormation) |
 | DNS records (validation + app) | The domain's DNS zone | Whoever owns the zone |
 | Alias + cert on the distribution | CDK config (context / CI vars) | CDK / CloudFormation |
-| Cognito callback + sign-out URLs | Cognito console | Manual (not CDK) |
+| Cognito callback + sign-out URLs | CDK config (derived from the bound domain) | CDK / CloudFormation |
+| SSO provider on the app client | CDK config (`OIDC_PROVIDER_NAME`) — the provider itself is created in the Cognito console | CDK / CloudFormation |
+| Sign-in/out redirects + API/S3 CORS origin | CDK config (derived from the bound domain) | CDK / CloudFormation |
 
 > **Why the cert is requested by hand and not in CDK:** ACM DNS validation depends on a record being added to the domain's zone (often by a different team). Putting the cert in the stack would hang `cdk deploy` until that record exists. So the cert is created out-of-band (Steps 1–2) and the stack only *references* its ARN (Step 3).
 
@@ -69,39 +71,68 @@ Supply the hostname + cert ARN to the deployment. Pick one:
 **CI (recommended) — GitHub Actions.** In the repo, add:
 - **Variable** `CUSTOM_DOMAIN` = `app.example.gov`
 - **Secret** `CERTIFICATE_ARN` = the ARN from Step 2
+- **Variable** `OIDC_PROVIDER_NAME` = your SSO provider's name — required if the app uses SSO (see Step 5); leave unset only for a COGNITO-only pool
 
-Then push to `main` (or re-run the deploy workflow). The workflow only passes them through when **both** are set. Scope them per environment with **GitHub Environments** so other branches/stacks don't inherit them.
+Then push to `main`, **or re-run the latest deploy workflow** (a re-run reads the current Variables/Secret at runtime, so you don't need a new commit). The workflow only passes the domain through when **both** `CUSTOM_DOMAIN` and `CERTIFICATE_ARN` are set. Scope them per environment with **GitHub Environments** so other branches/stacks don't inherit them (if there's no Environment, repo-level values apply to all branches).
 
 **Manual deploy — CDK context.**
 ```bash
 export AWS_PROFILE=<your-aws-profile>
 npx cdk deploy ABEStackNonProd \
   -c customDomain=app.example.gov \
-  -c certificateArn=arn:aws:acm:us-east-1:<account-id>:certificate/<id>
+  -c certificateArn=arn:aws:acm:us-east-1:<account-id>:certificate/<id> \
+  -c oidcProviderName=<your-sso-provider>   # omit only if the pool is COGNITO-only
 ```
 
-> The values must be supplied on **every** deploy. If a later deploy runs without them, CloudFormation removes the alias/cert. The CI option handles this automatically; if you deploy manually, always pass the flags.
+> ⚠️ These values must be supplied on **every** deploy. A deploy without `customDomain`/`certificateArn` removes the alias/cert and reverts the app to the `*.cloudfront.net` domain; a deploy without `oidcProviderName` **drops the SSO provider from the app client and breaks sign-in**. The CI option handles this automatically as long as the repo Variables/Secret stay set — if you ever deploy manually, pass *all* the flags (plus any others CI sets, e.g. `alarmEmail`).
 
 ## Step 4 — Point your domain at CloudFront
 
 In the domain's DNS zone, add a **CNAME**: `app.example.gov` → the distribution domain (`xxxxxxxx.cloudfront.net`). Find the distribution domain in the **CloudFormation stack outputs** (`UserInterfaceDomainName`) or in the CloudFront console.
 
-## Step 5 — Update Cognito sign-in URLs (console)
+## Step 5 — Sign-in URLs & SSO provider (automatic via CDK — do *not* edit the console)
 
-Sign-in is federated SSO, and the app client's redirect URLs are **managed in the Cognito console, not in CDK** — so add the new domain there or sign-in will fail:
+The Cognito app client — its **callback + sign-out URLs**, OAuth scopes, and which **SSO identity provider** is enabled — is **fully declared in CDK** (`lib/authorization/index.ts`, brought in by commit *"Bring Cognito app client config into CDK"*). There is **no manual Cognito console step** for sign-in URLs:
 
-1. **Cognito** console → **User pools** → select the pool → **App integration** → **App clients** → select the app client.
-2. Edit the **login pages / Hosted UI** settings.
-3. Add `https://app.example.gov` to **Allowed callback URLs** and **Allowed sign-out URLs**. Keep the existing `*.cloudfront.net` entries during the transition.
-4. **Save.**
+- **Callback + sign-out URLs** are set to the bound domain (`https://app.example.gov`) automatically when you complete Step 3 Method B — together with the app's sign-in/out redirects in `aws-exports.json` and the HTTP API + S3 **CORS** origin. They all derive from one `siteUrl`, so they can never drift apart.
+- **SSO provider:** the identity provider object (issuer, client secret, attribute mapping) is created **once in the Cognito console**, out of band. CDK only *enables* it on the app client, by name, via the `OIDC_PROVIDER_NAME` value from Step 3. **If `OIDC_PROVIDER_NAME` is unset on a deploy, the app client is rebuilt with only the built-in COGNITO provider and SSO breaks** — so keep it set for any SSO environment.
 
-> When the custom domain is bound (Step 3 Method B), the app's sign-in/out redirects and the HTTP API + S3 **CORS** origin switch to it automatically. After cutover, use the custom domain — loading the app via the raw `*.cloudfront.net` URL still serves pages, but its API calls will be CORS-blocked.
+> ⚠️ **Do not add callback URLs in the Cognito console.** The app client is rebuilt from `lib/authorization/index.ts` on every deploy, so a manual console edit is **drift that the next `cdk deploy` silently overwrites** (the client was deliberately codified to stop exactly this). To change sign-in URLs, change the bound domain (Step 3) and redeploy. The client is set to a **single** callback URL (the bound domain), so the old `*.cloudfront.net` URL stops being a valid sign-in target after cutover — this is expected.
+
+> After cutover, use the custom domain. Loading the app via the raw `*.cloudfront.net` URL still serves the static files, but **sign-in and API calls will fail** — the callback URL and CORS origin are now the custom domain.
 
 ## Step 6 — Verify
 
 - `https://app.example.gov` loads the app over HTTPS with a valid certificate (no browser warning).
 - SSO sign-in completes and redirects back to the custom domain.
 - Chat works — no CORS errors in the browser console (WebSocket + API calls succeed).
+
+After the deploy, you can confirm all four CDK-managed pieces switched to the new domain (replace IDs with your stack's):
+
+```bash
+# 1. DNS + TLS + CloudFront serving the domain
+curl -sI https://app.example.gov | head -5
+
+# 2. App config the browser fetches — redirectSignIn/Out should be the custom domain
+curl -s https://app.example.gov/aws-exports.json | tr ',' '\n' | grep -i redirect
+
+# 3. Cognito callback/logout URLs should include the custom domain
+aws cognito-idp describe-user-pool-client --region us-east-1 \
+  --user-pool-id <pool-id> --client-id <client-id> \
+  --query 'UserPoolClient.{Callback:CallbackURLs,Logout:LogoutURLs,IdPs:SupportedIdentityProviders}'
+
+# 4. HTTP API CORS AllowOrigins should include the custom domain
+aws apigatewayv2 get-api --region us-east-1 --api-id <http-api-id> \
+  --query 'CorsConfiguration.AllowOrigins'
+```
+
+## Troubleshooting
+
+**Symptom: the custom domain loads but the UI hangs on a spinner (or chat shows CORS errors), even though the cert is `Issued` and the page returns HTTP 200.**
+
+The static site is served, but the app's auth/API config is still pinned to the old `*.cloudfront.net` domain. These values are baked at **deploy time**, so adding the CloudFront alias + DNS by hand is *not* enough — the stack must be **deployed with the domain bound**. Almost always the last deploy ran **without** `CUSTOM_DOMAIN` + `CERTIFICATE_ARN` (so `aws-exports.json` redirects, the Cognito callback URLs, and the API CORS origin all fell back to CloudFront). Fix: set the values (Step 3 Method B) and redeploy — don't hand-patch Cognito/CORS/`aws-exports.json`, since the next deploy reverts manual edits.
+
+**Symptom: sign-in suddenly fails after a deploy that was otherwise fine.** The deploy likely ran without `OIDC_PROVIDER_NAME`, dropping the SSO provider from the app client. Re-add the Variable and redeploy.
 
 ---
 
@@ -112,7 +143,14 @@ Sign-in is federated SSO, and the app client's redirect URLs are **managed in th
 
 ## How it's wired (for maintainers)
 
-`bin/gen-ai-mvp.ts` reads `customDomain` / `certificateArn` from CDK context (falling back to the `CUSTOM_DOMAIN` / `CERTIFICATE_ARN` env vars) → `GenAiMvpStack` → `UserInterface` → `Website`, which adds `domainNames` + the imported ACM `certificate` to the CloudFront distribution and flips the Cognito redirect + CORS origin. The binding only renders when **both** values are present, so the default path is unchanged.
+`bin/gen-ai-mvp.ts` reads `customDomain` / `certificateArn` / `oidcProviderName` from CDK context (falling back to the `CUSTOM_DOMAIN` / `CERTIFICATE_ARN` / `OIDC_PROVIDER_NAME` env vars) and passes them to `GenAiMvpStack`. There, a single `siteUrl` is computed — the custom domain when **both** domain values are present, else the CloudFront domain — and fed via `Lazy` tokens into four places so they can't drift apart:
+
+1. **CloudFront** alias + imported ACM cert (`UserInterface` → `Website`: `domainNames` + `certificate`)
+2. **Cognito app client** callback + sign-out URLs (`AuthorizationStack`, via the `callbackUrls` prop)
+3. **HTTP API + S3 CORS** origin (`allowedOrigin`)
+4. **`aws-exports.json`** `redirectSignIn` / `redirectSignOut` (written by `UserInterface` into the S3 deployment)
+
+`oidcProviderName` separately controls whether the SSO identity provider is enabled on the app client. The domain binding only renders when both domain values are present, so the default (CloudFront) path is unchanged for deployments that don't set them.
 
 ### Example mapping (this project)
 
