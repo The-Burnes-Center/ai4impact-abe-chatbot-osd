@@ -1,6 +1,6 @@
 # Custom domain & SSL certificate
 
-How to put the ABE web app behind a custom domain (e.g. `app.example.gov`) with HTTPS. Walks through the **AWS Console** steps for the certificate and Cognito, plus the per-deployment config that actually binds the domain.
+How to put the ABE web app behind a custom domain (e.g. `app.example.gov`) with HTTPS. Walks through the one out-of-band step — requesting the **ACM certificate** — plus the per-deployment **GitHub Actions config** (Variable + Secret) that actually binds the domain. The CloudFront alias, Cognito sign-in URLs, and CORS origin are all CDK-managed and **must not** be edited by hand in the console — a manual edit is drift the next deploy overwrites.
 
 ---
 
@@ -156,7 +156,7 @@ The static site is served, but the app's auth/API config is still pinned to the 
 
 | Environment | Hostname | Stack | Distribution |
 |---|---|---|---|
-| Dev / non-prod | `buyers.dev.virtualassistant.mass.gov` | `ABEStackNonProd` | `d39g9hl1ouzq6z.cloudfront.net` |
-| Prod | `buyers.virtualassistant.mass.gov` | (future prod stack) | (future) |
+| Dev / non-prod | `buyers.dev.virtualassistance.mass.gov` | `ABEStackNonProd` | `d39g9hl1ouzq6z.cloudfront.net` |
+| Prod | `buyers.virtualassistance.mass.gov` | (separate prod account) | `d13khvxtpshj5p.cloudfront.net` |
 
-> DNS for `virtualassistant.mass.gov` is managed externally by the Mass DNS team (there is no Route 53 zone in the account), so Steps 2 and 4 are handled on their side.
+> DNS for `virtualassistance.mass.gov` is managed externally by the Mass DNS team (there is no Route 53 zone in the account), so Steps 2 and 4 are handled on their side.
