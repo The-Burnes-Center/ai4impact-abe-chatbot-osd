@@ -73,6 +73,8 @@ Supply the hostname + cert ARN to the deployment. Pick one:
 - **Secret** `CERTIFICATE_ARN` = the ARN from Step 2
 - **Variable** `OIDC_PROVIDER_NAME` = your SSO provider's name — required if the app uses SSO (see Step 5); leave unset only for a COGNITO-only pool
 
+> ⚠️ **Variable vs. Secret is not interchangeable — and getting it wrong fails silently.** The workflow reads `CUSTOM_DOMAIN` and `OIDC_PROVIDER_NAME` from the **Variables** namespace (`${{ vars.* }}`) and `CERTIFICATE_ARN` from the **Secrets** namespace (`${{ secrets.* }}`). If you store `CUSTOM_DOMAIN` as a *Secret* (a common mix-up — "they're all just config"), then `vars.CUSTOM_DOMAIN` is empty, the bind gate `[ -n vars.CUSTOM_DOMAIN ] && [ -n secrets.CERTIFICATE_ARN ]` is false, and **the deploy still succeeds but binds nothing** — the app stays on `*.cloudfront.net`, so the custom host serves a cert-mismatch warning and then `403 Forbidden`. There is no error pointing at the namespace. So: hostname + provider name → **Variables**; cert ARN → **Secret**.
+
 Then push to `main`, **or re-run the latest deploy workflow** (a re-run reads the current Variables/Secret at runtime, so you don't need a new commit). The workflow only passes the domain through when **both** `CUSTOM_DOMAIN` and `CERTIFICATE_ARN` are set. Scope them per environment with **GitHub Environments** so other branches/stacks don't inherit them (if there's no Environment, repo-level values apply to all branches).
 
 **Manual deploy — CDK context.**
