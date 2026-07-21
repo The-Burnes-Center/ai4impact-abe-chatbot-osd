@@ -6,6 +6,20 @@ import time
 import os
 
 
+_JWKS_CACHE = None
+
+def _get_jwks():
+    global _JWKS_CACHE
+    if _JWKS_CACHE is None:
+        user_pool_id = os.environ.get('USER_POOL_ID')
+        region = os.environ.get('AWS_REGION', 'us-east-1')
+        keys_url = f'https://cognito-idp.{region}.amazonaws.com/{user_pool_id}/.well-known/jwks.json'
+        response = requests.get(keys_url, timeout=5)
+        response.raise_for_status()
+        _JWKS_CACHE = {key['kid']: json.dumps(key) for key in response.json()['keys']}
+    return _JWKS_CACHE
+
+
 def lambda_handler(event, context):
     try:
         query_params = event.get('queryStringParameters') or {}
@@ -14,14 +28,10 @@ def lambda_handler(event, context):
             raise Exception("Unauthorized")
 
         user_pool_id = os.environ.get('USER_POOL_ID')
-        region = 'us-east-1'
+        region = os.environ.get('AWS_REGION', 'us-east-1')
         app_client_id = os.environ.get('APP_CLIENT_ID')
-        keys_url = f'https://cognito-idp.{region}.amazonaws.com/{user_pool_id}/.well-known/jwks.json'
 
-        response = requests.get(keys_url, timeout=5)
-        response.raise_for_status()
-        keys = response.json()['keys']
-        key_dict = {key['kid']: json.dumps(key) for key in keys}
+        key_dict = _get_jwks()
 
         headers = jwt.get_unverified_headers(token)
         kid = headers.get('kid')
@@ -46,6 +56,14 @@ def lambda_handler(event, context):
 
         if claims['aud'] != app_client_id:
             print('Token was not issued for this audience')
+            raise Exception("Unauthorized")
+
+        if claims.get('iss') != f'https://cognito-idp.{region}.amazonaws.com/{user_pool_id}':
+            print('Token issuer does not match')
+            raise Exception("Unauthorized")
+
+        if claims.get('token_use') != 'id':
+            print('Token is not an ID token')
             raise Exception("Unauthorized")
 
         # `principalId` is required by API Gateway and we keep it as `sub`

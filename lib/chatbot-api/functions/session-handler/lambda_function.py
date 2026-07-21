@@ -183,6 +183,7 @@ def update_context_summary(session_id, user_id, context_summary):
             Key={"user_id": user_id, "session_id": session_id},
             UpdateExpression="SET context_summary = :summary",
             ExpressionAttributeValues={":summary": context_summary},
+            ConditionExpression="attribute_exists(user_id) AND attribute_exists(session_id)",
         )
         return json_response(200, {"updated": True})
     except ClientError:
@@ -190,25 +191,6 @@ def update_context_summary(session_id, user_id, context_summary):
         return json_response(500, "Failed to save context summary")
 
 
-def fetch_metadata(filter_key=None):
-    try:
-        s3 = boto3.client("s3")
-        bucket_name = os.environ.get("METADATA_BUCKET")
-        response = s3.get_object(Bucket=bucket_name, Key="metadata.txt")
-        metadata = json.loads(response["Body"].read().decode("utf-8"))
-
-        if filter_key:
-            filtered_metadata = {
-                key: value
-                for key, value in metadata.items()
-                if filter_key in key or filter_key in json.dumps(value)
-            }
-            return json_response(200, {"metadata": filtered_metadata})
-
-        return json_response(200, {"metadata": metadata})
-    except Exception as error:
-        logger.exception("Error fetching metadata")
-        return json_response(500, {"error": f"Failed to fetch metadata: {str(error)}"})
 
 
 def _resolve_user_id(event, body_user_id):
@@ -239,17 +221,14 @@ def lambda_handler(event, context):
 
     operation = data.get("operation")
     user_id = _resolve_user_id(event, data.get("user_id"))
-    if not user_id and operation != "fetch_metadata":
+    if not user_id:
         return json_response(401, "Unauthorized")
     session_id = data.get("session_id")
     new_chat_entry = data.get("new_chat_entry")
     title = data.get("title")
-    filter_key = data.get("filter_key")
 
     if operation == "update_context_summary":
         return update_context_summary(session_id, user_id, data.get("context_summary", ""))
-    if operation == "fetch_metadata":
-        return fetch_metadata(filter_key)
     if operation == "add_session":
         return add_session(session_id, user_id, title, new_chat_entry)
     if operation == "get_session":

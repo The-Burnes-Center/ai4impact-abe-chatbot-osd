@@ -35,27 +35,8 @@ export class ChatBotApi extends Construct {
   constructor(scope: Construct, id: string, props: ChatBotApiProps) {
     super(scope, id);
     
-    const corsHandler = new lambda.Function(this, 'OptionsHandler', {
-      runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'index.handler',
-      environment: {
-        ALLOWED_ORIGIN: props.allowedOrigin,
-      },
-      code: lambda.Code.fromInline(`
-        exports.handler = async () => ({
-          statusCode: 200,
-          headers: {
-            "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-            "Access-Control-Allow-Methods": "OPTIONS,POST,GET,PUT,DELETE",
-            "Access-Control-Allow-Origin": process.env.ALLOWED_ORIGIN || "*",
-            "Access-Control-Max-Age": "86400"
-          },
-          body: "",
-        });
-      `),
-    });
-    
-    const corsHandlerIntegration = new HttpLambdaIntegration('CorsHandlerIntegration', corsHandler);
+    // CORS is configured at the HTTP API gateway level via corsPreflight, pinned to allowedOrigin.
+    // No OPTIONS handler needed; gateway handles CORS preflight automatically.
 
     const apiGwLogRole = new iam.Role(this, 'ApiGatewayCloudWatchRole', {
       assumedBy: new iam.ServicePrincipal('apigateway.amazonaws.com'),
@@ -266,12 +247,6 @@ export class ChatBotApi extends Construct {
     const s3GetAPIIntegration = new HttpLambdaIntegration('S3GetAPIIntegration', lambdaFunctions.getS3Function);
     restBackend.restAPI.addRoutes({
       path: "/s3-bucket-data",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-    
-    restBackend.restAPI.addRoutes({
-      path: "/s3-bucket-data",
       methods: [apigwv2.HttpMethod.POST],
       integration: s3GetAPIIntegration,
       authorizer: httpAuthorizer,
@@ -280,24 +255,12 @@ export class ChatBotApi extends Construct {
     const s3DeleteAPIIntegration = new HttpLambdaIntegration('S3DeleteAPIIntegration', lambdaFunctions.deleteS3Function);
     restBackend.restAPI.addRoutes({
       path: "/delete-s3-file",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-    
-    restBackend.restAPI.addRoutes({
-      path: "/delete-s3-file",
       methods: [apigwv2.HttpMethod.POST],
       integration: s3DeleteAPIIntegration,
       authorizer: httpAuthorizer,
     })
 
     const s3UploadAPIIntegration = new HttpLambdaIntegration('S3UploadAPIIntegration', lambdaFunctions.uploadS3Function);
-    restBackend.restAPI.addRoutes({
-      path: "/signed-url",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-    
     restBackend.restAPI.addRoutes({
       path: "/signed-url",
       methods: [apigwv2.HttpMethod.POST],
@@ -334,52 +297,27 @@ export class ChatBotApi extends Construct {
     // Generic index routes
     restBackend.restAPI.addRoutes({
       path: "/admin/indexes",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-    restBackend.restAPI.addRoutes({
-      path: "/admin/indexes",
       methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST],
       integration: excelIndexApiIntegration,
       authorizer: httpAuthorizer,
     });
     restBackend.restAPI.addRoutes({
       path: "/admin/indexes/{indexId}/status",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-    restBackend.restAPI.addRoutes({
-      path: "/admin/indexes/{indexId}/status",
       methods: [apigwv2.HttpMethod.GET],
       integration: excelIndexApiIntegration,
       authorizer: httpAuthorizer,
     });
     restBackend.restAPI.addRoutes({
       path: "/admin/indexes/{indexId}/preview",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-    restBackend.restAPI.addRoutes({
-      path: "/admin/indexes/{indexId}/preview",
       methods: [apigwv2.HttpMethod.GET],
       integration: excelIndexApiIntegration,
       authorizer: httpAuthorizer,
-    });
-    restBackend.restAPI.addRoutes({
-      path: "/admin/indexes/{indexId}/upload-url",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
     });
     restBackend.restAPI.addRoutes({
       path: "/admin/indexes/{indexId}/upload-url",
       methods: [apigwv2.HttpMethod.POST],
       integration: excelIndexApiIntegration,
       authorizer: httpAuthorizer,
-    });
-    restBackend.restAPI.addRoutes({
-      path: "/admin/indexes/{indexId}",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
     });
     restBackend.restAPI.addRoutes({
       path: "/admin/indexes/{indexId}",
@@ -394,41 +332,21 @@ export class ChatBotApi extends Construct {
 
     restBackend.restAPI.addRoutes({
       path: "/admin/sync-schedule",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-    restBackend.restAPI.addRoutes({
-      path: "/admin/sync-schedule",
       methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.PUT],
       integration: syncScheduleIntegration,
       authorizer: httpAuthorizer,
     });
     restBackend.restAPI.addRoutes({
       path: "/admin/sync-destinations",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-    restBackend.restAPI.addRoutes({
-      path: "/admin/sync-destinations",
       methods: [apigwv2.HttpMethod.GET],
       integration: syncScheduleIntegration,
       authorizer: httpAuthorizer,
     });
     restBackend.restAPI.addRoutes({
       path: "/admin/sync-history",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-    restBackend.restAPI.addRoutes({
-      path: "/admin/sync-history",
       methods: [apigwv2.HttpMethod.GET],
       integration: syncScheduleIntegration,
       authorizer: httpAuthorizer,
-    });
-    restBackend.restAPI.addRoutes({
-      path: "/admin/sync-now",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
     });
     restBackend.restAPI.addRoutes({
       path: "/admin/sync-now",
@@ -468,10 +386,13 @@ export class ChatBotApi extends Construct {
       alarmEmail: props.alarmEmail,
     });
 
+    // Scope Step Functions access to this stack's evaluation state machine executions only
+    const stateMachineArn = lambdaFunctions.stepFunctionsStack.llmEvalStateMachine.stateMachineArn;
+    const executionArn = stateMachineArn.replace(':stateMachine:', ':execution:').replace(/:\w+$/, ':*');
     lambdaFunctions.handleEvalResultsFunction.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['states:DescribeExecution', 'states:GetExecutionHistory'],
-      resources: ['*'],
+      resources: [executionArn],
     }));
 
     // const api = new appsync.GraphqlApi(this, "ChatbotApi", {
@@ -558,12 +479,6 @@ export class ChatBotApi extends Construct {
     );
     restBackend.restAPI.addRoutes({
       path: "/eval-results-handler",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-
-    restBackend.restAPI.addRoutes({
-      path: "/eval-results-handler",
       methods: [apigwv2.HttpMethod.POST],
       integration: evalResultsHandlerIntegration,
       authorizer: httpAuthorizer,
@@ -575,27 +490,15 @@ export class ChatBotApi extends Construct {
     );
     restBackend.restAPI.addRoutes({
       path: "/eval-run-handler",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-
-    restBackend.restAPI.addRoutes({
-      path: "/eval-run-handler",
       methods: [apigwv2.HttpMethod.POST],
       integration: evalRunHandlerIntegration,
       authorizer: httpAuthorizer,
-    }); 
+    });
 
     const metricsHandlerIntegration = new HttpLambdaIntegration(
       'MetricsHandlerIntegration',
       lambdaFunctions.metricsHandlerFunction
     );
-    restBackend.restAPI.addRoutes({
-      path: "/metrics",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-
     restBackend.restAPI.addRoutes({
       path: "/metrics",
       methods: [apigwv2.HttpMethod.GET],
@@ -606,26 +509,12 @@ export class ChatBotApi extends Construct {
     const s3UploadTestCasesAPIIntegration = new HttpLambdaIntegration('S3UploadTestCasesAPIIntegration', lambdaFunctions.uploadS3TestCasesFunction);
     restBackend.restAPI.addRoutes({
       path: "/signed-url-test-cases",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-    
-    restBackend.restAPI.addRoutes({
-      path: "/signed-url-test-cases",
       methods: [apigwv2.HttpMethod.POST],
       integration: s3UploadTestCasesAPIIntegration,
       authorizer: httpAuthorizer,
     })
 
     const s3GetTestCasesAPIIntegration = new HttpLambdaIntegration('S3GetTestCasesAPIIntegration', lambdaFunctions.getS3TestCasesFunction);
-    
-    // Add proper CORS response for OPTIONS preflight request
-    restBackend.restAPI.addRoutes({
-      path: "/s3-test-cases-bucket-data",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-
     restBackend.restAPI.addRoutes({
       path: "/s3-test-cases-bucket-data",
       methods: [apigwv2.HttpMethod.POST],
@@ -636,22 +525,12 @@ export class ChatBotApi extends Construct {
     const testLibraryIntegration = new HttpLambdaIntegration('TestLibraryIntegration', lambdaFunctions.testLibraryFunction);
     restBackend.restAPI.addRoutes({
       path: "/test-library",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
-    restBackend.restAPI.addRoutes({
-      path: "/test-library",
       methods: [apigwv2.HttpMethod.POST],
       integration: testLibraryIntegration,
       authorizer: httpAuthorizer,
     });
 
     const sourcePresignIntegration = new HttpLambdaIntegration('SourcePresignIntegration', lambdaFunctions.sourcePresignFunction);
-    restBackend.restAPI.addRoutes({
-      path: "/source-presign",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
     restBackend.restAPI.addRoutes({
       path: "/source-presign",
       methods: [apigwv2.HttpMethod.POST],
@@ -662,11 +541,6 @@ export class ChatBotApi extends Construct {
     // Live dictation: hands the chat input a short-lived presigned Amazon
     // Transcribe streaming WebSocket URL (audio streams browser→Transcribe).
     const transcribePresignIntegration = new HttpLambdaIntegration('TranscribePresignIntegration', lambdaFunctions.transcribePresignFunction);
-    restBackend.restAPI.addRoutes({
-      path: "/transcribe-stream-url",
-      methods: [apigwv2.HttpMethod.OPTIONS],
-      integration: corsHandlerIntegration,
-    });
     restBackend.restAPI.addRoutes({
       path: "/transcribe-stream-url",
       methods: [apigwv2.HttpMethod.GET],

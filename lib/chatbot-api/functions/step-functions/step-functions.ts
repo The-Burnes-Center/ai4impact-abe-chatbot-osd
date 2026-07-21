@@ -174,10 +174,13 @@ export class StepFunctionsStack extends Construct {
             timeout: cdk.Duration.minutes(15),
             memorySize: 10240
         });
+        // ECR permissions for Docker image pull. Note: DockerImageFunction already handles
+        // image access via repository policy; this may be redundant but kept for clarity.
+        // GetAuthorizationToken requires resource '*' per AWS policy.
         llmEvalFunction.addToRolePolicy(new iam.PolicyStatement({
             effect: iam.Effect.ALLOW,
             actions: [
-              'ecr:GetAuthorization',
+              'ecr:GetAuthorizationToken',
               'ecr:GetDownloadUrlForLayer',
               'ecr:BatchGetImage',
               'ecr:BatchCheckLayerAvailability'
