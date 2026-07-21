@@ -63,12 +63,14 @@ APP_CLIENT_ID = "testclientid"
 METHOD_ARN = "arn:aws:execute-api:us-east-1:123456789:abc/prod/$connect"
 
 
-def _make_token(sub="user123", exp_offset=3600, aud=APP_CLIENT_ID, kid=KID, private_key=None):
+def _make_token(sub="user123", exp_offset=3600, aud=APP_CLIENT_ID, kid=KID, private_key=None, iss=None, token_use="id"):
     """Sign a JWT with our test RSA key."""
     pk = private_key or RSA_PRIVATE
     pem = _private_pem(pk)
     now = int(time.time())
-    claims = {"sub": sub, "aud": aud, "exp": now + exp_offset, "iat": now}
+    if iss is None:
+        iss = f"https://cognito-idp.us-east-1.amazonaws.com/{USER_POOL_ID}"
+    claims = {"sub": sub, "aud": aud, "exp": now + exp_offset, "iat": now, "iss": iss, "token_use": token_use}
     return jwt.encode(claims, pem, algorithm="RS256", headers={"kid": kid})
 
 
@@ -177,7 +179,13 @@ class TestBadKid:
         # Build token without kid header
         pem = _private_pem(RSA_PRIVATE)
         now = int(time.time())
-        claims = {"sub": "u", "aud": APP_CLIENT_ID, "exp": now + 3600}
+        claims = {
+            "sub": "u",
+            "aud": APP_CLIENT_ID,
+            "exp": now + 3600,
+            "iss": f"https://cognito-idp.us-east-1.amazonaws.com/{USER_POOL_ID}",
+            "token_use": "id",
+        }
         # jose will include kid if provided via headers; omit it
         token = jwt.encode(claims, pem, algorithm="RS256")
         with patch("requests.get", return_value=_jwks_response()):
